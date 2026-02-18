@@ -1,15 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { Search, Menu, X, ShieldCheck, User, LayoutDashboard, LogOut } from 'lucide-react';
+import { Search, Menu, X, ShieldCheck, User, LayoutDashboard, LogOut, ShoppingCart } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useCart } from '../context/CartContext';
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const router = useRouter();
+    const { cartCount } = useCart();
 
     useEffect(() => {
         // Check for token on mount
@@ -54,6 +56,8 @@ export default function Navbar() {
                         <Link href="/consulting" className="hover:text-blue-600 transition-colors">Konsultan</Link>
                         <Link href="/corporate" className="hover:text-blue-600 transition-colors">In-House Training</Link>
 
+                        {/* Cart Icon */}
+
                         <div className="flex items-center gap-4 ml-2">
                             {isLoggedIn ? (
                                 <div className="relative">
@@ -74,6 +78,17 @@ export default function Navbar() {
                                                 <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Logged in as</p>
                                                 <p className="text-sm font-bold text-gray-900 truncate">user@akademiso.com</p>
                                             </div>
+                                            <Link href="/cart" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <ShoppingCart className="w-4 h-4" />
+                                                    Keranjang Belanja
+                                                </div>
+                                                {cartCount > 0 && (
+                                                    <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                        {cartCount}
+                                                    </span>
+                                                )}
+                                            </Link>
                                             <Link href="/dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors">
                                                 <LayoutDashboard className="w-4 h-4" />
                                                 Dashboard

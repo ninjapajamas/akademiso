@@ -1,6 +1,11 @@
+'use client';
+
 import Link from 'next/link';
 import { Star, Clock, Check, PlayCircle, FileText, ChevronDown, Globe } from 'lucide-react';
 import { Course } from '@/types';
+import { useState } from 'react';
+import { useCart } from '@/context/CartContext';
+import AddToCartModal from '@/components/AddToCartModal';
 
 // Extended Dummy Data for Detail
 const courseDetail: Course & { objectives: string[], modules: any[] } = {
@@ -62,6 +67,49 @@ export default function CourseDetail({ params }: { params: { slug: string } }) {
     // In a real app, fetch data based on params.slug
     const course = courseDetail;
 
+    // State for Cart
+    const { refreshCart } = useCart();
+    const [isAdding, setIsAdding] = useState(false);
+    const [showModal, setShowModal] = useState(false);
+
+    const addToCart = async () => {
+        setIsAdding(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/cart/add_item/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ course_id: course.id })
+            });
+
+            if (res.ok) {
+                setShowModal(true);
+                refreshCart();
+            } else {
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const data = await res.json();
+                alert(data.message || 'Gagal menambahkan ke keranjang');
+            }
+        } catch (error) {
+            console.error('Error adding to cart:', error);
+            alert('Terjadi kesalahan koneksi');
+        } finally {
+            setIsAdding(false);
+        }
+    };
+
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
             {/* Breadcrumb */}
@@ -88,7 +136,7 @@ export default function CourseDetail({ params }: { params: { slug: string } }) {
                                     <div className="flex">
                                         {[1, 2, 3, 4, 5].map(i => <Star key={i} className="w-4 h-4 fill-current" />)}
                                     </div>
-                                    <span className="text-gray-500 font-normal ml-1 underline">({course.enrolled_count.toLocaleString()} penilaian)</span>
+                                    <span className="text-gray-500 font-normal ml-1 underline">({course.enrolled_count.toLocaleString('id-ID')} penilaian)</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span>8.500 Profesional</span>
@@ -222,8 +270,12 @@ export default function CourseDetail({ params }: { params: { slug: string } }) {
                                 <Link href="/checkout" className="block w-full text-center bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
                                     Daftar Sekarang
                                 </Link>
-                                <button className="block w-full text-center bg-white text-gray-700 font-bold py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors">
-                                    Tambah ke Keranjang
+                                <button
+                                    onClick={addToCart}
+                                    disabled={isAdding}
+                                    className="flex items-center justify-center gap-2 w-full text-center bg-white text-gray-700 font-bold py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                >
+                                    {isAdding ? "Menambahkan..." : "Tambah ke Keranjang"}
                                 </button>
                             </div>
 
@@ -268,6 +320,8 @@ export default function CourseDetail({ params }: { params: { slug: string } }) {
 
                 </div>
             </div>
+
+            <AddToCartModal isOpen={showModal} onClose={() => setShowModal(false)} />
         </div>
     );
 }

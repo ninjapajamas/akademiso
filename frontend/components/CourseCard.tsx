@@ -1,7 +1,12 @@
+'use client';
+
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Star, Clock, BarChart } from 'lucide-react';
 import { Course } from '@/types';
+import { useCart } from '../context/CartContext';
+import AddToCartModal from './AddToCartModal';
 
 interface CourseCardProps {
     course: Course;
@@ -15,6 +20,49 @@ export default function CourseCard({ course }: CourseCardProps) {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0
         }).format(Number(price));
+    };
+
+    const { refreshCart } = useCart();
+    const [isAdding, setIsAdding] = useState(false);
+    const [showModal, setShowModal] = useState(false);
+
+    const addToCart = async (e: React.MouseEvent) => {
+        e.preventDefault(); // Prevent navigation if wrapped in Link
+        setIsAdding(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/login';
+                return;
+            }
+
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/cart/add_item/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ course_id: course.id })
+            });
+
+            if (res.ok) {
+                setShowModal(true);
+                refreshCart(); // Update navbar badge
+            } else {
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const data = await res.json();
+                alert(data.message || 'Gagal menambahkan ke keranjang');
+            }
+        } catch (error) {
+            console.error('Error adding to cart:', error);
+            alert('Terjadi kesalahan koneksi');
+        } finally {
+            setIsAdding(false);
+        }
     };
 
     return (
@@ -85,11 +133,19 @@ export default function CourseCard({ course }: CourseCardProps) {
                             {formatPrice(course.price)}
                         </p>
                     </div>
-                    <Link href={`/courses/${course.slug}`} className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all">
-                        <span className="text-xl leading-none mb-0.5">+</span>
-                    </Link>
+                    <button
+                        onClick={addToCart}
+                        disabled={isAdding}
+                        className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isAdding ? (
+                            <div className="w-4 h-4 border-2 border-current rounded-full border-t-transparent animate-spin"></div>
+                        ) : (
+                            <span className="text-xl leading-none mb-0.5">+</span>
+                        )}
+                    </button>
                 </div>
             </div>
+            <AddToCartModal isOpen={showModal} onClose={() => setShowModal(false)} />
         </div>
     );
 }
