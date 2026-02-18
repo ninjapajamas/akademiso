@@ -26,3 +26,17 @@ class InstructorAdmin(admin.ModelAdmin):
 class OrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'course', 'status', 'total_amount', 'created_at')
     list_filter = ('status', 'created_at')
+
+from .models import Cart, CartItem
+
+class CartItemInline(admin.TabularInline):
+    model = CartItem
+    extra = 0
+
+@admin.register(Cart)
+class CartAdmin(admin.ModelAdmin):
+    list_display = ('user', 'created_at', 'updated_at', 'total_items')
+    inlines = [CartItemInline]
+
+    def total_items(self, obj):
+        return obj.items.count()
