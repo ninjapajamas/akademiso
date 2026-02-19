@@ -1,9 +1,52 @@
 'use client';
 
-import { Clock, CheckCircle, Calendar, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { EnrolledCourse } from '@/types';
+import { Clock, CheckCircle, Calendar, ArrowRight } from 'lucide-react';
 
 export default function DashboardPage() {
+    const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchCourses = async () => {
+            try {
+                const token = localStorage.getItem('access_token');
+
+                if (!token) {
+                    setIsLoading(false);
+                    return;
+                }
+
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                console.log('Fetching courses from:', `${apiUrl}/api/my-courses/`);
+
+                const res = await fetch(`${apiUrl}/api/my-courses/`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setEnrolledCourses(data);
+                } else {
+                    console.error('Failed to fetch courses:', res.status, res.statusText);
+                    if (res.status === 401) {
+                        // Auto-redirect to login on 401
+                        window.location.href = '/login';
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching courses:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchCourses();
+    }, []);
     return (
         <div className="max-w-5xl mx-auto space-y-8">
             {/* Welcome Banner */}
@@ -59,61 +102,58 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-6">
-                    {/* Course Card 1 */}
-                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex gap-4 hover:shadow-md transition-shadow">
-                        <div className="w-24 h-24 bg-gray-200 rounded-xl flex-shrink-0 bg-cover bg-center" style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?q=80&w=2070&auto=format&fit=crop)' }}></div>
-                        <div className="flex-1 flex flex-col justify-between">
-                            <div>
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded">ISO 9001</span>
-                                    <span className="text-[10px] text-gray-400">Terakhir: 2 jam lalu</span>
-                                </div>
-                                <h3 className="font-bold text-gray-900 line-clamp-1">Quality Management Systems</h3>
-                                <p className="text-xs text-gray-500 mt-1">Instruktur: Dr. Andi Wijaya</p>
-                            </div>
+                    {isLoading ? (
+                        // Loading skeleton
+                        [1, 2].map((i) => (
+                            <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 h-40 animate-pulse"></div>
+                        ))
+                    ) : enrolledCourses.length > 0 ? (
+                        enrolledCourses.map((enrollment) => (
+                            <div key={enrollment.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex gap-4 hover:shadow-md transition-shadow">
+                                <div className="w-24 h-24 bg-gray-200 rounded-xl flex-shrink-0 bg-cover bg-center" style={{ backgroundImage: `url(${enrollment.course.thumbnail || 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?q=80&w=2070&auto=format&fit=crop'})` }}></div>
+                                <div className="flex-1 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                                {enrollment.course.category?.name || 'Course'}
+                                            </span>
+                                            <span className="text-[10px] text-gray-400">
+                                                Terdaftar: {new Date(enrollment.created_at).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <h3 className="font-bold text-gray-900 line-clamp-1">{enrollment.course.title}</h3>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Instruktur: {enrollment.course.instructor?.name || 'Expert Instructor'}
+                                        </p>
+                                    </div>
 
-                            <div className="space-y-2 mt-3">
-                                <div className="flex justify-between text-xs font-semibold">
-                                    <span className="text-gray-500">Progres</span>
-                                    <span className="text-blue-600">75%</span>
+                                    <div className="space-y-2 mt-3">
+                                        <div className="flex justify-between text-xs font-semibold">
+                                            <span className="text-gray-500">Progres</span>
+                                            <span className="text-blue-600">0%</span>
+                                        </div>
+                                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-blue-600 rounded-full w-[0%]"></div>
+                                        </div>
+                                        <Link href={`/learn/${enrollment.course.slug}`} className="w-full mt-2 bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-1">
+                                            Mulai Belajar <ArrowRight className="w-3 h-3" />
+                                        </Link>
+                                    </div>
                                 </div>
-                                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-blue-600 rounded-full w-3/4"></div>
-                                </div>
-                                <Link href="/learn/iso-9001" className="w-full mt-2 bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-1">
-                                    Lanjut Belajar <ArrowRight className="w-3 h-3" />
-                                </Link>
                             </div>
+                        ))
+                    ) : (
+                        <div className="col-span-2 text-center py-12 bg-white rounded-2xl border border-gray-100">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
+                                <Clock className="w-8 h-8" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 mb-1">Belum ada kursus aktif</h3>
+                            <p className="text-sm text-gray-500 mb-6">Anda belum mendaftar di kursus manapun saat ini.</p>
+                            <Link href="/courses" className="inline-flex items-center gap-2 bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors">
+                                Jelajahi Kursus
+                            </Link>
                         </div>
-                    </div>
-
-                    {/* Course Card 2 */}
-                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex gap-4 hover:shadow-md transition-shadow">
-                        <div className="w-24 h-24 bg-gray-200 rounded-xl flex-shrink-0 bg-cover bg-center" style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=2070&auto=format&fit=crop)' }}></div>
-                        <div className="flex-1 flex flex-col justify-between">
-                            <div>
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded">ISO 45001</span>
-                                    <span className="text-[10px] text-gray-400">Baru dimulai</span>
-                                </div>
-                                <h3 className="font-bold text-gray-900 line-clamp-1">Occupational Health & Safety</h3>
-                                <p className="text-xs text-gray-500 mt-1">Instruktur: Ir. Sarah Melati</p>
-                            </div>
-
-                            <div className="space-y-2 mt-3">
-                                <div className="flex justify-between text-xs font-semibold">
-                                    <span className="text-gray-500">Progres</span>
-                                    <span className="text-blue-600">12%</span>
-                                </div>
-                                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-blue-600 rounded-full w-[12%]"></div>
-                                </div>
-                                <Link href="/learn/iso-45001" className="w-full mt-2 bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-1">
-                                    Lanjut Belajar <ArrowRight className="w-3 h-3" />
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
 

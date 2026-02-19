@@ -70,7 +70,7 @@ class InstructorSerializer(serializers.ModelSerializer):
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
-        fields = '__all__'
+        fields = ['id', 'course', 'title', 'type', 'content', 'video_url', 'image', 'duration', 'order']
 
 class CourseSerializer(serializers.ModelSerializer):
     instructor = InstructorSerializer(read_only=True)

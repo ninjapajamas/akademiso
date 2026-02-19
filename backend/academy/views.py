@@ -1,7 +1,8 @@
 from rest_framework import viewsets, generics
-from .models import Category, Instructor, Course, Order
-from .serializers import CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, RegisterSerializer
+from .models import Category, Instructor, Course, Order, Lesson
+from .serializers import CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, RegisterSerializer, LessonSerializer
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from django.contrib.auth.models import User
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -25,6 +26,17 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class InstructorViewSet(viewsets.ModelViewSet):
     queryset = Instructor.objects.all()
     serializer_class = InstructorSerializer
+
+class LessonViewSet(viewsets.ModelViewSet):
+    queryset = Lesson.objects.all()
+    serializer_class = LessonSerializer
+
+    def get_queryset(self):
+        queryset = Lesson.objects.all()
+        course_id = self.request.query_params.get('course_id')
+        if course_id:
+            queryset = queryset.filter(course_id=course_id)
+        return queryset
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()

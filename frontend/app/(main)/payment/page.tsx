@@ -11,9 +11,52 @@ export default function Payment() {
     const router = useRouter();
     const [selectedMethod, setSelectedMethod] = useState<string>('mandiri');
 
-    const handlePayment = () => {
-        // Mock payment processing
-        router.push('/dashboard');
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const handlePayment = async () => {
+        setIsProcessing(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                router.push('/login');
+                return;
+            }
+
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            console.log('Processing payment at:', `${apiUrl}/api/orders/`);
+
+            // Create order with status Completed
+            const res = await fetch(`${apiUrl}/api/orders/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    course: 1, // Hardcoded for now as per "temporarily" request
+                    total_amount: 5500000,
+                    status: 'Completed'
+                })
+            });
+
+            if (res.ok) {
+                router.push('/dashboard');
+            } else {
+                if (res.status === 401) {
+                    alert('Sesi Anda telah berakhir. Silakan login kembali.');
+                    router.push('/login');
+                    return;
+                }
+                const data = await res.json();
+                console.error('Payment failed:', res.status, data);
+                alert(`Gagal memproses pembayaran: ${res.statusText}`);
+            }
+        } catch (error) {
+            console.error('Payment error:', error);
+            alert('Terjadi kesalahan koneksi. Pastikan backend berjalan.');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     return (
@@ -204,9 +247,18 @@ export default function Payment() {
                                     <span className="font-bold text-2xl text-blue-600">Rp 5.500.000</span>
                                 </div>
 
-                                <button className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 flex justify-center items-center gap-2">
-                                    <Lock className="w-4 h-4" />
-                                    Bayar Sekarang
+                                <button
+                                    onClick={handlePayment}
+                                    disabled={isProcessing}
+                                    className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 flex justify-center items-center gap-2 disabled:bg-blue-400 disabled:cursor-not-allowed">
+                                    {isProcessing ? (
+                                        <div className="w-5 h-5 border-2 border-white rounded-full border-t-transparent animate-spin"></div>
+                                    ) : (
+                                        <>
+                                            <Lock className="w-4 h-4" />
+                                            Bayar Sekarang
+                                        </>
+                                    )}
                                 </button>
 
                                 <p className="text-center text-[10px] text-gray-400 mt-4 flex justify-center items-center gap-1">

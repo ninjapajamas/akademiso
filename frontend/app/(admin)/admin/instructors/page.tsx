@@ -11,7 +11,7 @@ export default function InstructorsPage() {
     const fetchInstructors = async () => {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const res = await fetch(`${apiUrl}/api/academy/instructors/`);
+            const res = await fetch(`${apiUrl}/api/instructors/`);
             const data = await res.json();
             setInstructors(data);
         } catch (error) {
@@ -27,7 +27,7 @@ export default function InstructorsPage() {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const res = await fetch(`${apiUrl}/api/academy/instructors/${id}/`, {
+            const res = await fetch(`${apiUrl}/api/instructors/${id}/`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`

@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 
-export default function InstructorFormPage({ params }: { params: { id: string } }) {
+export default function InstructorFormPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
-    const isNew = params.id === 'new';
+    const { id } = use(params);
+    const isNew = id === 'new';
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
 
@@ -23,7 +24,8 @@ export default function InstructorFormPage({ params }: { params: { id: string } 
             // Fetch existing data
             const fetchData = async () => {
                 try {
-                    const res = await fetch(`http://localhost:8000/api/academy/instructors/${params.id}/`);
+                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                    const res = await fetch(`${apiUrl}/api/instructors/${id}/`);
                     if (res.ok) {
                         const data = await res.json();
                         setFormData({
@@ -40,7 +42,7 @@ export default function InstructorFormPage({ params }: { params: { id: string } 
             };
             fetchData();
         }
-    }, [params.id, isNew]);
+    }, [id, isNew]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -48,9 +50,10 @@ export default function InstructorFormPage({ params }: { params: { id: string } 
 
         try {
             const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             const url = isNew
-                ? 'http://localhost:8000/api/academy/instructors/'
-                : `http://localhost:8000/api/academy/instructors/${params.id}/`;
+                ? `${apiUrl}/api/instructors/`
+                : `${apiUrl}/api/instructors/${id}/`;
 
             const method = isNew ? 'POST' : 'PUT';
 
@@ -96,7 +99,7 @@ export default function InstructorFormPage({ params }: { params: { id: string } 
                     <input
                         type="text"
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                         value={formData.name}
                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                     />
@@ -108,7 +111,7 @@ export default function InstructorFormPage({ params }: { params: { id: string } 
                         type="text"
                         required
                         placeholder="e.g. Senior Software Engineer"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                         value={formData.title}
                         onChange={e => setFormData({ ...formData, title: e.target.value })}
                     />
@@ -119,7 +122,7 @@ export default function InstructorFormPage({ params }: { params: { id: string } 
                     <textarea
                         rows={4}
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                         value={formData.bio}
                         onChange={e => setFormData({ ...formData, bio: e.target.value })}
                     />

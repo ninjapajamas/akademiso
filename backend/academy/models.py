@@ -47,17 +47,49 @@ class Course(models.Model):
         return self.title
 
 class Lesson(models.Model):
+    LESSON_TYPES = [
+        ('video', 'Video'),
+        ('article', 'Article'),
+        ('quiz', 'Quiz'),
+    ]
+
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='lessons')
     title = models.CharField(max_length=200)
-    order = models.PositiveIntegerField()
-    duration = models.CharField(max_length=50, blank=True)
+    type = models.CharField(max_length=20, choices=LESSON_TYPES, default='video')
+    content = models.TextField(blank=True, null=True) # For article content
     video_url = models.URLField(blank=True, null=True)
+    image = models.ImageField(upload_to='lessons/', blank=True, null=True)
+    duration = models.CharField(max_length=50, blank=True)
+    order = models.PositiveIntegerField()
 
     class Meta:
         ordering = ['order']
 
     def __str__(self):
         return f"{self.order}. {self.title}"
+
+class Cart(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cart')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Cart for {self.user.username}"
+
+    @property
+    def total_price(self):
+        return sum(item.course.price for item in self.items.all())
+
+class CartItem(models.Model):
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
+    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('cart', 'course')
+
+    def __str__(self):
+        return f"{self.course.title} in {self.cart.user.username}'s cart"
 
 class Order(models.Model):
     STATUS_CHOICES = [

@@ -1,12 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CategoryViewSet, InstructorViewSet, CourseViewSet, OrderViewSet, RegisterView, MyCoursesView, CartViewSet, UserViewSet
+from .views import CategoryViewSet, InstructorViewSet, CourseViewSet, OrderViewSet, RegisterView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
 router.register(r'categories', CategoryViewSet)
 router.register(r'instructors', InstructorViewSet)
 router.register(r'courses', CourseViewSet)
+router.register(r'lessons', LessonViewSet)
 router.register(r'orders', OrderViewSet)
 router.register(r'cart', CartViewSet, basename='cart')
 

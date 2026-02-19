@@ -11,7 +11,7 @@ export default function CoursesPage() {
     const fetchCourses = async () => {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const res = await fetch(`${apiUrl}/api/academy/courses/`);
+            const res = await fetch(`${apiUrl}/api/courses/`);
             const data = await res.json();
             setCourses(data);
         } catch (error) {
@@ -27,7 +27,7 @@ export default function CoursesPage() {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const res = await fetch(`${apiUrl}/api/academy/courses/${id}/`, {
+            const res = await fetch(`${apiUrl}/api/courses/${id}/`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`

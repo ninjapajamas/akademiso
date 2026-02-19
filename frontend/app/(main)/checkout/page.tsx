@@ -52,27 +52,27 @@ export default function Checkout() {
                             <form className="space-y-6">
                                 <div>
                                     <label className="block text-sm font-bold text-gray-900 mb-2">Nama Lengkap (Sesuai KTP) <span className="text-red-500">*</span></label>
-                                    <input type="text" placeholder="Contoh: Budi Santoso, S.T." className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none" />
+                                    <input type="text" placeholder="Contoh: Budi Santoso, S.T." className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
                                     <p className="text-xs text-gray-500 mt-1">Nama ini akan dicetak pada sertifikat resmi Anda.</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-900 mb-2">Alamat Email Aktif <span className="text-red-500">*</span></label>
-                                        <input type="email" placeholder="nama@email.com" className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none" />
+                                        <input type="email" placeholder="nama@email.com" className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-gray-900 mb-2">Nomor WhatsApp <span className="text-red-500">*</span></label>
                                         <div className="flex">
                                             <span className="inline-flex items-center px-4 rounded-l-lg border border-r-0 border-gray-200 bg-gray-100 text-gray-500 text-sm font-bold">+62</span>
-                                            <input type="tel" placeholder="812-3456-7890" className="flex-1 px-4 py-3 rounded-r-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none" />
+                                            <input type="tel" placeholder="812-3456-7890" className="flex-1 px-4 py-3 rounded-r-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
                                         </div>
                                     </div>
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-bold text-gray-900 mb-2">Asal Perusahaan / Instansi</label>
-                                    <input type="text" placeholder="Nama Perusahaan atau Universitas" className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none" />
+                                    <input type="text" placeholder="Nama Perusahaan atau Universitas" className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
                                 </div>
 
                                 <label className="flex items-start gap-3 cursor-pointer pt-4 border-t border-gray-100">

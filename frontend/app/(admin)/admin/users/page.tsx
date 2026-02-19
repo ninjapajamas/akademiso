@@ -12,7 +12,7 @@ export default function UsersPage() {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const res = await fetch(`${apiUrl}/api/academy/users/`, {
+            const res = await fetch(`${apiUrl}/api/users/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -32,7 +32,7 @@ export default function UsersPage() {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const res = await fetch(`${apiUrl}/api/academy/users/${id}/`, {
+            const res = await fetch(`${apiUrl}/api/users/${id}/`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`

@@ -38,3 +38,10 @@ export interface Course {
     lessons?: Lesson[];
     is_featured: boolean;
 }
+
+export interface EnrolledCourse {
+    id: number;
+    course: Course;
+    status: 'Pending' | 'Completed' | 'Cancelled';
+    created_at: string;
+}

@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 
-export default function CourseFormPage({ params }: { params: { id: string } }) {
+export default function CourseFormPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
-    const isNew = params.id === 'new';
+    const { id } = use(params);
+    const isNew = id === 'new';
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
 
@@ -28,10 +29,11 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
     });
 
     useEffect(() => {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const fetchDropdowns = async () => {
             const [instRes, catRes] = await Promise.all([
-                fetch('http://localhost:8000/api/academy/instructors/'),
-                fetch('http://localhost:8000/api/academy/categories/')
+                fetch(`${apiUrl}/api/instructors/`),
+                fetch(`${apiUrl}/api/categories/`)
             ]);
             setInstructors(await instRes.json());
             setCategories(await catRes.json());
@@ -43,7 +45,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
             // Fetch existing data
             const fetchData = async () => {
                 try {
-                    const res = await fetch(`http://localhost:8000/api/academy/courses/${params.id}/`);
+                    const res = await fetch(`${apiUrl}/api/courses/${id}/`);
                     if (res.ok) {
                         const data = await res.json();
                         setFormData({
@@ -66,7 +68,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
             };
             fetchData();
         }
-    }, [params.id, isNew]);
+    }, [id, isNew]);
 
     const handleChange = (e: any) => {
         const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
@@ -88,9 +90,10 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
 
         try {
             const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             const url = isNew
-                ? 'http://localhost:8000/api/academy/courses/'
-                : `http://localhost:8000/api/academy/courses/${params.id}/`;
+                ? `${apiUrl}/api/courses/`
+                : `${apiUrl}/api/courses/${id}/`;
 
             const method = isNew ? 'POST' : 'PUT';
 
@@ -128,6 +131,14 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                 <h1 className="text-2xl font-bold text-gray-900">
                     {isNew ? 'New Course' : 'Edit Course'}
                 </h1>
+                {!isNew && (
+                    <Link
+                        href={`/admin/courses/${id}/lessons`}
+                        className="ml-auto bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition"
+                    >
+                        Manage Lessons
+                    </Link>
+                )}
             </div>
 
             <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
@@ -138,7 +149,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                             name="title"
                             type="text"
                             required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.title}
                             onChange={handleChange}
                         />
@@ -150,7 +161,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                             name="slug"
                             type="text"
                             required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 from-gray-500"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-gray-900"
                             value={formData.slug}
                             onChange={handleChange}
                         />
@@ -162,7 +173,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                             name="description"
                             rows={4}
                             required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.description}
                             onChange={handleChange}
                         />
@@ -173,7 +184,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                         <select
                             name="instructor_id"
                             required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.instructor_id}
                             onChange={handleChange}
                         >
@@ -189,7 +200,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                         <select
                             name="category_id"
                             required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.category_id}
                             onChange={handleChange}
                         >
@@ -206,7 +217,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                             name="price"
                             type="number"
                             required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.price}
                             onChange={handleChange}
                         />
@@ -216,7 +227,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Level</label>
                         <select
                             name="level"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.level}
                             onChange={handleChange}
                         >
@@ -233,7 +244,7 @@ export default function CourseFormPage({ params }: { params: { id: string } }) {
                             type="text"
                             placeholder="e.g. 2 Hours"
                             required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.duration}
                             onChange={handleChange}
                         />
