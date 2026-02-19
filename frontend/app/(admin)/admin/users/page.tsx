@@ -5,20 +5,40 @@ import Link from 'next/link';
 import { Edit, Trash2, User, CheckCircle, XCircle } from 'lucide-react';
 
 export default function UsersPage() {
-    const [users, setUsers] = useState([]);
+    const [users, setUsers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchUsers = async () => {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            console.log(`Fetching users from ${apiUrl}/api/users/`);
             const res = await fetch(`${apiUrl}/api/users/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
+            console.log('Response status:', res.status);
+
+            if (!res.ok) {
+                console.error('Failed response:', res.status, res.statusText);
+                const err = await res.text();
+                console.error('Error body:', err);
+                setUsers([]);
+                return;
+            }
+
             const data = await res.json();
-            setUsers(data);
+            console.log('Response data:', data);
+
+            if (Array.isArray(data)) {
+                setUsers(data);
+            } else if (data.results && Array.isArray(data.results)) {
+                setUsers(data.results);
+            } else {
+                setUsers([]);
+                console.error('Unexpected user data format:', data);
+            }
         } catch (error) {
             console.error('Failed to fetch users:', error);
         } finally {
@@ -56,7 +76,7 @@ export default function UsersPage() {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-900">Students & Accounts</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Siswa & Akun</h1>
                 {/* Link to create user if needed, but usually users register themselves */}
             </div>
 
@@ -64,16 +84,16 @@ export default function UsersPage() {
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
-                            <th className="p-4 font-semibold text-gray-600">User</th>
+                            <th className="p-4 font-semibold text-gray-600">Pengguna</th>
                             <th className="p-4 font-semibold text-gray-600">Email</th>
                             <th className="p-4 font-semibold text-gray-600">Status</th>
-                            <th className="p-4 font-semibold text-gray-600">Joined</th>
-                            <th className="p-4 font-semibold text-gray-600 text-right">Actions</th>
+                            <th className="p-4 font-semibold text-gray-600">Bergabung</th>
+                            <th className="p-4 font-semibold text-gray-600 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {loading ? (
-                            <tr><td colSpan={5} className="p-4 text-center">Loading...</td></tr>
+                            <tr><td colSpan={5} className="p-4 text-center">Memuat...</td></tr>
                         ) : users.map((user: any) => (
                             <tr key={user.id} className="hover:bg-gray-50">
                                 <td className="p-4 font-medium text-gray-900 flex items-center gap-3">
@@ -88,10 +108,10 @@ export default function UsersPage() {
                                 <td className="p-4 text-gray-600 text-sm">{user.email}</td>
                                 <td className="p-4">
                                     {user.is_active ?
-                                        <span className="flex items-center gap-1 text-green-600 text-xs font-medium"><CheckCircle className="w-3 h-3" /> Active</span> :
-                                        <span className="flex items-center gap-1 text-red-600 text-xs font-medium"><XCircle className="w-3 h-3" /> Inactive</span>
+                                        <span className="flex items-center gap-1 text-green-600 text-xs font-medium"><CheckCircle className="w-3 h-3" /> Aktif</span> :
+                                        <span className="flex items-center gap-1 text-red-600 text-xs font-medium"><XCircle className="w-3 h-3" /> Tidak Aktif</span>
                                     }
-                                    {user.is_staff && <span className="ml-2 bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded border border-purple-200">Staff</span>}
+                                    {user.is_staff && <span className="ml-2 bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded border border-purple-200">Staf</span>}
                                 </td>
                                 <td className="p-4 text-gray-500 text-xs">
                                     {new Date(user.date_joined).toLocaleDateString()}

@@ -51,13 +51,13 @@ export default function InstructorsPage() {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-900">Instructors</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Manajemen Instruktur</h1>
                 <Link
                     href="/admin/instructors/new"
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
                 >
                     <Plus className="w-4 h-4" />
-                    Add Instructor
+                    Tambah Instruktur
                 </Link>
             </div>
 
@@ -65,9 +65,9 @@ export default function InstructorsPage() {
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
-                            <th className="p-4 font-semibold text-gray-600">Name</th>
-                            <th className="p-4 font-semibold text-gray-600">Title</th>
-                            <th className="p-4 font-semibold text-gray-600 text-right">Actions</th>
+                            <th className="p-4 font-semibold text-gray-600">Nama</th>
+                            <th className="p-4 font-semibold text-gray-600">Gelar</th>
+                            <th className="p-4 font-semibold text-gray-600 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">

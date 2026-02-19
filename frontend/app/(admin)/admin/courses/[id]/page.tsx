@@ -129,14 +129,14 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     <ChevronLeft className="w-5 h-5" />
                 </Link>
                 <h1 className="text-2xl font-bold text-gray-900">
-                    {isNew ? 'New Course' : 'Edit Course'}
+                    {isNew ? 'Kursus Baru' : 'Edit Kursus'}
                 </h1>
                 {!isNew && (
                     <Link
                         href={`/admin/courses/${id}/lessons`}
                         className="ml-auto bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition"
                     >
-                        Manage Lessons
+                        Kelola Materi
                     </Link>
                 )}
             </div>
@@ -144,7 +144,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
             <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Course Title</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Judul Kursus</label>
                         <input
                             name="title"
                             type="text"
@@ -168,7 +168,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi</label>
                         <textarea
                             name="description"
                             rows={4}
@@ -180,7 +180,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Instructor</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Instruktur</label>
                         <select
                             name="instructor_id"
                             required
@@ -188,7 +188,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             value={formData.instructor_id}
                             onChange={handleChange}
                         >
-                            <option value="">Select Instructor</option>
+                            <option value="">Pilih Instruktur</option>
                             {instructors.map((opt: any) => (
                                 <option key={opt.id} value={opt.id}>{opt.name}</option>
                             ))}
@@ -196,7 +196,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
                         <select
                             name="category_id"
                             required
@@ -204,7 +204,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             value={formData.category_id}
                             onChange={handleChange}
                         >
-                            <option value="">Select Category</option>
+                            <option value="">Pilih Kategori</option>
                             {categories.map((opt: any) => (
                                 <option key={opt.id} value={opt.id}>{opt.name}</option>
                             ))}
@@ -212,7 +212,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga</label>
                         <input
                             name="price"
                             type="number"
@@ -238,11 +238,11 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Durasi</label>
                         <input
                             name="duration"
                             type="text"
-                            placeholder="e.g. 2 Hours"
+                            placeholder="Contoh: 2 Jam"
                             required
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.duration}
@@ -259,7 +259,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                                 checked={formData.is_featured}
                                 onChange={handleChange}
                             />
-                            <span className="text-gray-900 font-medium">Featured Course</span>
+                            <span className="text-gray-900 font-medium">Kursus Unggulan</span>
                         </label>
                     </div>
 
@@ -272,7 +272,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                         className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-50"
                     >
                         <Save className="w-4 h-4" />
-                        {saving ? 'Saving...' : 'Save Course'}
+                        {saving ? 'Menyimpan...' : 'Simpan Kursus'}
                     </button>
                 </div>
             </form>

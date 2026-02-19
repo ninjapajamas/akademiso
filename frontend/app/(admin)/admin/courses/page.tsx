@@ -51,13 +51,13 @@ export default function CoursesPage() {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-900">Courses</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Manajemen Kursus</h1>
                 <Link
                     href="/admin/courses/new"
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
                 >
                     <Plus className="w-4 h-4" />
-                    Add Course
+                    Tambah Kursus
                 </Link>
             </div>
 
@@ -65,16 +65,16 @@ export default function CoursesPage() {
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
-                            <th className="p-4 font-semibold text-gray-600">Title</th>
-                            <th className="p-4 font-semibold text-gray-600">Instructor</th>
-                            <th className="p-4 font-semibold text-gray-600">Price</th>
+                            <th className="p-4 font-semibold text-gray-600">Judul</th>
+                            <th className="p-4 font-semibold text-gray-600">Instruktur</th>
+                            <th className="p-4 font-semibold text-gray-600">Harga</th>
                             <th className="p-4 font-semibold text-gray-600">Level</th>
-                            <th className="p-4 font-semibold text-gray-600 text-right">Actions</th>
+                            <th className="p-4 font-semibold text-gray-600 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {loading ? (
-                            <tr><td colSpan={5} className="p-4 text-center">Loading...</td></tr>
+                            <tr><td colSpan={5} className="p-4 text-center">Memuat...</td></tr>
                         ) : courses.map((course: any) => (
                             <tr key={course.id} className="hover:bg-gray-50">
                                 <td className="p-4 font-medium text-gray-900 flex items-center gap-3">

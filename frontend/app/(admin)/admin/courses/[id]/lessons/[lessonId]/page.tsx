@@ -106,7 +106,7 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
                     <ChevronLeft className="w-5 h-5" />
                 </Link>
                 <h1 className="text-2xl font-bold text-gray-900">
-                    {isNew ? 'Add New Lesson' : 'Edit Lesson'}
+                    {isNew ? 'Tambah Materi Baru' : 'Edit Materi'}
                 </h1>
             </div>
 
@@ -133,7 +133,7 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Judul</label>
                     <input
                         type="text"
                         required
@@ -145,7 +145,7 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
 
                 <div className="grid grid-cols-2 gap-6">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Order / Sequence</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Urutan</label>
                         <input
                             type="number"
                             required
@@ -156,10 +156,10 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Duration (Optional)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Durasi (Opsional)</label>
                         <input
                             type="text"
-                            placeholder="e.g. 10 mins"
+                            placeholder="Contoh: 10 menit"
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={duration}
                             onChange={e => setDuration(e.target.value)}
@@ -170,7 +170,7 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
                 {/* Conditional Fields based on Type */}
                 {type === 'video' && (
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Video URL</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">URL Video</label>
                         <input
                             type="url"
                             required={type === 'video'}
@@ -184,7 +184,7 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
 
                 {type === 'article' && (
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Article Content</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Konten Artikel</label>
                         <textarea
                             rows={8}
                             required={type === 'article'}
@@ -197,7 +197,7 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
 
                 {/* Image Upload */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image (Optional)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Gambar Sampul (Opsional)</label>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition cursor-pointer relative">
                         <input
                             type="file"
@@ -211,13 +211,13 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
                         <div className="flex flex-col items-center">
                             <Upload className="w-8 h-8 text-gray-400 mb-2" />
                             <span className="text-gray-500 text-sm">
-                                {image ? image.name : 'Click to upload image'}
+                                {image ? image.name : 'Klik untuk unggah gambar'}
                             </span>
                         </div>
                     </div>
                     {currentImageUrl && !image && (
                         <div className="mt-2 text-sm text-gray-500">
-                            Current image: <a href={currentImageUrl} target="_blank" className="text-blue-600 hover:underline">View</a>
+                            Gambar saat ini: <a href={currentImageUrl} target="_blank" className="text-blue-600 hover:underline">Lihat</a>
                         </div>
                     )}
                 </div>
@@ -229,7 +229,7 @@ export default function LessonFormPage({ params }: { params: Promise<{ id: strin
                         className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-50"
                     >
                         <Save className="w-4 h-4" />
-                        {saving ? 'Saving...' : 'Save Lesson'}
+                        {saving ? 'Menyimpan...' : 'Simpan Materi'}
                     </button>
                 </div>
             </form>

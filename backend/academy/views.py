@@ -12,6 +12,17 @@ class RegisterView(generics.CreateAPIView):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     permission_classes = [IsAdminUser]
+
+    def list(self, request, *args, **kwargs):
+        try:
+            print(f"UserViewSet list called by: {request.user}")
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            print(f"Error in UserViewSet: {e}")
+            return Response({'error': str(e)}, status=500)
+
     
     def get_serializer_class(self):
         from .serializers import UserSerializer

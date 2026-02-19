@@ -89,13 +89,13 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                     <ChevronLeft className="w-5 h-5" />
                 </Link>
                 <h1 className="text-2xl font-bold text-gray-900">
-                    {isNew ? 'New Instructor' : 'Edit Instructor'}
+                    {isNew ? 'Tambah Instruktur' : 'Edit Instruktur'}
                 </h1>
             </div>
 
             <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>
                     <input
                         type="text"
                         required
@@ -106,7 +106,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Title / Role</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Gelar / Posisi</label>
                     <input
                         type="text"
                         required
@@ -118,7 +118,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Biography</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Biografi</label>
                     <textarea
                         rows={4}
                         required
@@ -135,7 +135,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                         className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-50"
                     >
                         <Save className="w-4 h-4" />
-                        {saving ? 'Saving...' : 'Save Instructor'}
+                        {saving ? 'Menyimpan...' : 'Simpan Instruktur'}
                     </button>
                 </div>
             </form>

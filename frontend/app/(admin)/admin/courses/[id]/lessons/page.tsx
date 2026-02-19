@@ -61,7 +61,7 @@ export default function LessonListPage({ params }: { params: Promise<{ id: strin
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-gray-500">Loading lessons...</div>;
+    if (loading) return <div className="p-8 text-center text-gray-500">Memuat materi...</div>;
 
     return (
         <div className="space-y-6">
@@ -71,8 +71,8 @@ export default function LessonListPage({ params }: { params: Promise<{ id: strin
                         <ChevronLeft className="w-5 h-5" />
                     </Link>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Manage Lessons</h1>
-                        <p className="text-gray-500">Course ID: {courseId}</p>
+                        <h1 className="text-2xl font-bold text-gray-900">Kelola Materi</h1>
+                        <p className="text-gray-500">ID Kursus: {courseId}</p>
                     </div>
                 </div>
                 <Link
@@ -80,7 +80,7 @@ export default function LessonListPage({ params }: { params: Promise<{ id: strin
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
                 >
                     <Plus className="w-5 h-5" />
-                    Add Lesson
+                    Tambah Materi
                 </Link>
             </div>
 
@@ -88,18 +88,18 @@ export default function LessonListPage({ params }: { params: Promise<{ id: strin
                 <table className="w-full">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Order</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Type</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Title</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Duration</th>
-                            <th className="px-6 py-4 text-right text-sm font-semibold text-gray-600">Actions</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Urutan</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Tipe</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Judul</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Durasi</th>
+                            <th className="px-6 py-4 text-right text-sm font-semibold text-gray-600">Aksi</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {lessons.length === 0 ? (
                             <tr>
                                 <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                                    No lessons found. Add one to get started.
+                                    Belum ada materi. Tambahkan satu untuk memulai.
                                 </td>
                             </tr>
                         ) : (
