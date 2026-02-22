@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Star, Clock, BarChart } from 'lucide-react';
+import { Star, Clock, BarChart, BookOpen, ShoppingCart } from 'lucide-react';
 import { Course } from '@/types';
 import { useCart } from '../context/CartContext';
 import AddToCartModal from './AddToCartModal';
@@ -82,8 +82,9 @@ export default function CourseCard({ course }: CourseCardProps) {
                         className="object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                 ) : (
-                    <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">
-                        No Image
+                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-indigo-600 flex flex-col items-center justify-center gap-2">
+                        <BookOpen className="w-10 h-10 text-white/80" />
+                        <span className="text-white/60 text-xs font-medium">{course.category?.name || 'ISO Training'}</span>
                     </div>
                 )}
             </div>
@@ -140,7 +141,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                         {isAdding ? (
                             <div className="w-4 h-4 border-2 border-current rounded-full border-t-transparent animate-spin"></div>
                         ) : (
-                            <span className="text-xl leading-none mb-0.5">+</span>
+                            <ShoppingCart className="w-4 h-4" />
                         )}
                     </button>
                 </div>

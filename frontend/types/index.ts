@@ -37,6 +37,7 @@ export interface Course {
     category: Category;
     lessons?: Lesson[];
     is_featured: boolean;
+    created_at?: string;
 }
 
 export interface EnrolledCourse {

@@ -53,8 +53,6 @@ export default function Navbar() {
                     {/* Desktop Menu */}
                     <div className="hidden md:flex items-center gap-8 text-sm font-semibold text-gray-600">
                         <Link href="/courses" className="hover:text-blue-600 transition-colors">Program ISO</Link>
-                        <Link href="/consulting" className="hover:text-blue-600 transition-colors">Konsultan</Link>
-                        <Link href="/corporate" className="hover:text-blue-600 transition-colors">In-House Training</Link>
 
                         {/* Cart Icon */}
 
@@ -143,8 +141,6 @@ export default function Navbar() {
                         </div>
 
                         <Link href="/courses" className="block text-gray-600 font-medium py-2 hover:text-blue-600">Program ISO</Link>
-                        <Link href="/consulting" className="block text-gray-600 font-medium py-2 hover:text-blue-600">Konsultan</Link>
-                        <Link href="/corporate" className="block text-gray-600 font-medium py-2 hover:text-blue-600">In-House Training</Link>
                         <hr className="border-gray-100" />
 
                         {isLoggedIn ? (

@@ -1,7 +1,17 @@
 from rest_framework import serializers
-from .models import Category, Instructor, Course, Lesson, Order, Cart, CartItem
+from .models import Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section
 from django.contrib.auth.models import User
 from rest_framework.validators import UniqueValidator
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['is_staff'] = user.is_staff
+        token['is_superuser'] = user.is_superuser
+        token['username'] = user.username
+        return token
 
 class RegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
@@ -70,7 +80,14 @@ class InstructorSerializer(serializers.ModelSerializer):
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
-        fields = ['id', 'course', 'title', 'type', 'content', 'video_url', 'image', 'duration', 'order']
+        fields = ['id', 'course', 'section', 'title', 'type', 'content', 'video_url', 'image', 'duration', 'order']
+
+class SectionSerializer(serializers.ModelSerializer):
+    lessons = LessonSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Section
+        fields = ['id', 'course', 'title', 'order', 'lessons']
 
 class CourseSerializer(serializers.ModelSerializer):
     instructor = InstructorSerializer(read_only=True)
@@ -81,7 +98,8 @@ class CourseSerializer(serializers.ModelSerializer):
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(), source='category', write_only=True, allow_null=True
     )
-    lessons = LessonSerializer(many=True, read_only=True)
+    sections = SectionSerializer(many=True, read_only=True)
+    lessons = LessonSerializer(many=True, read_only=True) # Keep for backward compatibility if needed
     
     class Meta:
         model = Course
