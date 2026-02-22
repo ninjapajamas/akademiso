@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from django.db.models import Sum, Count
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 class RegisterView(generics.CreateAPIView):
@@ -208,6 +209,104 @@ class InstructorStudentsView(APIView):
             for o in orders
         ]
         return Response(data)
+
+
+# ── Admin User Actions ───────────────────────────────────────────────────────
+class AdminResetPasswordView(APIView):
+    """
+    Admin resets a user's password.
+    POST /api/users/{id}/reset-password/
+    Body: { "new_password": "..." }
+    """
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        new_password = request.data.get('new_password', '').strip()
+        if len(new_password) < 6:
+            return Response({'error': 'Password harus minimal 6 karakter.'}, status=400)
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'User tidak ditemukan.'}, status=404)
+
+        # Prevent non-superuser from resetting superuser password
+        if user.is_superuser and not request.user.is_superuser:
+            return Response({'error': 'Tidak diizinkan mengubah password superuser.'}, status=403)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({'message': f'Password {user.username} berhasil direset.'})
+
+
+class AdminEditUserView(APIView):
+    """
+    Admin edits user data (name, email, is_staff, is_active).
+    PATCH /api/users/{id}/edit/
+    Body: { "first_name": "..", "last_name": "..", "email": "..", "is_staff": bool, "is_active": bool }
+    """
+    permission_classes = [IsAdminUser]
+
+    def patch(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'User tidak ditemukan.'}, status=404)
+
+        # Protect superusers from being edited by non-superusers
+        if user.is_superuser and not request.user.is_superuser:
+            return Response({'error': 'Tidak diizinkan mengedit akun superuser.'}, status=403)
+
+        allowed_fields = ['first_name', 'last_name', 'email', 'is_staff', 'is_active']
+        for field in allowed_fields:
+            if field in request.data:
+                setattr(user, field, request.data[field])
+
+        # Validate email uniqueness
+        email = request.data.get('email')
+        if email and User.objects.filter(email=email).exclude(pk=pk).exists():
+            return Response({'error': 'Email sudah digunakan user lain.'}, status=400)
+
+        user.save()
+        from .serializers import UserSerializer
+        return Response(UserSerializer(user).data)
+
+
+class AdminImpersonateView(APIView):
+    """
+    Admin generates a JWT token pair for another user (login-as / hijack).
+    POST /api/users/{id}/impersonate/
+    Returns: { "access": "...", "refresh": "...", "username": "...", "warning": "..." }
+    """
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            target_user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'User tidak ditemukan.'}, status=404)
+
+        # Only superuser can impersonate another staff/superuser
+        if (target_user.is_staff or target_user.is_superuser) and not request.user.is_superuser:
+            return Response({'error': 'Hanya superuser yang bisa melakukan impersonasi ke akun staff.'}, status=403)
+
+        # Prevent self-impersonation (pointless)
+        if target_user.pk == request.user.pk:
+            return Response({'error': 'Tidak bisa melakukan impersonasi ke akun sendiri.'}, status=400)
+
+        # Generate token using CustomTokenObtainPairSerializer logic
+        from .serializers import CustomTokenObtainPairSerializer
+        refresh = CustomTokenObtainPairSerializer.get_token(target_user)
+        access = refresh.access_token
+
+        return Response({
+            'access': str(access),
+            'refresh': str(refresh),
+            'username': target_user.username,
+            'user_id': target_user.pk,
+            'is_staff': target_user.is_staff,
+            'is_superuser': target_user.is_superuser,
+            'warning': f'Anda sedang login sebagai {target_user.username}. Gunakan dengan bijak.',
+        })
 
 
 from rest_framework.response import Response

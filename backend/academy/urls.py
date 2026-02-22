@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, InstructorViewSet, CourseViewSet, OrderViewSet,
     RegisterView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
-    SectionViewSet, StatsView, InstructorCoursesView, InstructorStudentsView
+    SectionViewSet, StatsView, InstructorCoursesView, InstructorStudentsView,
+    AdminResetPasswordView, AdminEditUserView, AdminImpersonateView,
 )
 
 router = DefaultRouter()
@@ -23,4 +24,8 @@ urlpatterns = [
     path('stats/', StatsView.as_view(), name='admin-stats'),
     path('instructor/courses/', InstructorCoursesView.as_view(), name='instructor-courses'),
     path('instructor/students/', InstructorStudentsView.as_view(), name='instructor-students'),
+    # Admin user actions
+    path('users/<int:pk>/reset-password/', AdminResetPasswordView.as_view(), name='admin-reset-password'),
+    path('users/<int:pk>/edit/', AdminEditUserView.as_view(), name='admin-edit-user'),
+    path('users/<int:pk>/impersonate/', AdminImpersonateView.as_view(), name='admin-impersonate'),
 ]

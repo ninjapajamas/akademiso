@@ -2,17 +2,31 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { EnrolledCourse } from '@/types';
-import { Clock, CheckCircle, Calendar, ArrowRight, Award } from 'lucide-react';
+import { Clock, CheckCircle, Calendar, ArrowRight, Award, ShieldAlert } from 'lucide-react';
 
 function decodeJwt(token: string) {
     try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
 }
 
 export default function DashboardPage() {
+    const router = useRouter();
     const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [username, setUsername] = useState('');
+    const [hijackUser, setHijackUser] = useState<string | null>(null);
+
+    const restoreAdmin = () => {
+        const origAccess = localStorage.getItem('admin_original_access');
+        const origRefresh = localStorage.getItem('admin_original_refresh');
+        if (origAccess) localStorage.setItem('access_token', origAccess);
+        if (origRefresh) localStorage.setItem('refresh_token', origRefresh);
+        localStorage.removeItem('admin_original_access');
+        localStorage.removeItem('admin_original_refresh');
+        localStorage.removeItem('admin_hijack_user');
+        router.push('/admin/users');
+    };
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
@@ -21,6 +35,10 @@ export default function DashboardPage() {
         // Decode name from JWT
         const payload = decodeJwt(token);
         if (payload?.username) setUsername(payload.username);
+
+        // Check if admin is in hijack mode
+        const hijacking = localStorage.getItem('admin_hijack_user');
+        if (hijacking) setHijackUser(hijacking);
 
         const fetchCourses = async () => {
             try {
@@ -44,6 +62,21 @@ export default function DashboardPage() {
 
     return (
         <div className="max-w-5xl mx-auto space-y-8">
+
+            {/* Hijack Banner — tampil hanya saat admin sedang impersonasi */}
+            {hijackUser && (
+                <div className="bg-orange-500 text-white rounded-2xl px-5 py-3 flex items-center gap-3 shadow-lg shadow-orange-500/30">
+                    <ShieldAlert className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 text-sm">
+                        <span className="font-bold">Mode Impersonasi Aktif</span>
+                        {' '}— Anda sedang melihat dashboard sebagai <span className="font-bold">@{username}</span> (sesi admin disimpan)
+                    </div>
+                    <button onClick={restoreAdmin}
+                        className="bg-white text-orange-600 font-bold text-xs px-4 py-1.5 rounded-lg hover:bg-orange-50 transition-colors flex-shrink-0">
+                        ← Kembali ke Admin
+                    </button>
+                </div>
+            )}
 
             {/* Welcome Banner */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 md:p-10 text-white shadow-xl shadow-blue-600/20 relative overflow-hidden">
