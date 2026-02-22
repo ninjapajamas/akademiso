@@ -1,18 +1,69 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { BookOpen, GraduationCap, LayoutDashboard, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { BookOpen, GraduationCap, LayoutDashboard, LogOut, ShieldCheck, Users, ShoppingBag } from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+function decodeJwt(token: string) {
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(base64));
+    } catch {
+        return null;
+    }
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
+    const router = useRouter();
+    const [authorized, setAuthorized] = useState(false);
+
+    useEffect(() => {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            router.replace('/login');
+            return;
+        }
+        const payload = decodeJwt(token);
+        // No payload or old token without is_staff claim → force re-login
+        if (!payload || payload.is_staff === undefined) {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            router.replace('/login');
+            return;
+        }
+        // Has is_staff claim but it's false → not an admin
+        if (!payload.is_staff && !payload.is_superuser) {
+            router.replace('/');
+            return;
+        }
+        setAuthorized(true);
+    }, [router]);
+
+
+    const handleLogout = () => {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        router.push('/login');
+    };
 
     const menuItems = [
         { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
         { name: 'Courses', href: '/admin/courses', icon: BookOpen },
         { name: 'Instructors', href: '/admin/instructors', icon: GraduationCap },
         { name: 'Students', href: '/admin/users', icon: Users },
+        { name: 'Orders', href: '/admin/orders', icon: ShoppingBag },
     ];
+
+    if (!authorized) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-gray-500">Memeriksa akses...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
@@ -52,7 +103,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </nav>
 
                 <div className="p-4 border-t border-gray-50">
-                    <button className="flex items-center gap-3 px-3 py-3 rounded-lg text-red-500 hover:bg-red-50 transition-colors w-full">
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 px-3 py-3 rounded-lg text-red-500 hover:bg-red-50 transition-colors w-full"
+                    >
                         <LogOut className="w-5 h-5" />
                         <span className="font-medium">Logout Admin</span>
                     </button>
@@ -66,3 +120,4 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
     );
 }
+
