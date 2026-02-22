@@ -349,19 +349,27 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                         <div className="sticky top-24 bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 overflow-hidden">
                             <div className="absolute top-0 left-0 w-full h-2 bg-blue-600"></div>
 
-                            <div className="flex items-baseline gap-2 mb-4">
-                                <span className="text-3xl font-extrabold text-gray-900">
-                                    Rp {parseInt(course.price).toLocaleString('id-ID')}
-                                </span>
+                            <div className="flex flex-col gap-1 mb-6">
+                                {course.discount_price ? (
+                                    <>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-3xl font-extrabold text-gray-900">
+                                                Rp {parseInt(course.discount_price).toLocaleString('id-ID')}
+                                            </span>
+                                            <span className="text-red-500 font-bold text-xs bg-red-50 px-2 py-0.5 rounded">
+                                                -{Math.round(((parseInt(course.price) - parseInt(course.discount_price)) / parseInt(course.price)) * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="text-gray-400 line-through text-sm font-medium">
+                                            Rp {parseInt(course.price).toLocaleString('id-ID')}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="text-3xl font-extrabold text-gray-900">
+                                        Rp {parseInt(course.price).toLocaleString('id-ID')}
+                                    </div>
+                                )}
                             </div>
-                            {course.discount_price && (
-                                <div className="flex items-center gap-2 mb-6">
-                                    <span className="text-gray-400 line-through text-sm">
-                                        Rp {parseInt(course.discount_price).toLocaleString('id-ID')}
-                                    </span>
-                                    <span className="text-red-500 font-bold text-xs bg-red-50 px-2 py-0.5 rounded">HEMAT!</span>
-                                </div>
-                            )}
 
                             <div className="space-y-3 mb-6">
                                 <Link href="/checkout" className="block w-full text-center bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">

@@ -25,7 +25,8 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
         duration: '',
         instructor_id: '',
         category_id: '',
-        is_featured: false
+        is_featured: false,
+        discount_price: ''
     });
 
     useEffect(() => {
@@ -57,7 +58,8 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             duration: data.duration,
                             instructor_id: data.instructor?.id || '',
                             category_id: data.category?.id || '',
-                            is_featured: data.is_featured
+                            is_featured: data.is_featured,
+                            discount_price: data.discount_price || ''
                         });
                     }
                 } catch (error) {
@@ -212,13 +214,24 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga</label>
                         <input
                             name="price"
                             type="number"
                             required
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.price}
+                            onChange={handleChange}
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 text-red-600 font-bold">Harga Diskon (Opsional)</label>
+                        <input
+                            name="discount_price"
+                            type="number"
+                            placeholder="Biarkan kosong jika tidak ada diskon"
+                            className="w-full px-4 py-2 border border-red-200 bg-red-50/30 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-gray-900"
+                            value={formData.discount_price}
                             onChange={handleChange}
                         />
                     </div>
