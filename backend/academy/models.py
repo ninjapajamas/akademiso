@@ -13,6 +13,7 @@ class Category(models.Model):
         return self.name
 
 class Instructor(models.Model):
+    user = models.OneToOneField(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='instructor_profile')
     name = models.CharField(max_length=100)
     title = models.CharField(max_length=100)
     bio = models.TextField()
@@ -46,6 +47,17 @@ class Course(models.Model):
     def __str__(self):
         return self.title
 
+class Section(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='sections')
+    title = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.course.title} - {self.title}"
+
 class Lesson(models.Model):
     LESSON_TYPES = [
         ('video', 'Video'),
@@ -54,7 +66,8 @@ class Lesson(models.Model):
     ]
 
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='lessons')
-    title = models.CharField(max_length=200)
+    section = models.ForeignKey(Section, on_delete=models.SET_NULL, null=True, blank=True, related_name='lessons')
+    title = models.CharField(max_length=255)
     type = models.CharField(max_length=20, choices=LESSON_TYPES, default='video')
     content = models.TextField(blank=True, null=True) # For article content
     video_url = models.URLField(blank=True, null=True)
