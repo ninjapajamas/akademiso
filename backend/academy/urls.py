@@ -4,7 +4,7 @@ from .views import (
     CategoryViewSet, InstructorViewSet, CourseViewSet, OrderViewSet,
     RegisterView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
     SectionViewSet, StatsView, InstructorCoursesView, InstructorStudentsView,
-    AdminResetPasswordView, AdminEditUserView, AdminImpersonateView,
+    AdminResetPasswordView, AdminEditUserView, AdminImpersonateView, ProfileView,
 )
 
 router = DefaultRouter()
@@ -28,4 +28,5 @@ urlpatterns = [
     path('users/<int:pk>/reset-password/', AdminResetPasswordView.as_view(), name='admin-reset-password'),
     path('users/<int:pk>/edit/', AdminEditUserView.as_view(), name='admin-edit-user'),
     path('users/<int:pk>/impersonate/', AdminImpersonateView.as_view(), name='admin-impersonate'),
+    path('profile/', ProfileView.as_view(), name='user-profile'),
 ]

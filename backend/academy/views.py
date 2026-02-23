@@ -1,12 +1,51 @@
 from rest_framework import viewsets, generics
-from .models import Category, Instructor, Course, Order, Lesson, Section
-from .serializers import CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, RegisterSerializer, LessonSerializer, SectionSerializer
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from .models import Category, Instructor, Course, Order, Lesson, Section, UserProfile
+from .serializers import (
+    CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, 
+    RegisterSerializer, LessonSerializer, SectionSerializer, ProfileSerializer
+)
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, BasePermission, SAFE_METHODS
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from django.db.models import Sum, Count
 from rest_framework_simplejwt.tokens import RefreshToken
+
+
+class IsInstructorOrAdmin(BasePermission):
+    """
+    Permission to allow instructors to edit their own courses/sections/lessons.
+    Admins (is_staff) have full access.
+    Non-staff can only GET if it's safe (SAFE_METHODS).
+    """
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return True
+        return request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        # Admin can do anything
+        if request.user.is_staff:
+            return True
+        
+        # Read permissions are allowed to any request,
+        # so we'll always allow GET, HEAD or OPTIONS requests.
+        if request.method in SAFE_METHODS:
+            return True
+
+        # Check if the user is the instructor of the course
+        instructor = _get_instructor_for_user(request.user)
+        if not instructor:
+            return False
+            
+        if isinstance(obj, Course):
+            return obj.instructor == instructor
+        if isinstance(obj, Section):
+            return obj.course.instructor == instructor
+        if isinstance(obj, Lesson):
+            return obj.course.instructor == instructor
+            
+        return False
 
 
 class RegisterView(generics.CreateAPIView):
@@ -45,24 +84,42 @@ class InstructorViewSet(viewsets.ModelViewSet):
 class LessonViewSet(viewsets.ModelViewSet):
     queryset = Lesson.objects.all()
     serializer_class = LessonSerializer
+    permission_classes = [IsInstructorOrAdmin]
 
     def get_queryset(self):
         queryset = Lesson.objects.all()
         course_id = self.request.query_params.get('course_id')
         if course_id:
             queryset = queryset.filter(course_id=course_id)
+        
+        # If not admin, filter by instructor's courses
+        if not self.request.user.is_staff and self.request.user.is_authenticated:
+            instructor = _get_instructor_for_user(self.request.user)
+            if instructor:
+                queryset = queryset.filter(course__instructor=instructor)
+            else:
+                queryset = queryset.none()
         return queryset
 
 
 class SectionViewSet(viewsets.ModelViewSet):
     queryset = Section.objects.all()
     serializer_class = SectionSerializer
+    permission_classes = [IsInstructorOrAdmin]
 
     def get_queryset(self):
         queryset = Section.objects.all()
         course_id = self.request.query_params.get('course_id')
         if course_id:
             queryset = queryset.filter(course_id=course_id)
+            
+        # If not admin, filter by instructor's courses
+        if not self.request.user.is_staff and self.request.user.is_authenticated:
+            instructor = _get_instructor_for_user(self.request.user)
+            if instructor:
+                queryset = queryset.filter(course__instructor=instructor)
+            else:
+                queryset = queryset.none()
         return queryset
 
 
@@ -70,6 +127,34 @@ class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     lookup_field = 'slug'
+    permission_classes = [IsInstructorOrAdmin]
+
+    def get_queryset(self):
+        queryset = Course.objects.all()
+        # If not admin, filter by instructor's courses for non-GET methods
+        # or if they are in the instructor portal context
+        if not self.request.user.is_staff and self.request.user.is_authenticated:
+            instructor = _get_instructor_for_user(self.request.user)
+            if instructor:
+                # If they are requesting specific course or management list
+                # actually for public GET we want all, but for edit/list in portal we want filtered.
+                # Common pattern: filter only if it's the instructor portal requesting.
+                # For now, let's allow all GET (public) and filter other actions.
+                if self.request.method not in SAFE_METHODS:
+                    queryset = queryset.filter(instructor=instructor)
+            else:
+                if self.request.method not in SAFE_METHODS:
+                    queryset = queryset.none()
+        return queryset
+
+    def perform_create(self, serializer):
+        # Auto-assign instructor if not admin and user is instructor
+        if not self.request.user.is_staff:
+            instructor = _get_instructor_for_user(self.request.user)
+            if instructor:
+                serializer.save(instructor=instructor)
+                return
+        serializer.save()
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -358,3 +443,58 @@ class CartViewSet(viewsets.ViewSet):
 
         CartItem.objects.filter(cart=cart, course_id=course_id).delete()
         return Response({'message': 'Item removed from cart'}, status=200)
+
+from rest_framework.parsers import MultiPartParser, FormParser
+import json
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        # Ensure profile exists
+        UserProfile.objects.get_or_create(user=request.user)
+        serializer = ProfileSerializer(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        # Extract data and files
+        data = request.data.copy()
+        
+        # Prepare nested profile data
+        profile_data = {}
+        
+        # 1. Handle if 'profile' is sent as JSON string
+        if 'profile' in data and isinstance(data['profile'], str):
+            try:
+                profile_data = json.loads(data['profile'])
+            except:
+                pass
+        elif 'profile' in data and isinstance(data['profile'], dict):
+            profile_data = data['profile']
+
+        # 2. Extract flat profile fields from main data
+        profile_fields = ['phone', 'company', 'position', 'bio']
+        for field in profile_fields:
+            if field in data:
+                profile_data[field] = data.get(field)
+        
+        # 3. Add avatar from FILES
+        if 'avatar' in request.FILES:
+            profile_data['avatar'] = request.FILES['avatar']
+            
+        # Create a clean dict for serializer
+        serializer_data = {
+            'first_name': data.get('first_name'),
+            'last_name': data.get('last_name'),
+            'profile': profile_data
+        }
+        
+        # Remove None values to allow partial update
+        serializer_data = {k: v for k, v in serializer_data.items() if v is not None}
+
+        serializer = ProfileSerializer(request.user, data=serializer_data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
