@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section
+from .models import Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section, UserProfile
 from django.contrib.auth.models import User
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -137,3 +137,41 @@ class CartSerializer(serializers.ModelSerializer):
         model = Cart
         fields = ['id', 'items', 'total_price', 'created_at', 'updated_at']
 
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ('avatar', 'phone', 'company', 'position', 'bio')
+
+class ProfileSerializer(serializers.ModelSerializer):
+    profile = UserProfileSerializer(required=False)
+    
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile', 'is_staff')
+        read_only_fields = ('id', 'username', 'email', 'is_staff')
+
+    def update(self, instance, validated_data):
+        profile_data = validated_data.pop('profile', {})
+        
+        # Update User fields
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.save()
+        
+        # Update UserProfile fields
+        profile, _ = UserProfile.objects.get_or_create(user=instance)
+        for attr, value in profile_data.items():
+            setattr(profile, attr, value)
+        profile.save()
+        
+        # Sync to Instructor model if exists
+        if hasattr(instance, 'instructor_profile'):
+            instr = instance.instructor_profile
+            instr.name = f"{instance.first_name} {instance.last_name}".strip()
+            if 'bio' in profile_data:
+                instr.bio = profile_data['bio']
+            if 'avatar' in profile_data:
+                instr.photo = profile_data['avatar']
+            instr.save()
+            
+        return instance
