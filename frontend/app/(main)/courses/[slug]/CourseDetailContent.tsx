@@ -245,7 +245,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                 )}
                             </div>
                             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">{course.title}</h1>
-                            <p className="text-lg text-gray-600 leading-relaxed">{course.description}</p>
+                            {/* Description moved below video preview */}
 
                             {(course.type === 'webinar' || course.type === 'workshop') && course.scheduled_at && (
                                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex flex-col md:flex-row gap-4 md:items-center">
@@ -313,6 +313,12 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                             <div className="absolute bottom-6 left-6 text-white">
                                 <p className="font-bold">Pratinjau materi</p>
                             </div>
+                        </div>
+
+                        {/* Course Description */}
+                        <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
+                            <h2 className="text-2xl font-bold text-gray-900 mb-4">Tentang Pelatihan Ini</h2>
+                            <p className="text-lg text-gray-600 leading-relaxed">{course.description}</p>
                         </div>
 
                         {/* Curriculum */}

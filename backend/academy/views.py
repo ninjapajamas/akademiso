@@ -396,6 +396,8 @@ class MidtransNotificationView(APIView):
         )
         
         data = request.data
+        print(f"DEBUG: Incoming Midtrans Notification: {data}")
+        
         try:
             # Verify notification authenticity
             status_response = snap.transactions.notification(data)
@@ -404,27 +406,46 @@ class MidtransNotificationView(APIView):
             transaction_status = status_response['transaction_status']
             fraud_status = status_response['fraud_status']
             
+            print(f"DEBUG: Midtrans Status: {transaction_status}, Fraud: {fraud_status} for Order: {order_id}")
+            
             # Find order by midtrans_id
             try:
                 order = Order.objects.get(midtrans_id=order_id)
             except Order.DoesNotExist:
+                print(f"ERROR: Order with midtrans_id {order_id} not found")
                 return Response({'message': 'Order not found'}, status=404)
+
+            old_status = order.status
+            new_status = old_status
 
             if transaction_status == 'capture':
                 if fraud_status == 'challenge':
-                    order.status = 'Pending'
+                    new_status = 'Pending'
                 elif fraud_status == 'accept':
-                    order.status = 'Completed'
+                    new_status = 'Completed'
             elif transaction_status == 'settlement':
-                order.status = 'Completed'
-            elif transaction_status == 'cancel' or transaction_status == 'deny' or transaction_status == 'expire':
-                order.status = 'Failed'
+                new_status = 'Completed'
+            elif transaction_status in ['cancel', 'expire']:
+                new_status = 'Cancelled'
+            elif transaction_status == 'deny':
+                new_status = 'Failed'
             elif transaction_status == 'pending':
-                order.status = 'Pending'
+                new_status = 'Pending'
 
+            print(f"DEBUG: Order {order.id} status transition: {old_status} -> {new_status}")
+            order.status = new_status
             order.save()
+
+            # Automatic Enrollment Logic: Increment enrolled_count when payment is first completed
+            if old_status == 'Pending' and new_status == 'Completed':
+                course = order.course
+                course.enrolled_count += 1
+                course.save()
+                print(f"DEBUG: Course '{course.title}' enrollment incremented to {course.enrolled_count}")
+
             return Response({'status': 'ok'})
         except Exception as e:
+            print(f"ERROR: Webhook processing failed: {str(e)}")
             return Response({'error': str(e)}, status=400)
 
 
