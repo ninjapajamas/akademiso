@@ -8,12 +8,14 @@ import { Course } from '@/types';
 type SortOption = 'recommended' | 'newest' | 'price_asc' | 'price_desc';
 type PriceFilter = 'all' | 'under2m' | '2m_to_5m' | 'above5m';
 type LevelFilter = 'all' | 'Beginner' | 'Intermediate' | 'Advanced';
+type TypeFilter = 'all' | 'course' | 'webinar' | 'workshop';
 
 export default function CatalogContent({ initialCourses }: { initialCourses: Course[] }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [priceFilter, setPriceFilter] = useState<PriceFilter>('all');
     const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
+    const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
     const [sortBy, setSortBy] = useState<SortOption>('recommended');
     const [showMobileFilter, setShowMobileFilter] = useState(false);
 
@@ -36,6 +38,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
         setSelectedCategories([]);
         setPriceFilter('all');
         setLevelFilter('all');
+        setTypeFilter('all');
         setSortBy('recommended');
     };
 
@@ -73,6 +76,11 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
             result = result.filter(c => c.level === levelFilter);
         }
 
+        // Type
+        if (typeFilter !== 'all') {
+            result = result.filter(c => c.type === typeFilter);
+        }
+
         // Sort
         result.sort((a, b) => {
             if (sortBy === 'price_asc') return Number(a.price) - Number(b.price);
@@ -89,7 +97,8 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
     const activeFilterCount =
         (selectedCategories.length > 0 ? 1 : 0) +
         (priceFilter !== 'all' ? 1 : 0) +
-        (levelFilter !== 'all' ? 1 : 0);
+        (levelFilter !== 'all' ? 1 : 0) +
+        (typeFilter !== 'all' ? 1 : 0);
 
     const FilterSidebar = () => (
         <div className="space-y-7">
@@ -169,6 +178,32 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
                                 onChange={() => setPriceFilter(opt.value)}
                             />
                             <span className={`text-sm transition-colors ${priceFilter === opt.value ? 'text-blue-600 font-semibold' : 'text-gray-600 group-hover:text-blue-600'}`}>
+                                {opt.label}
+                            </span>
+                        </label>
+                    ))}
+                </div>
+            </div>
+
+            {/* Type */}
+            <div>
+                <h4 className="font-semibold text-gray-800 mb-3 text-sm">Tipe Program</h4>
+                <div className="space-y-2.5">
+                    {([
+                        { value: 'all', label: 'Semua Tipe' },
+                        { value: 'course', label: 'Pelatihan' },
+                        { value: 'webinar', label: 'Webinar' },
+                        { value: 'workshop', label: 'Workshop' },
+                    ] as { value: TypeFilter; label: string }[]).map(opt => (
+                        <label key={opt.value} className="flex items-center gap-3 cursor-pointer group">
+                            <input
+                                type="radio"
+                                name="type"
+                                className="w-4 h-4 border-gray-300 text-blue-600 cursor-pointer"
+                                checked={typeFilter === opt.value}
+                                onChange={() => setTypeFilter(opt.value)}
+                            />
+                            <span className={`text-sm transition-colors ${typeFilter === opt.value ? 'text-blue-600 font-semibold' : 'text-gray-600 group-hover:text-blue-600'}`}>
                                 {opt.label}
                             </span>
                         </label>
@@ -302,6 +337,12 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
                                     <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-200">
                                         {levelFilter}
                                         <button onClick={() => setLevelFilter('all')} className="ml-1 hover:text-purple-900"><X className="w-3 h-3" /></button>
+                                    </span>
+                                )}
+                                {typeFilter !== 'all' && (
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-semibold border border-orange-200">
+                                        {typeFilter === 'course' ? 'Pelatihan' : typeFilter === 'webinar' ? 'Webinar' : 'Workshop'}
+                                        <button onClick={() => setTypeFilter('all')} className="ml-1 hover:text-orange-900"><X className="w-3 h-3" /></button>
                                     </span>
                                 )}
                             </div>

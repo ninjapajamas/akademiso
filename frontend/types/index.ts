@@ -36,6 +36,9 @@ export interface Course {
     instructor: Instructor;
     category: Category;
     lessons?: Lesson[];
+    type: 'course' | 'webinar' | 'workshop';
+    scheduled_at?: string;
+    location?: string;
     is_featured: boolean;
     created_at?: string;
 }

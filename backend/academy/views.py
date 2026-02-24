@@ -1,4 +1,4 @@
-from rest_framework import viewsets, generics
+from rest_framework import viewsets, generics, serializers
 from .models import Category, Instructor, Course, Order, Lesson, Section, UserProfile
 from .serializers import (
     CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, 
@@ -10,6 +10,8 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from django.db.models import Sum, Count
 from rest_framework_simplejwt.tokens import RefreshToken
+import midtransclient
+from django.conf import settings
 
 
 class IsInstructorOrAdmin(BasePermission):
@@ -21,11 +23,11 @@ class IsInstructorOrAdmin(BasePermission):
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
             return True
-        return request.user.is_authenticated
+        return request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)
 
     def has_object_permission(self, request, view, obj):
         # Admin can do anything
-        if request.user.is_staff:
+        if request.user.is_staff or request.user.is_superuser:
             return True
         
         # Read permissions are allowed to any request,
@@ -47,6 +49,13 @@ class IsInstructorOrAdmin(BasePermission):
             
         return False
 
+class IsAdmin(BasePermission):
+    """
+    Permission to allow only staff or superusers.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and (request.user.is_staff or request.user.is_superuser))
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -56,7 +65,7 @@ class RegisterView(generics.CreateAPIView):
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdmin]
 
     def list(self, request, *args, **kwargs):
         try:
@@ -129,6 +138,21 @@ class CourseViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
     permission_classes = [IsInstructorOrAdmin]
 
+    def get_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs[lookup_url_kwarg]
+        
+        # Try lookup by ID if the value is numeric
+        if str(lookup_value).isdigit():
+            obj = queryset.filter(pk=lookup_value).first()
+            if obj:
+                return obj
+                
+        # Fallback to default lookup (slug)
+        filter_kwargs = {self.lookup_field: lookup_value}
+        return get_object_or_404(queryset, **filter_kwargs)
+
     def get_queryset(self):
         queryset = Course.objects.all()
         # If not admin, filter by instructor's courses for non-GET methods
@@ -169,14 +193,72 @@ class OrderViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        # 1. Save the order locally first as Pending
+        order = serializer.save(user=self.request.user, status='Pending')
+        
+        # 2. Initialize Midtrans Snap
+        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
+        is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
+        
+        # Log for debugging (don't show full key)
+        print(f"DEBUG: Initializing Midtrans with key starting with: {server_key[:7]}...")
+        
+        snap = midtransclient.Snap(
+            is_production=is_production,
+            server_key=server_key
+        )
+        
+        # 3. Create transaction parameters
+        customer_email = self.request.user.email.strip() if self.request.user.email else "customer@example.com"
+        
+        param = {
+            "transaction_details": {
+                "order_id": f"ORDER-{order.id}-{int(order.created_at.timestamp())}",
+                "gross_amount": int(order.total_amount),
+            },
+            "item_details": [{
+                "id": str(order.course.id),
+                "price": int(order.total_amount),
+                "quantity": 1,
+                "name": order.course.title[:45],
+            }],
+            "customer_details": {
+                "first_name": self.request.user.first_name or "Student",
+                "last_name": self.request.user.last_name or "User",
+                "email": customer_email,
+            }
+        }
+        
+        print(f"DEBUG: Midtrans Parameters: {param}")
+        
+        try:
+            # 4. Get Snap Token from Midtrans
+            transaction = snap.create_transaction(param)
+            snap_token = transaction['token']
+            
+            # 5. Update order with snap_token and internal midtrans id
+            order.snap_token = snap_token
+            order.midtrans_id = param['transaction_details']['order_id']
+            order.save()
+            
+            # 6. Ensure serializer instance is updated for the response
+            serializer.instance.snap_token = snap_token
+            serializer.instance.midtrans_id = order.midtrans_id
+            
+            print(f"DEBUG: Snap Token generated: {snap_token}")
+        except Exception as e:
+            error_msg = f"Midtrans Error: {str(e)}"
+            print(f"CRITICAL: {error_msg}")
+            # Delete the pending order since it failed to initialize payment
+            order.delete()
+            raise serializers.ValidationError({"error": error_msg})
 
 
 class MyCoursesView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Order.objects.filter(user=self.request.user).order_by('-created_at')
+        return Order.objects.filter(user=self.request.user, status='Completed').order_by('-created_at')
 
     def get_serializer_class(self):
         from .serializers import MyCourseSerializer
@@ -185,7 +267,7 @@ class MyCoursesView(generics.ListAPIView):
 
 # ── Admin Stats ─────────────────────────────────────────────────────────────
 class StatsView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdmin]
 
     def get(self, request):
         total_users    = User.objects.filter(is_staff=False).count()
@@ -296,6 +378,56 @@ class InstructorStudentsView(APIView):
         return Response(data)
 
 
+# ── Midtrans Webhook ──────────────────────────────────────────────────────────
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MidtransNotificationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
+        is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
+        
+        snap = midtransclient.Snap(
+            is_production=is_production,
+            server_key=server_key
+        )
+        
+        data = request.data
+        try:
+            # Verify notification authenticity
+            status_response = snap.transactions.notification(data)
+            
+            order_id = status_response['order_id']
+            transaction_status = status_response['transaction_status']
+            fraud_status = status_response['fraud_status']
+            
+            # Find order by midtrans_id
+            try:
+                order = Order.objects.get(midtrans_id=order_id)
+            except Order.DoesNotExist:
+                return Response({'message': 'Order not found'}, status=404)
+
+            if transaction_status == 'capture':
+                if fraud_status == 'challenge':
+                    order.status = 'Pending'
+                elif fraud_status == 'accept':
+                    order.status = 'Completed'
+            elif transaction_status == 'settlement':
+                order.status = 'Completed'
+            elif transaction_status == 'cancel' or transaction_status == 'deny' or transaction_status == 'expire':
+                order.status = 'Failed'
+            elif transaction_status == 'pending':
+                order.status = 'Pending'
+
+            order.save()
+            return Response({'status': 'ok'})
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
+
 # ── Admin User Actions ───────────────────────────────────────────────────────
 class AdminResetPasswordView(APIView):
     """
@@ -303,7 +435,7 @@ class AdminResetPasswordView(APIView):
     POST /api/users/{id}/reset-password/
     Body: { "new_password": "..." }
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdmin]
 
     def post(self, request, pk):
         new_password = request.data.get('new_password', '').strip()
@@ -329,7 +461,7 @@ class AdminEditUserView(APIView):
     PATCH /api/users/{id}/edit/
     Body: { "first_name": "..", "last_name": "..", "email": "..", "is_staff": bool, "is_active": bool }
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdmin]
 
     def patch(self, request, pk):
         try:
@@ -362,7 +494,7 @@ class AdminImpersonateView(APIView):
     POST /api/users/{id}/impersonate/
     Returns: { "access": "...", "refresh": "...", "username": "...", "warning": "..." }
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdmin]
 
     def post(self, request, pk):
         try:

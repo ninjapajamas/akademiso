@@ -136,8 +136,19 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                     {activeLesson ? (
                         <>
                             {activeLesson.type === 'video' && (
-                                <div className="w-full aspect-video md:aspect-[16/9] lg:aspect-[21/9] bg-black rounded-[2.5rem]  relative shadow-2xl border-4 border-white">
-                                    <VideoPlayer url={activeLesson.video_url} poster={activeLesson.image} />
+                                <div className="w-full aspect-video md:aspect-[16/9] lg:aspect-[21/9] bg-black rounded-[2.5rem]  relative shadow-2xl border-4 border-white overflow-hidden">
+                                    {activeLesson.is_locked ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white p-6 text-center">
+                                            <Lock className="w-16 h-16 text-blue-500 mb-4 animate-bounce" />
+                                            <h3 className="text-xl font-bold mb-2">Materi Terkunci</h3>
+                                            <p className="text-gray-400 max-w-md">Selesaikan pembayaran Anda untuk mengakses seluruh materi eksklusif di kursus ini.</p>
+                                            <Link href={`/courses/${course.slug}`} className="mt-6 px-8 py-3 bg-blue-600 rounded-2xl font-bold hover:bg-blue-700 transition-all">
+                                                Daftar Sekarang
+                                            </Link>
+                                        </div>
+                                    ) : (
+                                        <VideoPlayer url={activeLesson.video_url} poster={activeLesson.image} />
+                                    )}
                                 </div>
                             )}
 
@@ -307,6 +318,12 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                                         <span>{lesson.type}</span>
                                                         <div className={`w-1 h-1 rounded-full ${isActive ? 'bg-white/40' : 'bg-gray-200'}`} />
                                                         <span>{lesson.duration || '0 Min'}</span>
+                                                        {lesson.is_locked && (
+                                                            <>
+                                                                <div className={`w-1 h-1 rounded-full ${isActive ? 'bg-white/40' : 'bg-gray-200'}`} />
+                                                                <Lock className="w-3 h-3 text-amber-500" />
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 {isActive && (

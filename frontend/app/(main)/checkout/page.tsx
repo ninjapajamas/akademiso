@@ -1,18 +1,58 @@
 "use client"
 import Link from 'next/link';
 import { Calendar, Lock } from 'lucide-react';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
 
-export default function Checkout() {
+function CheckoutContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const slug = searchParams.get('slug');
+
+    const [course, setCourse] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
         if (!token) {
-            router.push('/login?redirect=/checkout/iso-9001'); // idealnya slug dinamis
+            router.push(`/login?redirect=/checkout${slug ? `?slug=${slug}` : ''}`);
+            return;
         }
-    }, [router]);
+
+        if (!slug) {
+            router.push('/courses');
+            return;
+        }
+
+        const fetchCourse = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${apiUrl}/api/courses/${slug}/`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setCourse(data);
+                } else {
+                    router.push('/courses');
+                }
+            } catch (error) {
+                console.error('Error fetching course:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchCourse();
+    }, [router, slug]);
+
+    if (loading) {
+        return <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>;
+    }
+
+    if (!course) return null;
+
+    const price = parseInt(course.discount_price || course.price);
 
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
@@ -97,14 +137,17 @@ export default function Checkout() {
                     <div className="lg:col-span-1">
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-24">
                             <div className="h-32 bg-gray-800 relative">
-                                {/* Placeholder Image */}
-                                <div className="absolute inset-0 bg-blue-900/50"></div>
+                                {course.thumbnail ? (
+                                    <img src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover opacity-50" />
+                                ) : (
+                                    <div className="absolute inset-0 bg-blue-900/50"></div>
+                                )}
                                 <div className="absolute bottom-4 left-4 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded">Best Seller</div>
                             </div>
 
                             <div className="p-6">
-                                <h3 className="font-bold text-gray-900 mb-2">Pelatihan Lead Auditor ISO 9001:2015</h3>
-                                <p className="text-sm text-gray-500 mb-6">Sistem Manajemen Mutu (Quality Management System)</p>
+                                <h3 className="font-bold text-gray-900 mb-2">{course.title}</h3>
+                                <p className="text-sm text-gray-500 mb-6">{course.category?.name || 'Sertifikasi ISO'}</p>
 
                                 <div className="bg-gray-50 rounded-lg p-4 mb-6 flex items-center gap-3">
                                     <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shadow-sm">
@@ -119,8 +162,14 @@ export default function Checkout() {
                                 <div className="space-y-3 mb-6 pb-6 border-b border-gray-100 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Harga Pelatihan</span>
-                                        <span className="font-medium text-gray-900">Rp 5.500.000</span>
+                                        <span className="font-medium text-gray-900">Rp {parseInt(course.price).toLocaleString('id-ID')}</span>
                                     </div>
+                                    {course.discount_price && (
+                                        <div className="flex justify-between text-green-600">
+                                            <span className="text-gray-500">Potongan Harga</span>
+                                            <span className="font-medium">- Rp {(parseInt(course.price) - parseInt(course.discount_price)).toLocaleString('id-ID')}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Biaya Admin</span>
                                         <span className="font-medium text-green-600">Gratis</span>
@@ -133,10 +182,10 @@ export default function Checkout() {
 
                                 <div className="flex justify-between items-center mb-6">
                                     <span className="font-bold text-gray-900">Total Bayar</span>
-                                    <span className="font-bold text-xl text-blue-600">Rp 5.500.000</span>
+                                    <span className="font-bold text-xl text-blue-600">Rp {price.toLocaleString('id-ID')}</span>
                                 </div>
 
-                                <Link href="/payment" className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
+                                <Link href={`/payment?slug=${slug}`} className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
                                     Lanjut ke Pembayaran →
                                 </Link>
                             </div>
@@ -146,5 +195,13 @@ export default function Checkout() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function Checkout() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>}>
+            <CheckoutContent />
+        </Suspense>
     );
 }

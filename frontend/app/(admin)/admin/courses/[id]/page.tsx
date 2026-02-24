@@ -26,7 +26,10 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
         instructor_id: '',
         category_id: '',
         is_featured: false,
-        discount_price: ''
+        discount_price: '',
+        type: 'course',
+        scheduled_at: '',
+        location: ''
     });
 
     useEffect(() => {
@@ -59,7 +62,10 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             instructor_id: data.instructor?.id || '',
                             category_id: data.category?.id || '',
                             is_featured: data.is_featured,
-                            discount_price: data.discount_price || ''
+                            discount_price: data.discount_price || '',
+                            type: data.type || 'course',
+                            scheduled_at: data.scheduled_at ? new Date(data.scheduled_at).toISOString().slice(0, 16) : '',
+                            location: data.location || ''
                         });
                     }
                 } catch (error) {
@@ -143,6 +149,28 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                 )}
             </div>
 
+            <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                    <h2 className="font-bold text-indigo-900">Program Aktif: {formData.type.toUpperCase()}</h2>
+                    <p className="text-sm text-indigo-700">Tentukan tipe program untuk menyesuaikan opsi tampilan di katalog.</p>
+                </div>
+                <div className="flex gap-2">
+                    {['course', 'webinar', 'workshop'].map((t) => (
+                        <button
+                            key={t}
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, type: t as any }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${formData.type === t
+                                ? 'bg-indigo-600 text-white shadow-md'
+                                : 'bg-white text-indigo-600 hover:bg-indigo-100'
+                                }`}
+                        >
+                            {t === 'course' ? 'PELATIHAN' : t.toUpperCase()}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="md:col-span-2">
@@ -214,6 +242,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga</label>
                         <input
                             name="price"
                             type="number"
@@ -249,6 +278,32 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             <option value="Advanced">Advanced</option>
                         </select>
                     </div>
+
+                    {formData.type !== 'course' && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-blue-700 mb-1 font-bold">Waktu Pelaksanaan</label>
+                                <input
+                                    name="scheduled_at"
+                                    type="datetime-local"
+                                    className="w-full px-4 py-2 border border-blue-300 bg-blue-50/50 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                                    value={formData.scheduled_at}
+                                    onChange={handleChange}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi (Khusus Workshop)</label>
+                                <input
+                                    name="location"
+                                    type="text"
+                                    placeholder="Nama tempat atau alamat"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                                    value={formData.location}
+                                    onChange={handleChange}
+                                />
+                            </div>
+                        </>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Durasi</label>

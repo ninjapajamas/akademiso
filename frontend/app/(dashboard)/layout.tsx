@@ -26,13 +26,26 @@ export default function DashboardLayout({
     const [user, setUser] = useState<any>(null);
 
     useEffect(() => {
-        // Check auth
         const token = localStorage.getItem('access_token');
         if (!token) {
             router.push('/login');
+            return;
         }
-        // Mock user for now
-        setUser({ name: 'Budi', email: 'budi@example.com' });
+
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (payload.is_instructor) {
+                router.replace('/instructor');
+                return;
+            }
+            setUser({
+                name: payload.username,
+                email: payload.email || '',
+                is_staff: payload.is_staff
+            });
+        } catch (e) {
+            router.push('/login');
+        }
     }, [router]);
 
     const menuItems = [

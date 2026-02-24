@@ -67,6 +67,7 @@ export default function CoursesPage() {
                         <tr>
                             <th className="p-4 font-semibold text-gray-600">Judul</th>
                             <th className="p-4 font-semibold text-gray-600">Instruktur</th>
+                            <th className="p-4 font-semibold text-gray-600">Tipe</th>
                             <th className="p-4 font-semibold text-gray-600">Harga</th>
                             <th className="p-4 font-semibold text-gray-600">Level</th>
                             <th className="p-4 font-semibold text-gray-600 text-right">Aksi</th>
@@ -87,6 +88,14 @@ export default function CoursesPage() {
                                     </div>
                                 </td>
                                 <td className="p-4 text-gray-600 text-sm">{course.instructor?.name}</td>
+                                <td className="p-4">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white ${course.type === 'webinar' ? 'bg-rose-500' :
+                                            course.type === 'workshop' ? 'bg-amber-500' :
+                                                'bg-indigo-500'
+                                        }`}>
+                                        {(course.type || 'course').toUpperCase()}
+                                    </span>
+                                </td>
                                 <td className="p-4 text-gray-900 font-medium">Rp {parseInt(course.price).toLocaleString('id-ID')}</td>
                                 <td className="p-4">
                                     <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">{course.level}</span>

@@ -10,6 +10,7 @@ export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [userData, setUserData] = useState<any>(null);
     const router = useRouter();
     const { cartCount } = useCart();
 
@@ -17,7 +18,28 @@ export default function Navbar() {
         // Check for token on mount
         const token = localStorage.getItem('access_token');
         setIsLoggedIn(!!token);
+
+        if (token) {
+            fetchUserProfile(token);
+        }
     }, []);
+
+    const fetchUserProfile = async (token: string) => {
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/profile/`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setUserData(data);
+            }
+        } catch (error) {
+            console.error('Error fetching profile:', error);
+        }
+    };
 
     const handleLogout = () => {
         localStorage.removeItem('access_token');
@@ -74,7 +96,13 @@ export default function Navbar() {
                                         <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-1 overflow-hidden animation-fade-in z-50">
                                             <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/50">
                                                 <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Logged in as</p>
-                                                <p className="text-sm font-bold text-gray-900 truncate">user@akademiso.com</p>
+                                                <p className="text-sm font-bold text-gray-900 truncate">
+                                                    {userData ? (
+                                                        (userData.first_name || userData.last_name)
+                                                            ? `${userData.first_name} ${userData.last_name}`.trim()
+                                                            : userData.username
+                                                    ) : 'Loading...'}
+                                                </p>
                                             </div>
                                             <Link href="/cart" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors justify-between">
                                                 <div className="flex items-center gap-3">
@@ -89,12 +117,14 @@ export default function Navbar() {
                                             </Link>
                                             <Link href="/dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors">
                                                 <LayoutDashboard className="w-4 h-4" />
-                                                Dashboard
+                                                Dashboard Saya
                                             </Link>
-                                            <Link href="/dashboard/settings" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                                                <User className="w-4 h-4" />
-                                                Profile Settings
-                                            </Link>
+                                            {userData?.is_staff && (
+                                                <Link href="/admin" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
+                                                    <ShieldCheck className="w-4 h-4" />
+                                                    Admin Panel
+                                                </Link>
+                                            )}
                                             <div className="border-t border-gray-50 my-1"></div>
                                             <button
                                                 onClick={handleLogout}
@@ -149,6 +179,12 @@ export default function Navbar() {
                                     <LayoutDashboard className="w-5 h-5" />
                                     Dashboard Saya
                                 </Link>
+                                {userData?.is_staff && (
+                                    <Link href="/admin" className="flex items-center gap-2 text-indigo-600 font-bold py-2 hover:bg-indigo-50 rounded-lg">
+                                        <ShieldCheck className="w-5 h-5" />
+                                        Admin Panel
+                                    </Link>
+                                )}
                                 <button onClick={handleLogout} className="flex w-full items-center gap-2 text-red-600 font-bold py-2 hover:bg-red-50 rounded-lg">
                                     <LogOut className="w-5 h-5" />
                                     Keluar

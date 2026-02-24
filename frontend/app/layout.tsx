@@ -11,6 +11,8 @@ export const metadata: Metadata = {
   description: "Raih standar internasional dengan pelatihan ISO komprehensif.",
 };
 
+import Script from "next/script";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -22,6 +24,10 @@ export default function RootLayout({
         <CartProvider>
           {children}
         </CartProvider>
+        <Script
+          src="https://app.sandbox.midtrans.com/snap/snap.js"
+          data-client-key="SB-Mid-client-meC4GEn5KGhc1Rld"
+        />
       </body>
     </html>
   );

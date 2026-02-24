@@ -25,7 +25,10 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
         duration: '',
         category_id: '',
         is_featured: false,
-        discount_price: ''
+        discount_price: '',
+        type: 'course',
+        scheduled_at: '',
+        location: ''
     });
 
     useEffect(() => {
@@ -57,7 +60,10 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                             duration: data.duration,
                             category_id: data.category?.id || '',
                             is_featured: data.is_featured,
-                            discount_price: data.discount_price || ''
+                            discount_price: data.discount_price || '',
+                            type: data.type || 'course',
+                            scheduled_at: data.scheduled_at ? new Date(data.scheduled_at).toISOString().slice(0, 16) : '',
+                            location: data.location || ''
                         });
                     } else if (res.status === 403) {
                         setError('Anda tidak memiliki izin untuk mengedit kursus ini.');
@@ -234,6 +240,46 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                             <option value="Advanced">Advanced</option>
                         </select>
                     </div>
+
+                    <div>
+                        <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Tipe Program</label>
+                        <select
+                            name="type"
+                            className="w-full px-5 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-medium appearance-none cursor-pointer"
+                            value={formData.type}
+                            onChange={handleChange}
+                        >
+                            <option value="course">Pelatihan (Reguler)</option>
+                            <option value="webinar">Webinar (Live Online)</option>
+                            <option value="workshop">Workshop (Offline/Intensive)</option>
+                        </select>
+                    </div>
+
+                    {formData.type !== 'course' && (
+                        <>
+                            <div>
+                                <label className="block font-bold text-indigo-600 mb-2 uppercase tracking-widest text-[10px]">Waktu Pelaksanaan</label>
+                                <input
+                                    name="scheduled_at"
+                                    type="datetime-local"
+                                    className="w-full px-5 py-3 bg-indigo-50/50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700 font-bold"
+                                    value={formData.scheduled_at}
+                                    onChange={handleChange}
+                                />
+                            </div>
+                            <div>
+                                <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Lokasi (Jika Offline)</label>
+                                <input
+                                    name="location"
+                                    type="text"
+                                    placeholder="Alamat atau Nama Gedung"
+                                    className="w-full px-5 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-medium"
+                                    value={formData.location}
+                                    onChange={handleChange}
+                                />
+                            </div>
+                        </>
+                    )}
 
                     <div>
                         <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Harga (Rp)</label>

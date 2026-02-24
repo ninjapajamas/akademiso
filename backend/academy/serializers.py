@@ -10,6 +10,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token['is_staff'] = user.is_staff
         token['is_superuser'] = user.is_superuser
+        token['is_instructor'] = hasattr(user, 'instructor_profile')
         token['username'] = user.username
         return token
 
@@ -82,6 +83,29 @@ class LessonSerializer(serializers.ModelSerializer):
         model = Lesson
         fields = ['id', 'course', 'section', 'title', 'type', 'content', 'video_url', 'image', 'duration', 'order']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = request.user if request else None
+        
+        # Check enrollment
+        is_enrolled = False
+        if user and user.is_authenticated:
+            if user.is_staff:
+                is_enrolled = True
+            else:
+                is_enrolled = Order.objects.filter(user=user, course=instance.course, status='Completed').exists()
+        
+        # If not enrolled, hide sensitive content
+        if not is_enrolled:
+            data['content'] = "Konten ini hanya tersedia untuk peserta yang sudah terdaftar."
+            data['video_url'] = None
+            data['is_locked'] = True
+        else:
+            data['is_locked'] = False
+            
+        return data
+
 class SectionSerializer(serializers.ModelSerializer):
     lessons = LessonSerializer(many=True, read_only=True)
 
@@ -99,18 +123,31 @@ class CourseSerializer(serializers.ModelSerializer):
         queryset=Category.objects.all(), source='category', write_only=True, allow_null=True
     )
     sections = SectionSerializer(many=True, read_only=True)
-    lessons = LessonSerializer(many=True, read_only=True) # Keep for backward compatibility if needed
+    is_enrolled = serializers.SerializerMethodField()
+    
+    def get_is_enrolled(self, obj):
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_staff:
+            return True
+        return Order.objects.filter(user=user, course=obj, status='Completed').exists()
     
     class Meta:
         model = Course
-        fields = '__all__'
+        fields = [
+            'id', 'title', 'slug', 'type', 'description', 'price', 'discount_price', 
+            'instructor', 'instructor_id', 'category', 'category_id', 'level', 
+            'duration', 'scheduled_at', 'location', 'thumbnail', 'is_featured', 
+            'created_at', 'rating', 'enrolled_count', 'sections', 'is_enrolled'
+        ]
 
 class OrderSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
     
     class Meta:
         model = Order
-        fields = '__all__'
+        fields = ['id', 'user', 'course', 'total_amount', 'status', 'snap_token', 'midtrans_id', 'created_at']
 
 class MyCourseSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
@@ -144,11 +181,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(required=False)
+    is_instructor = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile', 'is_staff')
-        read_only_fields = ('id', 'username', 'email', 'is_staff')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile', 'is_staff', 'is_instructor')
+        read_only_fields = ('id', 'username', 'email', 'is_staff', 'is_instructor')
+
+    def get_is_instructor(self, obj):
+        return hasattr(obj, 'instructor_profile')
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})

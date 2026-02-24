@@ -136,3 +136,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Midtrans Configuration
+MIDTRANS_SERVER_KEY = 'SB-Mid-server-_XqEtoAya225E9UDtzx3JHcc'
+MIDTRANS_IS_PRODUCTION = False # Set to True for production

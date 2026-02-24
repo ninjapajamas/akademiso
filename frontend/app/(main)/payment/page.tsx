@@ -1,31 +1,83 @@
-'use client';
-
+"use client"
+import Link from 'next/link';
 import { Clock, CreditCard, ChevronDown, ChevronUp, Lock } from 'lucide-react';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
 
-// Use client component for interactivity
-
-import { useRouter } from 'next/navigation';
-
-export default function Payment() {
+function PaymentContent() {
     const router = useRouter();
-    const [selectedMethod, setSelectedMethod] = useState<string>('mandiri');
+    const searchParams = useSearchParams();
+    const slug = searchParams.get('slug');
 
+    const [selectedMethod, setSelectedMethod] = useState<string>('mandiri');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [course, setCourse] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            router.push(`/login?redirect=/payment${slug ? `?slug=${slug}` : ''}`);
+            return;
+        }
+
+        if (!slug) {
+            router.push('/courses');
+            return;
+        }
+
+        const fetchCourse = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${apiUrl}/api/courses/${slug}/`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setCourse(data);
+                } else {
+                    router.push('/courses');
+                }
+            } catch (error) {
+                console.error('Error fetching course:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchCourse();
+    }, [router, slug]);
+
+    // Midtrans Snap declaration
+    const snapPay = (token: string) => {
+        if (!(window as any).snap) {
+            alert('Midtrans Snap is not loaded yet');
+            return;
+        }
+        (window as any).snap.pay(token, {
+            onSuccess: (result: any) => {
+                console.log('Payment success:', result);
+                router.push('/dashboard/courses');
+            },
+            onPending: (result: any) => {
+                console.log('Payment pending:', result);
+                router.push('/dashboard/courses');
+            },
+            onError: (error: any) => {
+                console.error('Payment error:', error);
+                alert('Pembayaran gagal. Silakan coba lagi.');
+            },
+            onClose: () => {
+                console.log('Customer closed the popup without finishing the payment');
+            }
+        });
+    };
 
     const handlePayment = async () => {
+        if (!course) return;
         setIsProcessing(true);
         try {
             const token = localStorage.getItem('access_token');
-            if (!token) {
-                router.push('/login');
-                return;
-            }
-
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            console.log('Processing payment at:', `${apiUrl}/api/orders/`);
 
-            // Create order with status Completed
             const res = await fetch(`${apiUrl}/api/orders/`, {
                 method: 'POST',
                 headers: {
@@ -33,31 +85,41 @@ export default function Payment() {
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    course: 1, // Hardcoded for now as per "temporarily" request
-                    total_amount: 5500000,
-                    status: 'Completed'
+                    course: course.id,
+                    total_amount: parseInt(course.discount_price || course.price),
+                    status: 'Pending'
                 })
             });
 
             if (res.ok) {
-                router.push('/dashboard');
-            } else {
-                if (res.status === 401) {
-                    alert('Sesi Anda telah berakhir. Silakan login kembali.');
-                    router.push('/login');
-                    return;
-                }
                 const data = await res.json();
-                console.error('Payment failed:', res.status, data);
-                alert(`Gagal memproses pembayaran: ${res.statusText}`);
+                if (data.snap_token) {
+                    snapPay(data.snap_token);
+                } else {
+                    router.push('/dashboard/courses');
+                }
+            } else {
+                const data = await res.json();
+                const errorMsg = data.error || (data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : 'Gagal memproses pembayaran');
+                alert(errorMsg);
             }
         } catch (error) {
             console.error('Payment error:', error);
-            alert('Terjadi kesalahan koneksi. Pastikan backend berjalan.');
+            alert('Terjadi kesalahan koneksi atau server');
         } finally {
             setIsProcessing(false);
         }
     };
+
+    if (loading) {
+        return <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>;
+    }
+
+    if (!course) return null;
+
+    const price = parseInt(course.discount_price || course.price);
 
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
@@ -213,38 +275,40 @@ export default function Payment() {
 
                             <div className="p-6">
                                 <div className="flex gap-4 mb-6">
-                                    <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0">
-                                        ISO
+                                    <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0 overflow-hidden">
+                                        {course.thumbnail ? (
+                                            <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover" />
+                                        ) : (
+                                            'ISO'
+                                        )}
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-gray-900 text-sm line-clamp-2">Pelatihan & Sertifikasi ISO 9001:2015</h4>
-                                        <p className="text-xs text-gray-500 mt-1">Sesi Online + Sertifikat Resmi</p>
-                                        <div className="mt-2 inline-block bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">Batch #24 - Agustus 2024</div>
+                                        <h4 className="font-bold text-gray-900 text-sm line-clamp-2">{course.title}</h4>
+                                        <p className="text-xs text-gray-500 mt-1">{course.category?.name || 'Sesi Online + Sertifikat Resmi'}</p>
+                                        <div className="mt-2 inline-block bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">Batch Termudah</div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-3 mb-6 pb-6 border-b border-gray-100 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Subtotal</span>
-                                        <span className="font-medium text-gray-900">Rp 5.500.000</span>
+                                        <span className="font-medium text-gray-900">Rp {parseInt(course.price).toLocaleString('id-ID')}</span>
                                     </div>
+                                    {course.discount_price && (
+                                        <div className="flex justify-between text-green-600">
+                                            <span className="font-medium flex items-center gap-1">Potongan Harga</span>
+                                            <span className="font-bold">- Rp {(parseInt(course.price) - parseInt(course.discount_price)).toLocaleString('id-ID')}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Biaya Admin</span>
-                                        <span className="font-medium text-gray-900">Rp 10.000</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">PPN (11%)</span>
-                                        <span className="font-medium text-gray-900">Rp 550.000</span>
-                                    </div>
-                                    <div className="flex justify-between text-green-600">
-                                        <span className="font-medium flex items-center gap-1">Promo Diskon</span>
-                                        <span className="font-bold">- Rp 60.000</span>
+                                        <span className="font-medium text-gray-900">Rp 0</span>
                                     </div>
                                 </div>
 
                                 <div className="flex justify-between items-end mb-6">
                                     <span className="font-bold text-gray-900 text-sm">Total Pembayaran</span>
-                                    <span className="font-bold text-2xl text-blue-600">Rp 5.500.000</span>
+                                    <span className="font-bold text-2xl text-blue-600">Rp {price.toLocaleString('id-ID')}</span>
                                 </div>
 
                                 <button
@@ -281,5 +345,13 @@ export default function Payment() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function Payment() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>}>
+            <PaymentContent />
+        </Suspense>
     );
 }

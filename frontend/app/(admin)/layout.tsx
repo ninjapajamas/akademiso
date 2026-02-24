@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpen, GraduationCap, LayoutDashboard, LogOut, ShieldCheck, Users, ShoppingBag } from 'lucide-react';
+import { BookOpen, GraduationCap, LayoutDashboard, LogOut, ShieldCheck, Users, ShoppingBag, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 function decodeJwt(token: string) {
@@ -55,6 +55,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: 'Instructors', href: '/admin/instructors', icon: GraduationCap },
         { name: 'Students', href: '/admin/users', icon: Users },
         { name: 'Orders', href: '/admin/orders', icon: ShoppingBag },
+        { name: 'Pengaturan', href: '/admin/settings', icon: Settings },
     ];
 
     if (!authorized) {

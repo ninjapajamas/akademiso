@@ -21,7 +21,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     );
 }
 
-export default function SettingsPage() {
+export default function AdminSettingsPage() {
     const [saved, setSaved] = useState(false);
     const [loading, setLoading] = useState(true);
     const [showOldPw, setShowOldPw] = useState(false);
@@ -37,7 +37,6 @@ export default function SettingsPage() {
         avatar: null as string | null
     });
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
-    const [notifs, setNotifs] = useState({ email_schedule: true, email_cert: true, email_promo: false, sms: false });
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
     const [pwError, setPwError] = useState('');
 
@@ -125,8 +124,6 @@ export default function SettingsPage() {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-            // For security, we use our existing admin reset password endpoint for self resets 
-            // but we need a user ID. We can decode token for that.
             const payload = JSON.parse(atob(token!.split('.')[1]));
             const userId = payload.user_id;
 
@@ -154,11 +151,11 @@ export default function SettingsPage() {
     const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all';
 
     return (
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Pengaturan Akun</h1>
-                    <p className="text-gray-500 mt-1">Kelola informasi profil dan preferensi akun Anda.</p>
+                    <h1 className="text-2xl font-bold text-gray-900">Pengaturan Admin</h1>
+                    <p className="text-gray-500 mt-1">Kelola informasi profil Anda sebagai administrator.</p>
                 </div>
                 {saved && (
                     <div className="flex items-center gap-2 text-sm font-semibold text-green-700 bg-green-50 border border-green-200 px-4 py-2 rounded-xl">
@@ -173,11 +170,11 @@ export default function SettingsPage() {
                     {/* Avatar */}
                     <div className="flex flex-col sm:flex-row items-center gap-6 pb-4 border-b border-gray-50">
                         <div className="relative group">
-                            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg overflow-hidden border-4 border-white">
+                            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg overflow-hidden border-4 border-white">
                                 {profile.avatar ? (
                                     <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
                                 ) : (
-                                    (profile.first_name?.charAt(0) || 'U').toUpperCase()
+                                    (profile.first_name?.charAt(0) || 'A').toUpperCase()
                                 )}
                             </div>
                             <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full text-xs font-bold">
@@ -259,34 +256,18 @@ export default function SettingsPage() {
                                 placeholder="08xx-xxxx-xxxx"
                             />
                         </Field>
-                        <Field label="Perusahaan">
-                            <input
-                                className={inputClass}
-                                value={profile.company}
-                                onChange={e => setProfile(p => ({ ...p, company: e.target.value }))}
-                                placeholder="Nama perusahaan"
-                            />
-                        </Field>
-                        <Field label="Jabatan / Posisi">
-                            <input
-                                className={inputClass}
-                                value={profile.position}
-                                onChange={e => setProfile(p => ({ ...p, position: e.target.value }))}
-                                placeholder="Quality Manager, HSE Officer, dll."
-                            />
-                        </Field>
-                        <Field label="Bio / Tentang Saya">
+                        <Field label="Bio Singkat">
                             <textarea
-                                className={`${inputClass} min-h-[100px]`}
+                                className={`${inputClass} sm:col-span-2 min-h-[100px]`}
                                 value={profile.bio}
                                 onChange={e => setProfile(p => ({ ...p, bio: e.target.value }))}
-                                placeholder="Ceritakan sedikit tentang Anda..."
+                                placeholder="Bio singkat administrator..."
                             />
                         </Field>
                     </div>
 
-                    <button type="submit" className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
-                        <Save className="w-4 h-4" /> Simpan Perubahan
+                    <button type="submit" className="flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white font-bold text-sm rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20">
+                        <Save className="w-4 h-4" /> Simpan Profil
                     </button>
                 </form>
             </Section>
@@ -336,52 +317,10 @@ export default function SettingsPage() {
                         </Field>
                     </div>
                     {pwError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{pwError}</p>}
-                    <div className="flex items-center gap-3">
-                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-all ${passwords.new.length === 0 ? 'w-0' : passwords.new.length < 6 ? 'w-1/3 bg-red-400' : passwords.new.length < 10 ? 'w-2/3 bg-yellow-400' : 'w-full bg-green-500'}`}
-                            />
-                        </div>
-                        <span className="text-[10px] text-gray-400 flex-shrink-0">
-                            {passwords.new.length === 0 ? 'Kekuatan' : passwords.new.length < 6 ? 'Lemah' : passwords.new.length < 10 ? 'Sedang' : 'Kuat'}
-                        </span>
-                    </div>
                     <button type="submit" className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 text-white font-bold text-sm rounded-xl hover:bg-gray-800 transition-colors">
                         <Shield className="w-4 h-4" /> Perbarui Password
                     </button>
                 </form>
-            </Section>
-
-            {/* Notifications */}
-            <Section title="Preferensi Notifikasi">
-                <div className="space-y-4">
-                    {[
-                        { key: 'email_schedule', label: 'Pengingat jadwal pelatihan & ujian', desc: 'Dapatkan email H-3 dan H-1 sebelum jadwal.' },
-                        { key: 'email_cert', label: 'Notifikasi sertifikat baru', desc: 'Email saat sertifikat Anda siap diunduh.' },
-                        { key: 'email_promo', label: 'Penawaran & program baru', desc: 'Informasi diskon dan kursus ISO terbaru.' },
-                        { key: 'sms', label: 'Notifikasi SMS', desc: 'Pengingat ujian via pesan teks.' },
-                    ].map(item => (
-                        <div key={item.key} className="flex items-start justify-between gap-4">
-                            <div>
-                                <p className="text-sm font-semibold text-gray-800">{item.label}</p>
-                                <p className="text-xs text-gray-500">{item.desc}</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setNotifs(n => ({ ...n, [item.key]: !n[item.key as keyof typeof n] }))}
-                                className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors ${notifs[item.key as keyof typeof notifs] ? 'bg-blue-600' : 'bg-gray-200'}`}
-                            >
-                                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${notifs[item.key as keyof typeof notifs] ? 'translate-x-5' : 'translate-x-0'}`} />
-                            </button>
-                        </div>
-                    ))}
-                </div>
-                <button
-                    onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2500); }}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 mt-2"
-                >
-                    <Save className="w-4 h-4" /> Simpan Preferensi
-                </button>
             </Section>
         </div>
     );

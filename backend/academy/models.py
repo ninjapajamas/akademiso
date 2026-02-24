@@ -40,8 +40,15 @@ class Course(models.Model):
         ('Advanced', 'Advanced'),
     ]
 
+    TYPE_CHOICES = [
+        ('course', 'Pelatihan'),
+        ('webinar', 'Webinar'),
+        ('workshop', 'Workshop'),
+    ]
+
     title = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='course')
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
@@ -49,6 +56,8 @@ class Course(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='courses')
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='Beginner')
     duration = models.CharField(max_length=50, help_text="e.g. 2 Days, 10 Hours")
+    scheduled_at = models.DateTimeField(blank=True, null=True, help_text="Specific time for Webinar/Workshop")
+    location = models.CharField(max_length=255, blank=True, null=True, help_text="Location for Offline Workshop")
     thumbnail = models.ImageField(upload_to='courses/', blank=True, null=True)
     is_featured = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -119,13 +128,16 @@ class Order(models.Model):
     STATUS_CHOICES = [
         ('Pending', 'Pending'),
         ('Completed', 'Completed'),
+        ('Failed', 'Failed'),
         ('Cancelled', 'Cancelled'),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    snap_token = models.CharField(max_length=255, blank=True, null=True)
+    midtrans_id = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

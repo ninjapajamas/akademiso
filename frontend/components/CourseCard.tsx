@@ -68,9 +68,21 @@ export default function CourseCard({ course }: CourseCardProps) {
     return (
         <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100 overflow-hidden group flex flex-col h-full">
             <div className="relative h-48 w-full overflow-hidden">
-                {/* Tag */}
-                <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider text-gray-800 shadow-sm">
-                    {course.category.name}
+                {/* Tag & Type Badge */}
+                <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
+                    <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest text-gray-800 shadow-sm">
+                        {course.category.name}
+                    </div>
+                    <div className={`
+                        px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest text-white shadow-sm border
+                        ${course.type === 'webinar' ? 'bg-rose-500 border-rose-400' :
+                            course.type === 'workshop' ? 'bg-amber-500 border-amber-400' :
+                                'bg-indigo-500 border-indigo-400'}
+                    `}>
+                        {course.type === 'webinar' ? 'WEBINAR' :
+                            course.type === 'workshop' ? 'WORKSHOP' :
+                                'PELATIHAN'}
+                    </div>
                 </div>
 
                 {/* Thumbnail or Placeholder */}
@@ -103,15 +115,30 @@ export default function CourseCard({ course }: CourseCardProps) {
                 </Link>
 
                 {/* Metadata */}
-                <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
-                    <div className="flex items-center gap-1">
-                        <BarChart className="w-3 h-3" />
-                        <span>{course.level}</span>
+                <div className="flex flex-col gap-2 text-xs text-gray-500 mb-4">
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1">
+                            <BarChart className="w-3 h-3" />
+                            <span>{course.level}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>{course.duration}</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{course.duration}</span>
-                    </div>
+
+                    {course.scheduled_at && (
+                        <div className="flex items-center gap-1 text-blue-600 font-medium">
+                            <Clock className="w-3 h-3" />
+                            <span>{new Date(course.scheduled_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                    )}
+
+                    {course.location && (
+                        <div className="flex items-center gap-1 text-gray-500 italic">
+                            <span>📍 {course.location}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Instructor */}

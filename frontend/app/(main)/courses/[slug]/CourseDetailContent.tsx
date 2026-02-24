@@ -230,9 +230,55 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                     {/* Main Content */}
                     <div className="lg:col-span-2 space-y-8">
                         {/* Header */}
-                        <div>
-                            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 leading-tight">{course.title}</h1>
-                            <p className="text-lg text-gray-600 leading-relaxed mb-6">{course.description}</p>
+                        <div className="space-y-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm ${course.type === 'webinar' ? 'bg-rose-600' :
+                                    course.type === 'workshop' ? 'bg-amber-600' :
+                                        'bg-indigo-600'
+                                    }`}>
+                                    {(course.type === 'course' ? 'Pelatihan' : (course.type === 'webinar' ? 'Webinar' : 'Workshop')).toUpperCase()}
+                                </span>
+                                {course.category && (
+                                    <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-100">
+                                        {course.category.name.toUpperCase()}
+                                    </span>
+                                )}
+                            </div>
+                            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">{course.title}</h1>
+                            <p className="text-lg text-gray-600 leading-relaxed">{course.description}</p>
+
+                            {(course.type === 'webinar' || course.type === 'workshop') && course.scheduled_at && (
+                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex flex-col md:flex-row gap-4 md:items-center">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shadow-sm">
+                                            <Clock className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] uppercase font-bold text-gray-400 leading-none mb-1">Jadwal Sesi</p>
+                                            <p className="font-bold text-sm text-gray-900">
+                                                {new Date(course.scheduled_at).toLocaleString('id-ID', {
+                                                    day: 'numeric',
+                                                    month: 'long',
+                                                    year: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })} WIB
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {course.type === 'workshop' && course.location && (
+                                        <div className="flex items-center gap-3 md:border-l md:border-blue-200 md:pl-4">
+                                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shadow-sm">
+                                                <Globe className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] uppercase font-bold text-gray-400 leading-none mb-1">Lokasi Dasar</p>
+                                                <p className="font-bold text-sm text-gray-900">{course.location}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">
                                 <div className="flex items-center gap-1 text-yellow-500 font-bold">
                                     <span className="bg-yellow-100 text-yellow-700 px-1.5 rounded text-xs mr-1">{course.rating || '4.9'}</span>
@@ -372,16 +418,24 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                             </div>
 
                             <div className="space-y-3 mb-6">
-                                <Link href="/checkout" className="block w-full text-center bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
-                                    Daftar Sekarang
-                                </Link>
-                                <button
-                                    onClick={addToCart}
-                                    disabled={isAdding}
-                                    className="flex items-center justify-center gap-2 w-full text-center bg-white text-gray-700 font-bold py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                                >
-                                    {isAdding ? "Menambahkan..." : "Tambah ke Keranjang"}
-                                </button>
+                                {course.is_enrolled ? (
+                                    <Link href={`/learn/${course.slug}`} className="block w-full text-center bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors shadow-lg shadow-green-600/20">
+                                        Buka Kursus
+                                    </Link>
+                                ) : (
+                                    <>
+                                        <Link href={`/checkout?slug=${course.slug}`} className="block w-full text-center bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
+                                            Daftar Sekarang
+                                        </Link>
+                                        <button
+                                            onClick={addToCart}
+                                            disabled={isAdding}
+                                            className="flex items-center justify-center gap-2 w-full text-center bg-white text-gray-700 font-bold py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                        >
+                                            {isAdding ? "Menambahkan..." : "Tambah ke Keranjang"}
+                                        </button>
+                                    </>
+                                )}
                             </div>
 
                             <div className="text-center text-xs text-gray-400 mb-6">Jaminan Kepuasan & Uang Kembali</div>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, BookOpen, Users, LogOut, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, LogOut, GraduationCap, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 function decodeJwt(token: string) {
@@ -19,6 +19,12 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
         if (!token) { router.replace('/login'); return; }
         const payload = decodeJwt(token);
         if (!payload) { router.replace('/login'); return; }
+
+        if (!payload.is_instructor && !payload.is_staff && !payload.is_superuser) {
+            router.replace('/dashboard');
+            return;
+        }
+
         setUsername(payload.username || '');
     }, [router]);
 
@@ -26,6 +32,7 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
         { label: 'Dashboard', href: '/instructor', icon: LayoutDashboard },
         { label: 'Kursus Saya', href: '/instructor/courses', icon: BookOpen },
         { label: 'Siswa', href: '/instructor/students', icon: Users },
+        { label: 'Pengaturan', href: '/instructor/settings', icon: Settings },
     ];
 
     const handleLogout = () => {
