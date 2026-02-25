@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Upload, Image as ImageIcon, Video, FileText, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Upload, Image as ImageIcon, Video, FileText, ChevronRight, HelpCircle, Plus, Trash2, CheckCircle2, Trophy } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
@@ -27,7 +27,12 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
         content: '',
         duration: '',
         order: 1,
-        image: null as File | null
+        image: null as File | null,
+        quiz_data: {
+            pass_score: 70,
+            time_limit: null as number | null,
+            questions: [] as any[]
+        }
     });
     const [sections, setSections] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -49,7 +54,7 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
     const quillFormats = [
         'header',
         'bold', 'italic', 'underline', 'strike',
-        'list', 'bullet',
+        'list',
         'align',
         'link', 'image'
     ];
@@ -83,7 +88,12 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
                             content: data.content || '',
                             duration: data.duration || '',
                             order: data.order,
-                            image: null
+                            image: null,
+                            quiz_data: data.quiz_data || {
+                                pass_score: 70,
+                                time_limit: null,
+                                questions: []
+                            }
                         });
                         setCurrentImageUrl(data.image);
                     }
@@ -115,6 +125,86 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
         }
     };
 
+    const addQuestion = () => {
+        setFormData({
+            ...formData,
+            quiz_data: {
+                ...formData.quiz_data,
+                questions: [
+                    ...formData.quiz_data.questions,
+                    {
+                        text: '',
+                        order: formData.quiz_data.questions.length + 1,
+                        alternatives: [
+                            { text: '', is_correct: true, order: 1 },
+                            { text: '', is_correct: false, order: 2 }
+                        ]
+                    }
+                ]
+            }
+        });
+    };
+
+    const removeQuestion = (index: number) => {
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions.splice(index, 1);
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const updateQuestion = (index: number, text: string) => {
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions[index].text = text;
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const addAlternative = (qIndex: number) => {
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions[qIndex].alternatives.push({
+            text: '',
+            is_correct: false,
+            order: newQuestions[qIndex].alternatives.length + 1
+        });
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const removeAlternative = (qIndex: number, aIndex: number) => {
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions[qIndex].alternatives.splice(aIndex, 1);
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const updateAlternative = (qIndex: number, aIndex: number, updates: any) => {
+        const newQuestions = [...formData.quiz_data.questions];
+        if (updates.hasOwnProperty('is_correct') && updates.is_correct) {
+            // Uncheck others in the SAME question
+            newQuestions[qIndex].alternatives = newQuestions[qIndex].alternatives.map((a: any, i: number) => ({
+                ...a,
+                is_correct: i === aIndex
+            }));
+        } else {
+            newQuestions[qIndex].alternatives[aIndex] = {
+                ...newQuestions[qIndex].alternatives[aIndex],
+                ...updates
+            };
+        }
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
     const handleSubmit = async (e: any) => {
         e.preventDefault();
         setSaving(true);
@@ -139,8 +229,13 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
                 data.append('video_url', '');
             }
 
+            // Append Quiz data if applicable
+            if (['quiz', 'mid_test', 'final_test', 'exam'].includes(formData.type)) {
+                data.append('quiz_data', JSON.stringify(formData.quiz_data));
+            }
+
             // Only append image if it's not an article (per user request)
-            if (formData.type !== 'article' && formData.image) {
+            if (['video', 'quiz', 'mid_test', 'final_test', 'exam'].includes(formData.type) && formData.image) {
                 data.append('image', formData.image);
             }
 
@@ -264,21 +359,25 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
 
                     <div>
                         <label className="block font-bold text-gray-700 mb-4 uppercase tracking-widest text-[10px]">Tipe Materi</label>
-                        <div className="flex gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                             {[
-                                { id: 'video', label: 'Video Pembelajaran', icon: Video },
-                                { id: 'article', label: 'Artikel / Teks', icon: FileText },
+                                { id: 'video', label: 'Video', icon: Video },
+                                { id: 'article', label: 'Artikel', icon: FileText },
+                                { id: 'quiz', label: 'Quiz', icon: HelpCircle },
+                                { id: 'mid_test', label: 'Mid Test', icon: HelpCircle },
+                                { id: 'final_test', label: 'Final Test', icon: HelpCircle },
+                                { id: 'exam', label: 'Ujian', icon: Trophy },
                             ].map((type) => (
                                 <button
                                     key={type.id}
                                     type="button"
                                     onClick={() => setFormData({ ...formData, type: type.id })}
-                                    className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === type.id
+                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all ${formData.type === type.id
                                         ? 'border-indigo-600 bg-indigo-50 text-indigo-600 shadow-sm'
-                                        : 'border-gray-100 text-gray-400 hover:border-indigo-200'}`}
+                                        : 'border-gray-50 text-gray-400 hover:border-indigo-200'}`}
                                 >
-                                    <type.icon className="w-5 h-5" />
-                                    <span className="font-bold text-sm tracking-tight">{type.label}</span>
+                                    <type.icon className="w-4 h-4" />
+                                    <span className="font-bold text-[10px] tracking-tight whitespace-nowrap">{type.label}</span>
                                 </button>
                             ))}
                         </div>
@@ -310,6 +409,130 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
                                         value={formData.content}
                                         onChange={handleChange}
                                     />
+                                </div>
+                            </div>
+                        ) : ['quiz', 'mid_test', 'final_test', 'exam'].includes(formData.type) ? (
+                            <div className="space-y-8">
+                                <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100/50">
+                                    <h3 className="text-sm font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                                        <Trophy className="w-4 h-4" />
+                                        Konfigurasi Ujian
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Skor Kelulusan (0-100)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                className="w-full px-5 py-3 bg-white border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-bold"
+                                                value={formData.quiz_data.pass_score}
+                                                onChange={(e) => setFormData({
+                                                    ...formData,
+                                                    quiz_data: { ...formData.quiz_data, pass_score: parseInt(e.target.value) }
+                                                })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Batas Waktu (Menit, 0 = Tanpa Batas)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full px-5 py-3 bg-white border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-bold"
+                                                value={formData.quiz_data.time_limit || 0}
+                                                onChange={(e) => setFormData({
+                                                    ...formData,
+                                                    quiz_data: { ...formData.quiz_data, time_limit: parseInt(e.target.value) || null }
+                                                })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block font-bold text-gray-700 uppercase tracking-widest text-[10px]">Daftar Pertanyaan ({formData.quiz_data.questions.length})</label>
+                                        <button
+                                            type="button"
+                                            onClick={addQuestion}
+                                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all"
+                                        >
+                                            <Plus className="w-3 h-3" />
+                                            Tambah Pertanyaan
+                                        </button>
+                                    </div>
+
+                                    {formData.quiz_data.questions.map((q, qIndex) => (
+                                        <div key={qIndex} className="p-6 bg-gray-50 rounded-3xl border border-gray-100 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-indigo-600 shadow-sm border border-gray-100 shrink-0">
+                                                    {qIndex + 1}
+                                                </div>
+                                                <div className="flex-1 space-y-4">
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Tuliskan pertanyaan di sini..."
+                                                            className="flex-1 px-5 py-3 bg-white border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-bold text-sm"
+                                                            value={q.text}
+                                                            onChange={(e) => updateQuestion(qIndex, e.target.value)}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeQuestion(qIndex)}
+                                                            className="p-3 bg-white hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-2xl transition-all border border-transparent hover:border-red-100"
+                                                        >
+                                                            <Trash2 className="w-5 h-5" />
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="space-y-3 pl-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pilihan Jawaban</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => addAlternative(qIndex)}
+                                                                className="text-indigo-600 hover:text-indigo-700 font-bold text-[10px] uppercase tracking-widest"
+                                                            >
+                                                                + Opsi Baru
+                                                            </button>
+                                                        </div>
+                                                        {q.alternatives.map((a: any, aIndex: number) => (
+                                                            <div key={aIndex} className="flex items-center gap-3 group">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateAlternative(qIndex, aIndex, { is_correct: true })}
+                                                                    className={`p-2 rounded-lg transition-all ${a.is_correct ? 'bg-green-100 text-green-600' : 'bg-white text-gray-200 hover:text-gray-400 border border-gray-100'}`}
+                                                                >
+                                                                    <CheckCircle2 className="w-4 h-4" />
+                                                                </button>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder={`Pilihan ${aIndex + 1}...`}
+                                                                    className={`flex-1 px-4 py-2 bg-white border-none rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-medium ${a.is_correct ? 'ring-1 ring-green-200' : ''}`}
+                                                                    value={a.text}
+                                                                    onChange={(e) => updateAlternative(qIndex, aIndex, { text: e.target.value })}
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeAlternative(qIndex, aIndex)}
+                                                                    className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 transition-all"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {formData.quiz_data.questions.length === 0 && (
+                                        <div className="text-center py-10 border-2 border-dashed border-gray-100 rounded-[2rem]">
+                                            <p className="text-gray-400 text-sm font-medium">Belum ada pertanyaan. Klik tombol di atas untuk menambah.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ) : (

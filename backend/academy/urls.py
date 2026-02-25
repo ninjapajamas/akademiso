@@ -5,7 +5,7 @@ from .views import (
     RegisterView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
     SectionViewSet, StatsView, InstructorCoursesView, InstructorStudentsView,
     AdminResetPasswordView, AdminEditUserView, AdminImpersonateView, ProfileView,
-    MidtransNotificationView,
+    MidtransNotificationView, QuizAttemptView, CompleteLessonView,
 )
 
 router = DefaultRouter()
@@ -31,4 +31,6 @@ urlpatterns = [
     path('users/<int:pk>/impersonate/', AdminImpersonateView.as_view(), name='admin-impersonate'),
     path('profile/', ProfileView.as_view(), name='user-profile'),
     path('orders/notification/', MidtransNotificationView.as_view(), name='midtrans-notification'),
+    path('lessons/<int:lesson_id>/quiz-attempt/', QuizAttemptView.as_view(), name='quiz-attempt'),
+    path('lessons/<int:lesson_id>/complete/', CompleteLessonView.as_view(), name='lesson-complete'),
 ]

@@ -47,5 +47,6 @@ export interface EnrolledCourse {
     id: number;
     course: Course;
     status: 'Pending' | 'Completed' | 'Cancelled';
+    progress_percentage?: number;
     created_at: string;
 }

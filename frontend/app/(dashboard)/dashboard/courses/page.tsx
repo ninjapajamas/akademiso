@@ -133,10 +133,10 @@ export default function MyCoursesPage() {
                                 {/* Progress */}
                                 <div className="flex items-center gap-3">
                                     <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                        <div className="h-full bg-blue-600 rounded-full" style={{ width: enrollment.status === 'Completed' ? '100%' : '0%' }} />
+                                        <div className="h-full bg-blue-600 rounded-full" style={{ width: `${enrollment.progress_percentage || 0}%` }} />
                                     </div>
                                     <span className="text-xs font-bold text-gray-500 flex-shrink-0">
-                                        {enrollment.status === 'Completed' ? '100%' : '0%'}
+                                        {enrollment.progress_percentage || 0}%
                                     </span>
                                     <Link
                                         href={`/learn/${enrollment.course.slug}`}

@@ -47,18 +47,36 @@ function PaymentContent() {
     }, [router, slug]);
 
     // Midtrans Snap declaration
-    const snapPay = (token: string) => {
+    const snapPay = (token: string, orderId: number) => {
         if (!(window as any).snap) {
             alert('Midtrans Snap is not loaded yet');
             return;
         }
+
+        const handleSync = async () => {
+            try {
+                const authToken = localStorage.getItem('access_token');
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                await fetch(`${apiUrl}/api/orders/${orderId}/sync/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+            } catch (error) {
+                console.error('Sync error:', error);
+            }
+        };
+
         (window as any).snap.pay(token, {
-            onSuccess: (result: any) => {
+            onSuccess: async (result: any) => {
                 console.log('Payment success:', result);
+                await handleSync();
                 router.push('/dashboard/courses');
             },
-            onPending: (result: any) => {
+            onPending: async (result: any) => {
                 console.log('Payment pending:', result);
+                await handleSync();
                 router.push('/dashboard/courses');
             },
             onError: (error: any) => {
@@ -94,7 +112,7 @@ function PaymentContent() {
             if (res.ok) {
                 const data = await res.json();
                 if (data.snap_token) {
-                    snapPay(data.snap_token);
+                    snapPay(data.snap_token, data.id);
                 } else {
                     router.push('/dashboard/courses');
                 }

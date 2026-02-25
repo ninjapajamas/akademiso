@@ -83,6 +83,9 @@ class Lesson(models.Model):
         ('video', 'Video'),
         ('article', 'Article'),
         ('quiz', 'Quiz'),
+        ('mid_test', 'Mid Test'),
+        ('final_test', 'Final Test'),
+        ('exam', 'Ujian Mandiri'),
     ]
 
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='lessons')
@@ -142,3 +145,56 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Order #{self.id} - {self.user.username}"
+
+class Quiz(models.Model):
+    lesson = models.OneToOneField('Lesson', on_delete=models.CASCADE, related_name='quiz_data')
+    pass_score = models.IntegerField(default=70)
+    time_limit = models.IntegerField(null=True, blank=True, help_text="Time limit in minutes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Quiz for: {self.lesson.title}"
+
+class Question(models.Model):
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
+    text = models.TextField()
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return self.text[:50]
+
+class Alternative(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='alternatives')
+    text = models.TextField()
+    is_correct = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return self.text[:50]
+
+class UserQuizAttempt(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quiz_attempts')
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='attempts')
+    score = models.DecimalField(max_digits=5, decimal_places=2)
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.quiz.lesson.title} - {self.score}"
+
+class UserLessonProgress(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lesson_progress')
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='user_progress')
+    is_completed = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'lesson')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.lesson.title} - {self.is_completed}"

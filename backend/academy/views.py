@@ -1,5 +1,6 @@
 from rest_framework import viewsets, generics, serializers
-from .models import Category, Instructor, Course, Order, Lesson, Section, UserProfile
+from rest_framework.decorators import action
+from .models import Category, Instructor, Course, Order, Lesson, Section, UserProfile, Quiz, Question, Alternative, UserQuizAttempt
 from .serializers import (
     CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, 
     RegisterSerializer, LessonSerializer, SectionSerializer, ProfileSerializer
@@ -118,7 +119,7 @@ class SectionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Section.objects.all()
-        course_id = self.request.query_params.get('course_id')
+        course_id = self.request.query_params.get('course_id') or self.request.query_params.get('course')
         if course_id:
             queryset = queryset.filter(course_id=course_id)
             
@@ -252,6 +253,62 @@ class OrderViewSet(viewsets.ModelViewSet):
             # Delete the pending order since it failed to initialize payment
             order.delete()
             raise serializers.ValidationError({"error": error_msg})
+
+    @action(detail=True, methods=['post'])
+    def sync(self, request, pk=None):
+        order = self.get_object()
+        if not order.midtrans_id:
+            return Response({'error': 'No Midtrans ID found for this order'}, status=400)
+
+        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
+        is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
+        
+        snap = midtransclient.Snap(
+            is_production=is_production,
+            server_key=server_key
+        )
+
+        try:
+            status_response = snap.transactions.status(order.midtrans_id)
+            transaction_status = status_response.get('transaction_status')
+            fraud_status = status_response.get('fraud_status')
+
+            old_status = order.status
+            new_status = old_status
+
+            if transaction_status == 'capture':
+                if fraud_status == 'challenge':
+                    new_status = 'Pending'
+                elif fraud_status == 'accept':
+                    new_status = 'Completed'
+            elif transaction_status == 'settlement':
+                new_status = 'Completed'
+            elif transaction_status in ['cancel', 'expire']:
+                new_status = 'Cancelled'
+            elif transaction_status == 'deny':
+                new_status = 'Failed'
+            elif transaction_status == 'pending':
+                new_status = 'Pending'
+
+            if old_status != new_status:
+                print(f"DEBUG: Syncing Order {order.id}: {old_status} -> {new_status}")
+                order.status = new_status
+                order.save()
+
+                if old_status == 'Pending' and new_status == 'Completed':
+                    course = order.course
+                    course.enrolled_count += 1
+                    course.save()
+                    print(f"DEBUG: Enrollment incremented via sync")
+
+            return Response({
+                'id': order.id,
+                'status': order.status,
+                'midtrans_status': transaction_status,
+                'fraud_status': fraud_status
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
 
 
 class MyCoursesView(generics.ListAPIView):
@@ -597,6 +654,57 @@ class CartViewSet(viewsets.ViewSet):
         CartItem.objects.filter(cart=cart, course_id=course_id).delete()
         return Response({'message': 'Item removed from cart'}, status=200)
 
+class QuizAttemptView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, lesson_id):
+        try:
+            lesson = Lesson.objects.get(id=lesson_id)
+            if not hasattr(lesson, 'quiz_data'):
+                return Response({'error': 'Quiz not found for this lesson'}, status=404)
+            
+            quiz = lesson.quiz_data
+            
+            # Check enrollment
+            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and not request.user.is_staff:
+                return Response({'error': 'You must be enrolled to take this quiz'}, status=403)
+            
+            user_answers = request.data.get('answers', {}) # {question_id: alternative_id}
+            
+            questions = quiz.questions.all()
+            total_questions = questions.count()
+            if total_questions == 0:
+                return Response({'error': 'Quiz has no questions'}, status=400)
+                
+            correct_count = 0
+            for question in questions:
+                selected_alt_id = user_answers.get(str(question.id))
+                if selected_alt_id:
+                    correct_alt = question.alternatives.filter(is_correct=True).first()
+                    if correct_alt and str(correct_alt.id) == str(selected_alt_id):
+                        correct_count += 1
+            
+            score = (correct_count / total_questions) * 100
+            
+            attempt = UserQuizAttempt.objects.create(
+                user=request.user,
+                quiz=quiz,
+                score=score
+            )
+            
+            return Response({
+                'score': score,
+                'pass_score': quiz.pass_score,
+                'is_passed': score >= quiz.pass_score,
+                'correct_answers': correct_count,
+                'total_questions': total_questions
+            })
+            
+        except Lesson.DoesNotExist:
+            return Response({'error': 'Lesson not found'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
 from rest_framework.parsers import MultiPartParser, FormParser
 import json
 
@@ -651,3 +759,31 @@ class ProfileView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
+
+class CompleteLessonView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, lesson_id):
+        try:
+            lesson = Lesson.objects.get(id=lesson_id)
+            
+            # Check enrollment
+            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and not request.user.is_staff:
+                return Response({'error': 'You must be enrolled to complete this lesson'}, status=403)
+            
+            progress, created = UserLessonProgress.objects.get_or_create(
+                user=request.user,
+                lesson=lesson,
+                defaults={'is_completed': True}
+            )
+            
+            if not created:
+                progress.is_completed = True
+                progress.save()
+            
+            return Response({'status': 'success', 'is_completed': True})
+            
+        except Lesson.DoesNotExist:
+            return Response({'error': 'Lesson not found'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)

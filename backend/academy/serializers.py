@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section, UserProfile
+from .models import Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section, UserProfile, Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress
 from django.contrib.auth.models import User
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -78,10 +78,50 @@ class InstructorSerializer(serializers.ModelSerializer):
         model = Instructor
         fields = '__all__'
 
+class AlternativeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Alternative
+        fields = ['id', 'text', 'is_correct', 'order']
+
+class QuestionSerializer(serializers.ModelSerializer):
+    alternatives = AlternativeSerializer(many=True)
+
+    class Meta:
+        model = Question
+        fields = ['id', 'text', 'order', 'alternatives']
+
+class QuizSerializer(serializers.ModelSerializer):
+    questions = QuestionSerializer(many=True)
+
+    class Meta:
+        model = Quiz
+        fields = ['id', 'pass_score', 'time_limit', 'questions']
+
 class LessonSerializer(serializers.ModelSerializer):
+    quiz_data = QuizSerializer(required=False)
+    is_completed = serializers.SerializerMethodField()
+
+    def get_is_completed(self, obj):
+        user = self.context.get('request').user if self.context.get('request') else None
+        if user and user.is_authenticated:
+            return UserLessonProgress.objects.filter(user=user, lesson=obj, is_completed=True).exists()
+        return False
+
     class Meta:
         model = Lesson
-        fields = ['id', 'course', 'section', 'title', 'type', 'content', 'video_url', 'image', 'duration', 'order']
+        fields = ['id', 'course', 'section', 'title', 'type', 'content', 'video_url', 'image', 'duration', 'order', 'quiz_data', 'is_completed']
+
+    def to_internal_value(self, data):
+        # Support for JSON string if sent via FormData
+        if 'quiz_data' in data and isinstance(data['quiz_data'], str):
+            import json
+            try:
+                mutable_data = data.dict() if hasattr(data, 'dict') else data.copy()
+                mutable_data['quiz_data'] = json.loads(data['quiz_data'])
+                return super().to_internal_value(mutable_data)
+            except (ValueError, TypeError, json.JSONDecodeError):
+                pass
+        return super().to_internal_value(data)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -101,10 +141,56 @@ class LessonSerializer(serializers.ModelSerializer):
             data['content'] = "Konten ini hanya tersedia untuk peserta yang sudah terdaftar."
             data['video_url'] = None
             data['is_locked'] = True
+            # Hide quiz data if not enrolled
+            if 'quiz_data' in data:
+                data['quiz_data'] = None
         else:
             data['is_locked'] = False
             
         return data
+
+    def create(self, validated_data):
+        quiz_data = validated_data.pop('quiz_data', None)
+        lesson = Lesson.objects.create(**validated_data)
+        
+        if quiz_data and lesson.type in ['quiz', 'mid_test', 'final_test', 'exam']:
+            questions_data = quiz_data.pop('questions', [])
+            quiz = Quiz.objects.create(lesson=lesson, **quiz_data)
+            for question_data in questions_data:
+                alternatives_data = question_data.pop('alternatives', [])
+                question = Question.objects.create(quiz=quiz, **question_data)
+                for alternative_data in alternatives_data:
+                    Alternative.objects.create(question=question, **alternative_data)
+        
+        return lesson
+
+    def update(self, instance, validated_data):
+        quiz_data = validated_data.pop('quiz_data', None)
+        
+        # Update lesson fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        if quiz_data and instance.type in ['quiz', 'mid_test', 'final_test', 'exam']:
+            questions_data = quiz_data.pop('questions', [])
+            
+            # Update or create Quiz
+            quiz, _ = Quiz.objects.get_or_create(lesson=instance)
+            quiz.pass_score = quiz_data.get('pass_score', quiz.pass_score)
+            quiz.time_limit = quiz_data.get('time_limit', quiz.time_limit)
+            quiz.save()
+            
+            # Simple approach for questions/alternatives: replace all (easier for prototype)
+            # A more robust approach would match by ID
+            quiz.questions.all().delete()
+            for question_data in questions_data:
+                alternatives_data = question_data.pop('alternatives', [])
+                question = Question.objects.create(quiz=quiz, **question_data)
+                for alternative_data in alternatives_data:
+                    Alternative.objects.create(question=question, **alternative_data)
+                    
+        return instance
 
 class SectionSerializer(serializers.ModelSerializer):
     lessons = LessonSerializer(many=True, read_only=True)
@@ -151,10 +237,28 @@ class OrderSerializer(serializers.ModelSerializer):
 
 class MyCourseSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
+    progress_percentage = serializers.SerializerMethodField()
+
+    def get_progress_percentage(self, obj):
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user or not user.is_authenticated:
+            return 0
+        
+        total_lessons = Lesson.objects.filter(course=obj.course).count()
+        if total_lessons == 0:
+            return 0
+            
+        completed_lessons = UserLessonProgress.objects.filter(
+            user=user, 
+            lesson__course=obj.course, 
+            is_completed=True
+        ).count()
+        
+        return round((completed_lessons / total_lessons) * 100)
     
     class Meta:
         model = Order
-        fields = ['id', 'course', 'status', 'created_at']
+        fields = ['id', 'course', 'status', 'created_at', 'progress_percentage']
 
 class CartItemSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
