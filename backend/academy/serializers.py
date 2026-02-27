@@ -1,5 +1,10 @@
 from rest_framework import serializers
-from .models import Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section, UserProfile, Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress
+from .models import (
+    Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section, UserProfile, 
+    Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress,
+    CertificationExam, CertificationQuestion, CertificationAlternative, 
+    CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate
+)
 from django.contrib.auth.models import User
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -210,6 +215,13 @@ class CourseSerializer(serializers.ModelSerializer):
     )
     sections = SectionSerializer(many=True, read_only=True)
     is_enrolled = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
+    last_accessed_lesson_id = serializers.SerializerMethodField()
+    certification_exams = serializers.SerializerMethodField()
+
+    def get_certification_exams(self, obj):
+        exams = obj.certification_exams.filter(is_active=True)
+        return CertificationExamSerializer(exams, many=True).data
     
     def get_is_enrolled(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
@@ -219,13 +231,45 @@ class CourseSerializer(serializers.ModelSerializer):
             return True
         return Order.objects.filter(user=user, course=obj, status='Completed').exists()
     
+    
+    def get_last_accessed_lesson_id(self, obj):
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user or not user.is_authenticated:
+            return None
+        
+        last_progress = UserLessonProgress.objects.filter(
+            user=user, 
+            lesson__course=obj
+        ).order_by('-updated_at').first()
+        
+        if last_progress:
+            return last_progress.lesson.id
+        return None
+
+    def get_progress_percentage(self, obj):
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user or not user.is_authenticated:
+            return 0
+        
+        total_lessons = Lesson.objects.filter(course=obj).count()
+        if total_lessons == 0:
+            return 0
+            
+        completed_lessons = UserLessonProgress.objects.filter(
+            user=user, 
+            lesson__course=obj, 
+            is_completed=True
+        ).count()
+        
+        return round((completed_lessons / total_lessons) * 100)
+
     class Meta:
         model = Course
         fields = [
             'id', 'title', 'slug', 'type', 'description', 'price', 'discount_price', 
             'instructor', 'instructor_id', 'category', 'category_id', 'level', 
-            'duration', 'scheduled_at', 'location', 'thumbnail', 'is_featured', 
-            'created_at', 'rating', 'enrolled_count', 'sections', 'is_enrolled'
+            'duration', 'scheduled_at', 'location', 'zoom_link', 'thumbnail', 'is_featured', 'has_certification_exam', 
+            'created_at', 'rating', 'enrolled_count', 'sections', 'is_enrolled', 'progress_percentage', 'last_accessed_lesson_id', 'certification_exams'
         ]
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -238,7 +282,22 @@ class OrderSerializer(serializers.ModelSerializer):
 class MyCourseSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
     progress_percentage = serializers.SerializerMethodField()
-
+    last_accessed_lesson_id = serializers.SerializerMethodField()
+    
+    def get_last_accessed_lesson_id(self, obj):
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user or not user.is_authenticated:
+            return None
+        
+        last_progress = UserLessonProgress.objects.filter(
+            user=user, 
+            lesson__course=obj.course
+        ).order_by('-updated_at').first()
+        
+        if last_progress:
+            return last_progress.lesson.id
+        return None
+    
     def get_progress_percentage(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
         if not user or not user.is_authenticated:
@@ -258,7 +317,7 @@ class MyCourseSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Order
-        fields = ['id', 'course', 'status', 'created_at', 'progress_percentage']
+        fields = ['id', 'course', 'status', 'created_at', 'progress_percentage', 'last_accessed_lesson_id']
 
 class CartItemSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
@@ -320,3 +379,51 @@ class ProfileSerializer(serializers.ModelSerializer):
             instr.save()
             
         return instance
+
+class CertificationAlternativeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CertificationAlternative
+        fields = ['id', 'text', 'is_correct']
+
+class CertificationQuestionSerializer(serializers.ModelSerializer):
+    alternatives = CertificationAlternativeSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = CertificationQuestion
+        fields = ['id', 'exam', 'question_type', 'text', 'order', 'points', 'alternatives']
+
+class CertificationInstructorSlotSerializer(serializers.ModelSerializer):
+    instructor_name = serializers.ReadOnlyField(source='instructor.name')
+    exam_title = serializers.ReadOnlyField(source='exam.title')
+    
+    class Meta:
+        model = CertificationInstructorSlot
+        fields = ['id', 'instructor', 'instructor_name', 'exam', 'exam_title', 'date', 'start_time', 'end_time', 'zoom_link', 'is_booked']
+
+class CertificationExamSerializer(serializers.ModelSerializer):
+    questions = CertificationQuestionSerializer(many=True, read_only=True)
+    slots = CertificationInstructorSlotSerializer(many=True, read_only=True)
+    course_title = serializers.ReadOnlyField(source='course.title')
+
+    class Meta:
+        model = CertificationExam
+        fields = ['id', 'course', 'course_title', 'title', 'description', 'is_active', 'instructor_confirmed', 'questions', 'slots']
+
+class CertificationAnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CertificationAnswer
+        fields = ['id', 'question', 'selected_alternative', 'essay_answer', 'score']
+
+class CertificationAttemptSerializer(serializers.ModelSerializer):
+    answers = CertificationAnswerSerializer(many=True, read_only=True)
+    exam_title = serializers.ReadOnlyField(source='exam.title')
+    user_name = serializers.ReadOnlyField(source='user.username')
+
+    class Meta:
+        model = CertificationAttempt
+        fields = ['id', 'user', 'user_name', 'exam', 'exam_title', 'status', 'score', 'interview_slot', 'started_at', 'submitted_at', 'answers']
+
+class CertificateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Certificate
+        fields = ['id', 'user', 'course', 'exam', 'issue_date', 'certificate_url']

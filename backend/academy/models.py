@@ -58,8 +58,10 @@ class Course(models.Model):
     duration = models.CharField(max_length=50, help_text="e.g. 2 Days, 10 Hours")
     scheduled_at = models.DateTimeField(blank=True, null=True, help_text="Specific time for Webinar/Workshop")
     location = models.CharField(max_length=255, blank=True, null=True, help_text="Location for Offline Workshop")
+    zoom_link = models.URLField(max_length=500, blank=True, null=True, help_text="Zoom Link for Webinar")
     thumbnail = models.ImageField(upload_to='courses/', blank=True, null=True)
     is_featured = models.BooleanField(default=False)
+    has_certification_exam = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     rating = models.DecimalField(max_digits=3, decimal_places=1, default=0.0)
     enrolled_count = models.IntegerField(default=0)
@@ -198,3 +200,88 @@ class UserLessonProgress(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.lesson.title} - {self.is_completed}"
+
+class CertificationExam(models.Model):
+    course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='certification_exams')
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    is_active = models.BooleanField(default=False)
+    instructor_confirmed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.course.title}"
+
+class CertificationQuestion(models.Model):
+    QUESTION_TYPES = [
+        ('MC', 'Multiple Choice'),
+        ('Essay', 'Essay'),
+        ('Interview', 'Interview'),
+    ]
+    exam = models.ForeignKey(CertificationExam, on_delete=models.CASCADE, related_name='questions')
+    question_type = models.CharField(max_length=20, choices=QUESTION_TYPES)
+    text = models.TextField()
+    order = models.PositiveIntegerField(default=0)
+    points = models.IntegerField(default=10)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"[{self.question_type}] {self.text[:50]}"
+
+class CertificationAlternative(models.Model):
+    question = models.ForeignKey(CertificationQuestion, on_delete=models.CASCADE, related_name='alternatives')
+    text = models.TextField()
+    is_correct = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.text[:50]
+
+class CertificationInstructorSlot(models.Model):
+    exam = models.ForeignKey(CertificationExam, on_delete=models.CASCADE, related_name='slots')
+    instructor = models.ForeignKey('Instructor', on_delete=models.CASCADE, related_name='exam_slots')
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    zoom_link = models.URLField(max_length=500, blank=True, null=True, help_text="Zoom/Meeting Link for interview")
+    is_booked = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.instructor.name} - {self.date} ({self.start_time})"
+
+class CertificationAttempt(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('SUBMITTED', 'Submitted'),
+        ('GRADED', 'Graded'),
+    ]
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='certification_attempts')
+    exam = models.ForeignKey(CertificationExam, on_delete=models.CASCADE, related_name='attempts')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    score = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    interview_slot = models.ForeignKey(CertificationInstructorSlot, null=True, blank=True, on_delete=models.SET_NULL)
+    started_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.exam.title} ({self.status})"
+
+class CertificationAnswer(models.Model):
+    attempt = models.ForeignKey(CertificationAttempt, on_delete=models.CASCADE, related_name='answers')
+    question = models.ForeignKey(CertificationQuestion, on_delete=models.CASCADE)
+    selected_alternative = models.ForeignKey(CertificationAlternative, null=True, blank=True, on_delete=models.SET_NULL)
+    essay_answer = models.TextField(null=True, blank=True)
+    score = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+
+class Certificate(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='certificates')
+    course = models.ForeignKey('Course', on_delete=models.CASCADE)
+    exam = models.ForeignKey(CertificationExam, on_delete=models.CASCADE)
+    issue_date = models.DateTimeField(auto_now_add=True)
+    certificate_url = models.URLField(max_length=500, null=True, blank=True)
+
+    def __str__(self):
+        return f"Certificate: {self.user.username} - {self.course.title}"
