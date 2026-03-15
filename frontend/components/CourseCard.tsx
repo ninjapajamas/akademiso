@@ -7,24 +7,17 @@ import { Star, Clock, BarChart, BookOpen, ShoppingCart } from 'lucide-react';
 import { Course } from '@/types';
 import { useCart } from '../context/CartContext';
 import AddToCartModal from './AddToCartModal';
+import { formatRupiah } from '@/types/currency';
 
 interface CourseCardProps {
     course: Course;
 }
 
 export default function CourseCard({ course }: CourseCardProps) {
-    const formatPrice = (price: string) => {
-        return new Intl.NumberFormat('id-ID', {
-            style: 'currency',
-            currency: 'IDR',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(Number(price));
-    };
-
     const { refreshCart } = useCart();
     const [isAdding, setIsAdding] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const isFreeWebinar = course.type === 'webinar' && course.is_free;
 
     const addToCart = async (e: React.MouseEvent) => {
         e.preventDefault(); // Prevent navigation if wrapped in Link
@@ -83,6 +76,16 @@ export default function CourseCard({ course }: CourseCardProps) {
                             course.type === 'workshop' ? 'WORKSHOP' :
                                 'PELATIHAN'}
                     </div>
+                    {course.delivery_mode && (
+                        <div className="bg-black/65 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest text-white shadow-sm">
+                            {course.delivery_mode}
+                        </div>
+                    )}
+                    {isFreeWebinar && (
+                        <div className="bg-emerald-500/95 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest text-white shadow-sm">
+                            GRATIS
+                        </div>
+                    )}
                 </div>
 
                 {/* Thumbnail or Placeholder */}
@@ -130,7 +133,10 @@ export default function CourseCard({ course }: CourseCardProps) {
                     {course.scheduled_at && (
                         <div className="flex items-center gap-1 text-blue-600 font-medium">
                             <Clock className="w-3 h-3" />
-                            <span>{new Date(course.scheduled_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                            <span>
+                                {new Date(course.scheduled_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                {course.scheduled_end_at && ` - ${new Date(course.scheduled_end_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+                            </span>
                         </div>
                     )}
 
@@ -158,7 +164,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                 <div className="border-t border-gray-100 pt-3 flex justify-between items-end">
                     <div>
                         <p className="text-blue-600 font-bold text-lg">
-                            {formatPrice(course.price)}
+                            {isFreeWebinar ? 'Gratis' : formatRupiah(course.price)}
                         </p>
                     </div>
                     <button

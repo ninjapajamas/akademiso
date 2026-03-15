@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, BookOpen, GraduationCap, DollarSign, TrendingUp, ShoppingBag, Clock, CheckCircle, ArrowRight } from 'lucide-react';
+import { Users, BookOpen, GraduationCap, DollarSign, ShoppingBag, Clock, CheckCircle, ArrowRight, Award } from 'lucide-react';
 
 interface Stats {
     total_users: number;
@@ -62,6 +62,9 @@ export default function AdminDashboard() {
                     <div className="flex gap-3 mt-5 flex-wrap">
                         <Link href="/admin/courses/new" className="inline-flex items-center gap-2 bg-white text-blue-700 font-bold text-sm px-4 py-2 rounded-xl hover:bg-blue-50">
                             + Tambah Kursus
+                        </Link>
+                        <Link href="/admin/certificates" className="inline-flex items-center gap-2 bg-white/20 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-white/30 border border-white/30">
+                            Validasi Sertifikat <Award className="w-4 h-4" />
                         </Link>
                         <Link href="/admin/orders" className="inline-flex items-center gap-2 bg-white/20 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-white/30 border border-white/30">
                             Kelola Orders <ArrowRight className="w-4 h-4" />
@@ -160,6 +163,7 @@ export default function AdminDashboard() {
                     { href: '/admin/instructors', emoji: '👨‍🏫', label: 'Instruktur', desc: 'Kelola pengajar' },
                     { href: '/admin/users', emoji: '👥', label: 'Pengguna', desc: 'Kelola akun' },
                     { href: '/admin/orders', emoji: '🧾', label: 'Orders', desc: 'Kelola transaksi' },
+                    { href: '/admin/certificates', emoji: '🏆', label: 'Sertifikat', desc: 'Validasi & terbitkan' },
                 ].map(item => (
                     <Link key={item.href} href={item.href}
                         className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group"

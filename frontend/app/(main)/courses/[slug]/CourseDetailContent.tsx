@@ -5,6 +5,7 @@ import { Star, Clock, Check, PlayCircle, FileText, ChevronDown, Globe, MessageSq
 import { useState, useEffect } from 'react';
 import { useCart } from '@/context/CartContext';
 import AddToCartModal from '@/components/AddToCartModal';
+import StudentExamSection from '@/components/exam/StudentExamSection';
 
 // ── Static review data (representative sample) ──────────────────────────────
 const REVIEWS = [
@@ -203,6 +204,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
 
     if (loading) return <div className="min-h-screen flex items-center justify-center">Memuat kursus...</div>;
     if (!course) return <div className="min-h-screen flex items-center justify-center">Kursus tidak ditemukan</div>;
+    const isFreeWebinar = course.type === 'webinar' && course.is_free;
 
     // Helper to calculate total lessons in a section
     const getLessonCount = (section: any) => section.lessons ? section.lessons.length : 0;
@@ -243,18 +245,30 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                         {course.category.name.toUpperCase()}
                                     </span>
                                 )}
+                                {course.delivery_mode && (
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${course.delivery_mode === 'online' ? 'bg-sky-50 text-sky-700 border-sky-100' : 'bg-stone-100 text-stone-700 border-stone-200'}`}>
+                                        {course.delivery_mode === 'online' ? 'ONLINE' : 'OFFLINE'}
+                                    </span>
+                                )}
+                                {isFreeWebinar && (
+                                    <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-100">
+                                        GRATIS
+                                    </span>
+                                )}
                             </div>
                             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">{course.title}</h1>
                             {/* Description moved below video preview */}
 
-                            {(course.type === 'webinar' || course.type === 'workshop') && course.scheduled_at && (
+                            {course.scheduled_at && (
                                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex flex-col md:flex-row gap-4 md:items-center">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shadow-sm">
                                             <Clock className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] uppercase font-bold text-gray-400 leading-none mb-1">Jadwal Sesi</p>
+                                            <p className="text-[10px] uppercase font-bold text-gray-400 leading-none mb-1">
+                                                {course.type === 'course' ? 'Rentang Pelatihan' : 'Jadwal Sesi'}
+                                            </p>
                                             <p className="font-bold text-sm text-gray-900">
                                                 {new Date(course.scheduled_at).toLocaleString('id-ID', {
                                                     day: 'numeric',
@@ -262,17 +276,24 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                     year: 'numeric',
                                                     hour: '2-digit',
                                                     minute: '2-digit'
-                                                })} WIB
+                                                })}
+                                                {course.scheduled_end_at && ` - ${new Date(course.scheduled_end_at).toLocaleString('id-ID', {
+                                                    day: 'numeric',
+                                                    month: 'long',
+                                                    year: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}`} WIB
                                             </p>
                                         </div>
                                     </div>
-                                    {course.type === 'workshop' && course.location && (
+                                    {course.location && (
                                         <div className="flex items-center gap-3 md:border-l md:border-blue-200 md:pl-4">
                                             <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shadow-sm">
                                                 <Globe className="w-5 h-5" />
                                             </div>
                                             <div>
-                                                <p className="text-[10px] uppercase font-bold text-gray-400 leading-none mb-1">Lokasi Dasar</p>
+                                                <p className="text-[10px] uppercase font-bold text-gray-400 leading-none mb-1">Lokasi Pelaksanaan</p>
                                                 <p className="font-bold text-sm text-gray-900">{course.location}</p>
                                             </div>
                                         </div>
@@ -368,6 +389,9 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                             </div>
                         </div>
 
+                        {/* Certification Exam Section */}
+                        <StudentExamSection course={course} />
+
                         {/* Instructor */}
                         {course.instructor && (
                             <div>
@@ -402,7 +426,11 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                             <div className="absolute top-0 left-0 w-full h-2 bg-blue-600"></div>
 
                             <div className="flex flex-col gap-1 mb-6">
-                                {course.discount_price ? (
+                                {isFreeWebinar ? (
+                                    <div className="text-3xl font-extrabold text-emerald-600">
+                                        Gratis
+                                    </div>
+                                ) : course.discount_price ? (
                                     <>
                                         <div className="flex items-baseline gap-2">
                                             <span className="text-3xl font-extrabold text-gray-900">
@@ -415,12 +443,12 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                         <div className="text-gray-400 line-through text-sm font-medium">
                                             Rp {parseInt(course.price).toLocaleString('id-ID')}
                                         </div>
-                                    </>
-                                ) : (
-                                    <div className="text-3xl font-extrabold text-gray-900">
-                                        Rp {parseInt(course.price).toLocaleString('id-ID')}
-                                    </div>
-                                )}
+                                        </>
+                                    ) : (
+                                        <div className="text-3xl font-extrabold text-gray-900">
+                                            Rp {parseInt(course.price).toLocaleString('id-ID')}
+                                        </div>
+                                    )}
                             </div>
 
                             <div className="space-y-3 mb-6">
@@ -431,7 +459,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                 ) : (
                                     <>
                                         <Link href={`/checkout?slug=${course.slug}`} className="block w-full text-center bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
-                                            Daftar Sekarang
+                                            {isFreeWebinar ? 'Daftar Gratis' : 'Daftar Sekarang'}
                                         </Link>
                                         <button
                                             onClick={addToCart}

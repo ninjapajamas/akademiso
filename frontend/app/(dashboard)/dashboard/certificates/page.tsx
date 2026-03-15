@@ -1,166 +1,201 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Award, Download, Search, Shield, CheckCircle2 } from 'lucide-react';
-
-const MOCK_CERTS = [
-    {
-        id: 'CERT-ISO-9001-2024',
-        title: 'ISO 9001:2015 Quality Management Systems',
-        subtitle: 'Lead Implementer',
-        issued: '2024-10-12',
-        expiry: '2027-10-12',
-        issuer: 'Akademiso — Terakreditasi KAN',
-        color: 'from-blue-600 to-blue-800',
-    },
-    {
-        id: 'CERT-ISO-14001-2024',
-        title: 'ISO 14001:2015 Environmental Management',
-        subtitle: 'Internal Auditor',
-        issued: '2024-01-18',
-        expiry: '2027-01-18',
-        issuer: 'Akademiso — Terakreditasi KAN',
-        color: 'from-green-600 to-green-800',
-    },
-    {
-        id: 'CERT-ISO-19011-2023',
-        title: 'ISO 19011:2018 Auditing Management Systems',
-        subtitle: 'Awareness',
-        issued: '2023-09-05',
-        expiry: '2026-09-05',
-        issuer: 'Akademiso — Terakreditasi KAN',
-        color: 'from-purple-600 to-purple-800',
-    },
-];
+import { useEffect, useMemo, useState } from 'react';
+import { Award, CheckCircle2, Clock3, Download, ExternalLink, Search } from 'lucide-react';
+import { Certificate } from '@/types';
 
 function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function isExpiringSoon(expiry: string) {
-    const diff = new Date(expiry).getTime() - Date.now();
-    return diff > 0 && diff < 180 * 24 * 60 * 60 * 1000; // < 6 months
+function getGradient(index: number) {
+    const gradients = [
+        'from-blue-600 to-blue-800',
+        'from-emerald-600 to-emerald-800',
+        'from-indigo-600 to-indigo-800',
+        'from-amber-500 to-orange-700',
+    ];
+    return gradients[index % gradients.length];
+}
+
+function getStatusMeta(certificate: Certificate) {
+    if (certificate.approval_status === 'APPROVED') {
+        return {
+            label: 'Siap Dicetak',
+            badgeClass: 'bg-emerald-100 text-emerald-700',
+            helper: certificate.approved_at
+                ? `Disetujui admin pada ${formatDate(certificate.approved_at)}`
+                : 'Sertifikat sudah divalidasi admin.',
+        };
+    }
+
+    if (certificate.approval_status === 'REJECTED') {
+        return {
+            label: 'Perlu Tinjauan Ulang',
+            badgeClass: 'bg-rose-100 text-rose-700',
+            helper: 'Sertifikat ini masih perlu ditinjau ulang oleh admin.',
+        };
+    }
+
+    return {
+        label: 'Menunggu Validasi',
+        badgeClass: 'bg-amber-100 text-amber-700',
+        helper: 'Sertifikat Anda sudah lulus ujian dan sedang menunggu validasi admin.',
+    };
 }
 
 export default function CertificatesPage() {
     const [search, setSearch] = useState('');
-    const [fromApi, setFromApi] = useState<any[]>([]);
+    const [certificates, setCertificates] = useState<Certificate[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchOrders = async () => {
+        const fetchCertificates = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                if (!token) { setLoading(false); return; }
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-                const res = await fetch(`${apiUrl}/api/my-courses/`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    // Only completed orders are certifiable
-                    setFromApi(data.filter((e: any) => e.status === 'Completed'));
+                if (!token) {
+                    setLoading(false);
+                    return;
                 }
-            } catch (e) {
-                console.error(e);
+
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${apiUrl}/api/certificates/`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                if (res.ok) {
+                    setCertificates(await res.json());
+                }
+            } catch (error) {
+                console.error('Failed to fetch certificates:', error);
             } finally {
                 setLoading(false);
             }
         };
-        fetchOrders();
+
+        fetchCertificates();
     }, []);
 
-    const combined = [
-        ...MOCK_CERTS.filter(c =>
-            c.title.toLowerCase().includes(search.toLowerCase()) ||
-            c.subtitle.toLowerCase().includes(search.toLowerCase())
-        ),
-    ];
+    const filteredCertificates = useMemo(() => (
+        certificates.filter(cert =>
+            (cert.course_title || '').toLowerCase().includes(search.toLowerCase()) ||
+            (cert.exam_title || '').toLowerCase().includes(search.toLowerCase()) ||
+            (cert.certificate_number || '').toLowerCase().includes(search.toLowerCase())
+        )
+    ), [certificates, search]);
 
-    const handleDownload = (cert: typeof MOCK_CERTS[0]) => {
-        alert(`Mengunduh sertifikat: ${cert.title}\n\nFitur download PDF akan segera tersedia.`);
+    const handleDownload = (certificate: Certificate) => {
+        if (!certificate.certificate_url) return;
+        window.open(certificate.certificate_url, '_blank', 'noopener,noreferrer');
     };
 
     return (
-        <div className="max-w-5xl mx-auto space-y-6">
+        <div className="max-w-6xl mx-auto space-y-6">
             <div>
                 <h1 className="text-2xl font-bold text-gray-900">Sertifikat Saya</h1>
-                <p className="text-gray-500 mt-1">Koleksi sertifikat pelatihan dan ujian yang telah Anda selesaikan.</p>
+                <p className="text-gray-500 mt-1">Pantau status validasi admin dan unduh sertifikat resmi yang sudah disetujui.</p>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-3 gap-4">
                 {[
-                    { label: 'Total Sertifikat', value: MOCK_CERTS.length, icon: Award, color: 'bg-blue-50 text-blue-600' },
-                    { label: 'Masih Berlaku', value: MOCK_CERTS.filter(c => new Date(c.expiry) > new Date()).length, icon: CheckCircle2, color: 'bg-green-50 text-green-600' },
-                    { label: 'Segera Expired', value: MOCK_CERTS.filter(c => isExpiringSoon(c.expiry)).length, icon: Shield, color: 'bg-orange-50 text-orange-600' },
-                ].map((s, i) => (
-                    <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${s.color}`}>
-                            <s.icon className="w-5 h-5" />
+                    { label: 'Total Sertifikat', value: loading ? '...' : certificates.length, icon: Award, color: 'bg-blue-50 text-blue-600' },
+                    { label: 'Siap Diunduh', value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'APPROVED' && !!cert.certificate_url).length, icon: CheckCircle2, color: 'bg-green-50 text-green-600' },
+                    { label: 'Menunggu Validasi', value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'PENDING').length, icon: Clock3, color: 'bg-amber-50 text-amber-600' },
+                ].map((stat, index) => (
+                    <div key={index} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${stat.color}`}>
+                            <stat.icon className="w-5 h-5" />
                         </div>
                         <div>
-                            <p className="text-xl font-extrabold text-gray-900">{s.value}</p>
-                            <p className="text-xs text-gray-500">{s.label}</p>
+                            <p className="text-xl font-extrabold text-gray-900">{stat.value}</p>
+                            <p className="text-xs text-gray-500">{stat.label}</p>
                         </div>
                     </div>
                 ))}
             </div>
 
-            {/* Search */}
             <div className="relative">
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                 <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Cari sertifikat..."
+                    placeholder="Cari sertifikat, ujian, atau nomor sertifikat..."
                     className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
                 />
             </div>
 
-            {/* Certificate Cards */}
             <div className="grid md:grid-cols-2 gap-5">
-                {combined.map(cert => (
-                    <div key={cert.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow group">
-                        {/* Header gradient */}
-                        <div className={`bg-gradient-to-r ${cert.color} p-5 relative overflow-hidden`}>
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-                            <div className="relative z-10">
-                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                                    <Award className="w-5 h-5 text-white" />
+                {loading ? (
+                    [1, 2].map(item => (
+                        <div key={item} className="h-72 animate-pulse rounded-2xl border border-gray-100 bg-white" />
+                    ))
+                ) : filteredCertificates.map((certificate, index) => {
+                    const statusMeta = getStatusMeta(certificate);
+
+                    return (
+                        <div key={certificate.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow group">
+                            <div className={`bg-gradient-to-r ${getGradient(index)} p-5 relative overflow-hidden`}>
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+                                <div className="relative z-10">
+                                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                                        <Award className="w-5 h-5 text-white" />
+                                    </div>
+                                    <h3 className="text-white font-bold text-sm leading-snug">
+                                        {certificate.course_title || 'Sertifikat Akademiso'}
+                                    </h3>
+                                    <span className="text-white/70 text-[11px] font-medium">
+                                        {certificate.exam_title || 'Pelatihan Bersertifikat'}
+                                    </span>
                                 </div>
-                                <h3 className="text-white font-bold text-sm leading-snug">{cert.title}</h3>
-                                <span className="text-white/70 text-[11px] font-medium">{cert.subtitle}</span>
+                            </div>
+
+                            <div className="p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div className="text-xs text-gray-500">
+                                        Diterbitkan: <strong className="text-gray-700">{formatDate(certificate.issue_date)}</strong>
+                                    </div>
+                                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${statusMeta.badgeClass}`}>
+                                        {statusMeta.label}
+                                    </span>
+                                </div>
+                                <div className="text-[11px] text-gray-400 mb-2">
+                                    Nomor Sertifikat: {certificate.certificate_number || `CERT-${certificate.id}`}
+                                </div>
+                                <p className="mb-4 text-xs text-gray-500">
+                                    {statusMeta.helper}
+                                </p>
+
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => handleDownload(certificate)}
+                                        disabled={!certificate.certificate_url}
+                                        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                    >
+                                        <Download className="w-3.5 h-3.5" />
+                                        Unduh PDF
+                                    </button>
+                                    {certificate.certificate_url && (
+                                        <a
+                                            href={certificate.certificate_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 py-2 rounded-lg transition-colors"
+                                        >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            Buka
+                                        </a>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                        {/* Body */}
-                        <div className="p-4">
-                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                <span>Diterbitkan: <strong className="text-gray-700">{formatDate(cert.issued)}</strong></span>
-                            </div>
-                            <div className={`flex justify-between text-xs mb-3 ${isExpiringSoon(cert.expiry) ? 'text-orange-600 font-semibold' : 'text-gray-500'}`}>
-                                <span>Berlaku sampai: <strong>{formatDate(cert.expiry)}</strong></span>
-                                {isExpiringSoon(cert.expiry) && <span>⚠ Segera perpanjang</span>}
-                            </div>
-                            <div className="text-[10px] text-gray-400 mb-4">{cert.issuer} &bull; ID: {cert.id}</div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => handleDownload(cert)}
-                                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-colors"
-                                >
-                                    <Download className="w-3.5 h-3.5" /> Unduh PDF
-                                </button>
-                                <button className="flex-1 text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 py-2 rounded-lg transition-colors">
-                                    Bagikan
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-                {combined.length === 0 && (
+                    );
+                })}
+
+                {!loading && filteredCertificates.length === 0 && (
                     <div className="col-span-2 text-center py-20 bg-white rounded-2xl border border-dashed border-gray-200">
                         <Award className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                        <p className="text-gray-500 font-medium">Sertifikat tidak ditemukan</p>
+                        <p className="text-gray-500 font-medium">Belum ada sertifikat yang tersedia</p>
+                        <p className="text-sm text-gray-400 mt-1">Sertifikat akan muncul setelah ujian sertifikasi Anda dinyatakan lulus dan divalidasi admin.</p>
                     </div>
                 )}
             </div>

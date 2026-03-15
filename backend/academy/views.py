@@ -1,15 +1,31 @@
+import json
+
 from rest_framework import viewsets, generics, serializers
 from rest_framework.decorators import action
-from .models import Category, Instructor, Course, Order, Lesson, Section, UserProfile, Quiz, Question, Alternative, UserQuizAttempt
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from .models import (
+    Category, Instructor, Course, Order, Lesson, Section, UserProfile, 
+    Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress,
+    CertificationExam, CertificationQuestion, CertificationAlternative, 
+    CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance
+)
 from .serializers import (
     CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, 
-    RegisterSerializer, LessonSerializer, SectionSerializer, ProfileSerializer
+    RegisterSerializer, LessonSerializer, SectionSerializer, ProfileSerializer,
+    CertificationExamSerializer, CertificationQuestionSerializer, CertificationAlternativeSerializer,
+    CertificationInstructorSlotSerializer, CertificationAttemptSerializer, CertificationAnswerSerializer,
+    CertificateSerializer, CertificateTemplateSerializer, WebinarAttendanceSerializer
 )
+from .certificates import generate_certificate_pdf
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, BasePermission, SAFE_METHODS
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth.models import User
+from datetime import datetime
+from django.db import transaction
 from django.db.models import Sum, Count
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 import midtransclient
 from django.conf import settings
@@ -24,7 +40,11 @@ class IsInstructorOrAdmin(BasePermission):
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
             return True
-        return request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)
+        return request.user.is_authenticated and (
+            request.user.is_staff or 
+            request.user.is_superuser or 
+            hasattr(request.user, 'instructor_profile')
+        )
 
     def has_object_permission(self, request, view, obj):
         # Admin can do anything
@@ -47,6 +67,10 @@ class IsInstructorOrAdmin(BasePermission):
             return obj.course.instructor == instructor
         if isinstance(obj, Lesson):
             return obj.course.instructor == instructor
+        if isinstance(obj, CertificationExam):
+            return obj.course.instructor == instructor
+        if isinstance(obj, CertificationQuestion):
+            return obj.exam.course.instructor == instructor
             
         return False
 
@@ -56,6 +80,117 @@ class IsAdmin(BasePermission):
     """
     def has_permission(self, request, view):
         return bool(request.user and (request.user.is_staff or request.user.is_superuser))
+
+
+def _can_manage_course(user, course):
+    if not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    instructor = _get_instructor_for_user(user)
+    return bool(instructor and course.instructor_id == instructor.id)
+
+
+def _get_completed_order(course, user):
+    return Order.objects.filter(user=user, course=course, status='Completed').order_by('-created_at').first()
+
+
+def _get_default_webinar_attendance_payload(user):
+    profile = getattr(user, 'profile', None)
+    full_name = f"{user.first_name} {user.last_name}".strip() or user.username
+
+    return {
+        'attendee_name': full_name,
+        'attendee_email': user.email or '',
+        'attendee_phone': getattr(profile, 'phone', '') or '',
+        'attendee_company': getattr(profile, 'company', '') or '',
+        'attendee_position': getattr(profile, 'position', '') or '',
+        'notes': '',
+    }
+
+
+def _ensure_webinar_certificate_pending(user, course):
+    certificate, created = Certificate.objects.get_or_create(
+        user=user,
+        course=course,
+        exam=None,
+        defaults={
+            'certificate_url': '',
+            'approval_status': Certificate.APPROVAL_PENDING,
+            'approved_by': None,
+            'approved_at': None,
+        }
+    )
+
+    if certificate.approval_status != Certificate.APPROVAL_APPROVED:
+        certificate.approval_status = Certificate.APPROVAL_PENDING
+        certificate.approved_by = None
+        certificate.approved_at = None
+        certificate.certificate_url = ''
+        certificate.save(update_fields=['approval_status', 'approved_by', 'approved_at', 'certificate_url'])
+
+    return certificate, created
+
+
+def _mark_webinar_attendance(course, user, marked_by, notes='', attendance_data=None):
+    order = _get_completed_order(course, user)
+    if not order:
+        raise serializers.ValidationError({'error': 'Peserta belum terdaftar sebagai peserta webinar.'})
+
+    attendance_data = attendance_data or {}
+    default_payload = _get_default_webinar_attendance_payload(user)
+    attendee_name = attendance_data.get('attendee_name') or default_payload['attendee_name']
+    attendee_email = attendance_data.get('attendee_email') or default_payload['attendee_email']
+    attendee_phone = attendance_data.get('attendee_phone') or default_payload['attendee_phone']
+    attendee_company = attendance_data.get('attendee_company') or default_payload['attendee_company']
+    attendee_position = attendance_data.get('attendee_position') or default_payload['attendee_position']
+    notes_value = attendance_data.get('notes') if 'notes' in attendance_data else notes
+
+    attendance, created = WebinarAttendance.objects.get_or_create(
+        user=user,
+        course=course,
+        defaults={
+            'order': order,
+            'attendee_name': attendee_name,
+            'attendee_email': attendee_email,
+            'attendee_phone': attendee_phone,
+            'attendee_company': attendee_company,
+            'attendee_position': attendee_position,
+            'is_present': True,
+            'attended_at': timezone.now(),
+            'marked_by': marked_by if marked_by != user else None,
+            'notes': notes_value or None,
+        }
+    )
+
+    if not created:
+        attendance.order = order
+        attendance.attendee_name = attendee_name
+        attendance.attendee_email = attendee_email
+        attendance.attendee_phone = attendee_phone
+        attendance.attendee_company = attendee_company
+        attendance.attendee_position = attendee_position
+        attendance.is_present = True
+        if not attendance.attended_at:
+            attendance.attended_at = timezone.now()
+        attendance.marked_by = marked_by if marked_by != user else attendance.marked_by
+        attendance.notes = notes_value or None
+        attendance.save(update_fields=[
+            'order', 'attendee_name', 'attendee_email', 'attendee_phone', 'attendee_company',
+            'attendee_position', 'is_present', 'attended_at', 'marked_by', 'notes', 'updated_at'
+        ])
+
+    _ensure_webinar_certificate_pending(user, course)
+    return attendance
+
+
+def _sync_course_activity(queryset=None):
+    now = timezone.now()
+    base_queryset = queryset if queryset is not None else Course.objects.all()
+    base_queryset.filter(type='course', scheduled_end_at__lt=now, is_active=True).update(is_active=False)
+    base_queryset.filter(type='course', scheduled_end_at__gte=now, is_active=False).update(is_active=True)
+    base_queryset.filter(type='course', scheduled_end_at__isnull=True, scheduled_at__lt=now, is_active=True).update(is_active=False)
+    base_queryset.filter(type='course', scheduled_end_at__isnull=True, scheduled_at__gte=now, is_active=False).update(is_active=True)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -155,16 +290,21 @@ class CourseViewSet(viewsets.ModelViewSet):
         return get_object_or_404(queryset, **filter_kwargs)
 
     def get_queryset(self):
+        _sync_course_activity()
         queryset = Course.objects.all()
+        user = self.request.user
+        is_management_user = user.is_authenticated and (
+            user.is_staff or user.is_superuser or hasattr(user, 'instructor_profile')
+        )
+
+        if not is_management_user:
+            return queryset.filter(is_active=True)
+
         # If not admin, filter by instructor's courses for non-GET methods
         # or if they are in the instructor portal context
-        if not self.request.user.is_staff and self.request.user.is_authenticated:
-            instructor = _get_instructor_for_user(self.request.user)
+        if not user.is_staff and user.is_authenticated:
+            instructor = _get_instructor_for_user(user)
             if instructor:
-                # If they are requesting specific course or management list
-                # actually for public GET we want all, but for edit/list in portal we want filtered.
-                # Common pattern: filter only if it's the instructor portal requesting.
-                # For now, let's allow all GET (public) and filter other actions.
                 if self.request.method not in SAFE_METHODS:
                     queryset = queryset.filter(instructor=instructor)
             else:
@@ -181,6 +321,101 @@ class CourseViewSet(viewsets.ModelViewSet):
                 return
         serializer.save()
 
+    @action(detail=True, methods=['get', 'post'], permission_classes=[IsAuthenticated], url_path='webinar-attendance')
+    def webinar_attendance(self, request, slug=None):
+        course = self.get_object()
+
+        if course.type != 'webinar':
+            return Response({'error': 'Presensi hanya tersedia untuk webinar.'}, status=400)
+
+        can_manage = _can_manage_course(request.user, course)
+
+        if request.method == 'GET':
+            if can_manage:
+                orders = Order.objects.filter(course=course, status='Completed').select_related('user').order_by('-created_at')
+                attendance_map = {
+                    attendance.user_id: attendance
+                    for attendance in WebinarAttendance.objects.filter(course=course).select_related('marked_by')
+                }
+
+                data = []
+                for order in orders:
+                    attendance = attendance_map.get(order.user_id)
+                    data.append({
+                        'order_id': order.id,
+                        'user_id': order.user_id,
+                        'user_name': f"{order.user.first_name} {order.user.last_name}".strip() or order.user.username,
+                        'email': order.user.email,
+                        'attendee_name': attendance.attendee_name if attendance and attendance.attendee_name else (f"{order.user.first_name} {order.user.last_name}".strip() or order.user.username),
+                        'attendee_email': attendance.attendee_email if attendance and attendance.attendee_email else (order.user.email or ''),
+                        'attendee_phone': attendance.attendee_phone if attendance else '',
+                        'attendee_company': attendance.attendee_company if attendance else '',
+                        'attendee_position': attendance.attendee_position if attendance else '',
+                        'is_present': bool(attendance and attendance.is_present),
+                        'attended_at': attendance.attended_at if attendance else None,
+                        'marked_by_name': (
+                            f"{attendance.marked_by.first_name} {attendance.marked_by.last_name}".strip() or attendance.marked_by.username
+                        ) if attendance and attendance.marked_by else None,
+                        'notes': attendance.notes if attendance else None,
+                        'certificate_status': (
+                            Certificate.objects.filter(user=order.user, course=course).values_list('approval_status', flat=True).first()
+                        ),
+                    })
+                return Response(data)
+
+            order = _get_completed_order(course, request.user)
+            if not order:
+                return Response({'error': 'Anda belum terdaftar pada webinar ini.'}, status=403)
+
+            attendance = WebinarAttendance.objects.filter(course=course, user=request.user).select_related('marked_by').first()
+            default_payload = _get_default_webinar_attendance_payload(request.user)
+            return Response({
+                'order_id': order.id,
+                'user_id': request.user.id,
+                'user_name': f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username,
+                'attendee_name': attendance.attendee_name if attendance and attendance.attendee_name else default_payload['attendee_name'],
+                'attendee_email': attendance.attendee_email if attendance and attendance.attendee_email else default_payload['attendee_email'],
+                'attendee_phone': attendance.attendee_phone if attendance and attendance.attendee_phone else default_payload['attendee_phone'],
+                'attendee_company': attendance.attendee_company if attendance and attendance.attendee_company else default_payload['attendee_company'],
+                'attendee_position': attendance.attendee_position if attendance and attendance.attendee_position else default_payload['attendee_position'],
+                'is_present': bool(attendance and attendance.is_present),
+                'attended_at': attendance.attended_at if attendance else None,
+                'marked_by_name': (
+                    f"{attendance.marked_by.first_name} {attendance.marked_by.last_name}".strip() or attendance.marked_by.username
+                ) if attendance and attendance.marked_by else None,
+                'notes': attendance.notes if attendance else None,
+                'certificate_status': Certificate.objects.filter(user=request.user, course=course).values_list('approval_status', flat=True).first(),
+            })
+
+        target_user = request.user
+        notes = request.data.get('notes', '')
+        attendance_data = {
+            'attendee_name': request.data.get('attendee_name', ''),
+            'attendee_email': request.data.get('attendee_email', ''),
+            'attendee_phone': request.data.get('attendee_phone', ''),
+            'attendee_company': request.data.get('attendee_company', ''),
+            'attendee_position': request.data.get('attendee_position', ''),
+            'notes': notes,
+        }
+
+        if not can_manage:
+            existing_attendance = WebinarAttendance.objects.filter(
+                course=course,
+                user=request.user,
+                is_present=True,
+            ).first()
+            if existing_attendance:
+                return Response({'error': 'Presensi webinar hanya bisa dikirim satu kali.'}, status=400)
+
+        if can_manage:
+            target_user_id = request.data.get('user_id')
+            if target_user_id:
+                target_user = get_object_or_404(User, pk=target_user_id)
+
+        attendance = _mark_webinar_attendance(course, target_user, request.user, notes=notes, attendance_data=attendance_data)
+        serializer = WebinarAttendanceSerializer(attendance)
+        return Response(serializer.data)
+
 
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().select_related('user', 'course').order_by('-created_at')
@@ -196,6 +431,16 @@ class OrderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # 1. Save the order locally first as Pending
         order = serializer.save(user=self.request.user, status='Pending')
+
+        if order.total_amount <= 0:
+            order.status = 'Completed'
+            order.snap_token = None
+            order.midtrans_id = None
+            order.save(update_fields=['status', 'snap_token', 'midtrans_id'])
+            serializer.instance.status = order.status
+            serializer.instance.snap_token = order.snap_token
+            serializer.instance.midtrans_id = order.midtrans_id
+            return
         
         # 2. Initialize Midtrans Snap
         server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
@@ -381,6 +626,399 @@ def _get_instructor_for_user(user):
     return None
 
 
+class CertificationExamViewSet(viewsets.ModelViewSet):
+    queryset = CertificationExam.objects.all()
+    serializer_class = CertificationExamSerializer
+    permission_classes = [IsInstructorOrAdmin]
+
+    def get_queryset(self):
+        queryset = CertificationExam.objects.select_related(
+            'course',
+            'course__instructor',
+        ).prefetch_related(
+            'questions__alternatives',
+            'slots',
+        )
+        course_id = self.request.query_params.get('course')
+        if course_id:
+            queryset = queryset.filter(course_id=course_id)
+
+        user = self.request.user
+        if not user.is_authenticated:
+            return queryset.filter(is_active=True, instructor_confirmed=True)
+
+        if user.is_staff or user.is_superuser:
+            return queryset
+
+        instructor = _get_instructor_for_user(user)
+        if instructor:
+            return queryset.filter(course__instructor=instructor)
+
+        return queryset.filter(is_active=True, instructor_confirmed=True)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsInstructorOrAdmin])
+    def request_instructor_availability(self, request, pk=None):
+        exam = self.get_object()
+        exam.instructor_confirmed = False # Reset confirmation if needed
+        exam.save()
+        # Logic here to notify instructor
+        return Response({'status': 'availability requested'})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsInstructorOrAdmin])
+    def confirm_availability(self, request, pk=None):
+        exam = self.get_object()
+        # Ensure the requester is the instructor of the course
+        instructor = _get_instructor_for_user(request.user)
+        if not request.user.is_staff and exam.course.instructor != instructor:
+            return Response({'error': 'You are not the instructor for this course.'}, status=403)
+
+        if not exam.confirmed_start_at:
+            return Response({'error': 'Tentukan tanggal mulai ujian terlebih dahulu.'}, status=400)
+        if exam.confirmed_end_at and exam.confirmed_end_at < exam.confirmed_start_at:
+            return Response({'error': 'Tanggal selesai ujian tidak boleh lebih awal dari tanggal mulai.'}, status=400)
+        if exam.requires_interview() and not exam.slots.exists():
+            return Response({'error': 'Tambahkan minimal satu slot sesi sebelum konfirmasi.'}, status=400)
+
+        exam.instructor_confirmed = True
+        exam.save()
+        return Response({
+            'status': 'availability confirmed',
+            'instructor_confirmed': True,
+            'confirmed_start_at': exam.confirmed_start_at,
+            'confirmed_end_at': exam.confirmed_end_at,
+        })
+
+    def perform_create(self, serializer):
+        course = serializer.validated_data.get('course')
+        if course.type != 'course':
+            raise serializers.ValidationError({"course": "Ujian sertifikasi hanya diperbolehkan untuk kursus dengan jenis Pelatihan."})
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if 'course' in serializer.validated_data:
+            course = serializer.validated_data.get('course')
+            if course.type != 'course':
+                raise serializers.ValidationError({"course": "Ujian sertifikasi hanya diperbolehkan untuk kursus dengan jenis Pelatihan."})
+        serializer.save()
+
+class CertificationQuestionViewSet(viewsets.ModelViewSet):
+    queryset = CertificationQuestion.objects.all()
+    serializer_class = CertificationQuestionSerializer
+    permission_classes = [IsInstructorOrAdmin]
+
+class CertificationInstructorSlotViewSet(viewsets.ModelViewSet):
+    queryset = CertificationInstructorSlot.objects.all()
+    serializer_class = CertificationInstructorSlotSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return CertificationInstructorSlot.objects.all()
+        instructor = _get_instructor_for_user(user)
+        if instructor:
+            return CertificationInstructorSlot.objects.filter(instructor=instructor)
+        return CertificationInstructorSlot.objects.none()
+
+    def perform_create(self, serializer):
+        instructor = _get_instructor_for_user(self.request.user)
+        if instructor:
+            serializer.save(instructor=instructor)
+        else:
+            serializer.save()
+
+class CertificationAlternativeViewSet(viewsets.ModelViewSet):
+    queryset = CertificationAlternative.objects.all()
+    serializer_class = CertificationAlternativeSerializer
+    permission_classes = [IsInstructorOrAdmin]
+
+class CertificationAttemptViewSet(viewsets.ModelViewSet):
+    queryset = CertificationAttempt.objects.all()
+    serializer_class = CertificationAttemptSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return CertificationAttempt.objects.all()
+        return CertificationAttempt.objects.filter(user=user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        exam = serializer.validated_data['exam']
+        user = request.user
+        now = timezone.now()
+        selected_slot = serializer.validated_data.get('interview_slot')
+
+        if not user.is_staff and not Order.objects.filter(user=user, course=exam.course, status='Completed').exists():
+            return Response({'error': 'Anda harus terdaftar pada pelatihan ini untuk mengikuti sertifikasi.'}, status=403)
+
+        if not exam.is_active:
+            return Response({'error': 'Ujian sertifikasi ini belum diaktifkan oleh admin.'}, status=400)
+
+        if not exam.instructor_confirmed or not exam.confirmed_start_at:
+            return Response({'error': 'Jadwal ujian sertifikasi belum dikonfirmasi oleh instruktur.'}, status=400)
+
+        if exam.confirmed_end_at and now > exam.confirmed_end_at:
+            return Response({'error': 'Jadwal ujian sertifikasi ini sudah berakhir.'}, status=400)
+
+        has_instructor_slots = exam.slots.exists()
+        if exam.requires_interview() and not has_instructor_slots:
+            return Response({'error': 'Instruktur belum menambahkan slot sesi untuk ujian ini.'}, status=400)
+        if has_instructor_slots and not selected_slot:
+            return Response({'error': 'Pilih dulu jadwal ujian yang tersedia dari instruktur.'}, status=400)
+
+        if selected_slot:
+            if selected_slot.exam_id != exam.id:
+                return Response({'error': 'Jadwal yang dipilih tidak sesuai dengan ujian ini.'}, status=400)
+
+        existing_attempt = CertificationAttempt.objects.filter(
+            user=user,
+            exam=exam,
+            status__in=['PENDING', 'IN_PROGRESS'],
+        ).order_by('-started_at').first()
+
+        if selected_slot and selected_slot.is_booked and (
+            not existing_attempt or existing_attempt.interview_slot_id != selected_slot.id
+        ):
+            return Response({'error': 'Jadwal yang dipilih sudah diambil peserta lain.'}, status=400)
+
+        if existing_attempt:
+            if selected_slot and existing_attempt.status == 'PENDING':
+                current_slot = existing_attempt.interview_slot
+                current_slot_start = None
+
+                if current_slot:
+                    current_slot_start = timezone.make_aware(
+                        datetime.combine(current_slot.date, current_slot.start_time),
+                        timezone.get_current_timezone(),
+                    )
+
+                can_change_slot = (
+                    not current_slot
+                    or now < current_slot_start
+                )
+
+                if can_change_slot and current_slot and current_slot.id == selected_slot.id:
+                    existing_serializer = self.get_serializer(existing_attempt)
+                    return Response(existing_serializer.data, status=200)
+
+                if can_change_slot:
+                    with transaction.atomic():
+                        locked_new_slot = CertificationInstructorSlot.objects.select_for_update().filter(
+                            id=selected_slot.id,
+                            exam=exam,
+                        ).first()
+                        if not locked_new_slot or locked_new_slot.is_booked:
+                            return Response({'error': 'Jadwal yang dipilih sudah tidak tersedia.'}, status=400)
+
+                        previous_slot = None
+                        if current_slot:
+                            previous_slot = CertificationInstructorSlot.objects.select_for_update().filter(
+                                id=current_slot.id,
+                                exam=exam,
+                            ).first()
+
+                        if previous_slot and previous_slot.id != locked_new_slot.id:
+                            previous_slot.is_booked = False
+                            previous_slot.save(update_fields=['is_booked'])
+
+                        locked_new_slot.is_booked = True
+                        locked_new_slot.save(update_fields=['is_booked'])
+
+                        new_slot_start = timezone.make_aware(
+                            datetime.combine(locked_new_slot.date, locked_new_slot.start_time),
+                            timezone.get_current_timezone(),
+                        )
+                        existing_attempt.interview_slot = locked_new_slot
+                        existing_attempt.status = 'PENDING' if now < new_slot_start else 'IN_PROGRESS'
+                        existing_attempt.save(update_fields=['interview_slot', 'status'])
+
+                    existing_serializer = self.get_serializer(existing_attempt)
+                    return Response(existing_serializer.data, status=200)
+
+            existing_serializer = self.get_serializer(existing_attempt)
+            return Response(existing_serializer.data, status=200)
+
+        locked_attempt = CertificationAttempt.objects.filter(
+            user=user,
+            exam=exam,
+            status__in=['SUBMITTED', 'GRADED'],
+        ).exists()
+        if locked_attempt:
+            return Response({'error': 'Anda sudah menyelesaikan ujian sertifikasi ini.'}, status=400)
+
+        attempt_status = 'IN_PROGRESS'
+        if selected_slot:
+            slot_start = timezone.make_aware(
+                datetime.combine(selected_slot.date, selected_slot.start_time),
+                timezone.get_current_timezone(),
+            )
+            if now < slot_start:
+                attempt_status = 'PENDING'
+        elif now < exam.confirmed_start_at:
+            attempt_status = 'PENDING'
+
+        with transaction.atomic():
+            if selected_slot:
+                locked_slot = CertificationInstructorSlot.objects.select_for_update().filter(
+                    id=selected_slot.id,
+                    exam=exam,
+                ).first()
+                if not locked_slot or locked_slot.is_booked:
+                    return Response({'error': 'Jadwal yang dipilih sudah tidak tersedia.'}, status=400)
+                locked_slot.is_booked = True
+                locked_slot.save(update_fields=['is_booked'])
+                attempt = serializer.save(user=user, status=attempt_status, interview_slot=locked_slot)
+            else:
+                attempt = serializer.save(user=user, status=attempt_status)
+
+        output_serializer = self.get_serializer(attempt)
+        headers = self.get_success_headers(output_serializer.data)
+        return Response(output_serializer.data, status=201, headers=headers)
+
+    @action(detail=True, methods=['post'])
+    def submit_exam(self, request, pk=None):
+        attempt = self.get_object()
+        answers_data = request.data.get('answers', {})
+        questions = list(attempt.exam.questions.all())
+
+        if attempt.status in ['SUBMITTED', 'GRADED']:
+            return Response({'error': 'Ujian ini sudah dikirim sebelumnya.'}, status=400)
+        
+        # Save answers
+        for q_id, val in answers_data.items():
+            question = CertificationQuestion.objects.filter(id=q_id, exam=attempt.exam).first()
+            if not question:
+                continue
+            if question.question_type == 'MC':
+                CertificationAnswer.objects.update_or_create(
+                    attempt=attempt, question=question,
+                    defaults={'selected_alternative_id': val}
+                )
+            elif question.question_type == 'Essay':
+                CertificationAnswer.objects.update_or_create(
+                    attempt=attempt, question=question,
+                    defaults={'essay_answer': val}
+                )
+            elif question.question_type == 'Interview':
+                # Map slot and mark as booked
+                slot = CertificationInstructorSlot.objects.filter(id=val, exam=attempt.exam).first()
+                if slot:
+                    if slot.is_booked and attempt.interview_slot_id != slot.id:
+                        return Response({'error': 'Slot wawancara tersebut sudah terpesan.'}, status=400)
+                    slot.is_booked = True
+                    slot.save()
+                    attempt.interview_slot = slot
+        
+        attempt.status = 'SUBMITTED'
+        attempt.submitted_at = timezone.now()
+        
+        # Simple Auto-grading for MC
+        total_points = sum(q.points for q in questions)
+        earned_points = 0
+        mc_questions = [q for q in questions if q.question_type == 'MC']
+        
+        for q in mc_questions:
+            ans = CertificationAnswer.objects.filter(attempt=attempt, question=q).first()
+            if ans and ans.selected_alternative and ans.selected_alternative.is_correct:
+                earned_points += q.points
+                ans.score = q.points
+                ans.save()
+        
+        if total_points > 0:
+            attempt.score = (earned_points / total_points) * 100
+        
+        passing_percentage = attempt.exam.passing_percentage or 70
+        # In multi-format, this might wait for Essay/Interview grading
+        has_essay_or_interview = any(q.question_type in ['Essay', 'Interview'] for q in questions)
+        requires_manual_review = attempt.exam.exam_mode != 'QUESTIONS_ONLY' or has_essay_or_interview
+        
+        if not requires_manual_review and attempt.score >= passing_percentage:
+            attempt.status = 'GRADED'
+            certificate, created = Certificate.objects.get_or_create(
+                user=attempt.user,
+                course=attempt.exam.course,
+                exam=attempt.exam,
+                defaults={
+                    'certificate_url': '',
+                    'approval_status': Certificate.APPROVAL_PENDING,
+                    'approved_by': None,
+                    'approved_at': None,
+                }
+            )
+            if not created:
+                certificate.approval_status = Certificate.APPROVAL_PENDING
+                certificate.approved_by = None
+                certificate.approved_at = None
+                certificate.certificate_url = ''
+                certificate.save(update_fields=['approval_status', 'approved_by', 'approved_at', 'certificate_url'])
+        elif not requires_manual_review:
+            attempt.status = 'GRADED'
+             
+        attempt.save()
+        
+        return Response({'status': 'exam submitted'})
+
+class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Certificate.objects.all()
+    serializer_class = CertificateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff and self.request.query_params.get('scope') == 'all':
+            return Certificate.objects.all().select_related('course', 'exam', 'user', 'approved_by')
+        return Certificate.objects.filter(
+            user=user,
+            approval_status=Certificate.APPROVAL_APPROVED,
+        ).select_related('course', 'exam', 'user', 'approved_by')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        for certificate in queryset:
+            if certificate.approval_status == Certificate.APPROVAL_APPROVED:
+                generate_certificate_pdf(certificate)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.approval_status == Certificate.APPROVAL_APPROVED:
+            generate_certificate_pdf(instance)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        certificate = self.get_object()
+        if certificate.approval_status == Certificate.APPROVAL_APPROVED:
+            serializer = self.get_serializer(certificate)
+            return Response(serializer.data)
+
+        certificate.approval_status = Certificate.APPROVAL_APPROVED
+        certificate.approved_by = request.user
+        certificate.approved_at = timezone.now()
+        generate_certificate_pdf(certificate, force=True)
+        certificate.save(update_fields=['approval_status', 'approved_by', 'approved_at', 'certificate_url'])
+        serializer = self.get_serializer(certificate)
+        return Response(serializer.data)
+
+class CertificateTemplateViewSet(viewsets.ModelViewSet):
+    queryset = CertificateTemplate.objects.select_related('course').all()
+    serializer_class = CertificateTemplateSerializer
+    permission_classes = [IsAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        queryset = self.queryset
+        course_id = self.request.query_params.get('course_id')
+        if course_id:
+            queryset = queryset.filter(course_id=course_id)
+        return queryset
+
 class InstructorCoursesView(APIView):
     """Returns courses for the currently-logged-in instructor."""
     permission_classes = [IsAuthenticated]
@@ -390,6 +1028,7 @@ class InstructorCoursesView(APIView):
         if not instructor:
             return Response({'courses': [], 'instructor': None, 'total_students': 0, 'total_courses': 0})
 
+        _sync_course_activity(Course.objects.filter(instructor=instructor))
         courses = Course.objects.filter(instructor=instructor).order_by('-created_at')
         serializer = CourseSerializer(courses, many=True)
 
@@ -705,12 +1344,9 @@ class QuizAttemptView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=500)
 
-from rest_framework.parsers import MultiPartParser, FormParser
-import json
-
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
         # Ensure profile exists
@@ -783,6 +1419,33 @@ class CompleteLessonView(APIView):
             
             return Response({'status': 'success', 'is_completed': True})
             
+        except Lesson.DoesNotExist:
+            return Response({'error': 'Lesson not found'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+class AccessLessonView(APIView):
+    """
+    Endpoint strictly for recording that a user has opened a lesson,
+    so we can know the LAST accessed lesson for 'Lanjut Belajar'.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, lesson_id):
+        try:
+            lesson = Lesson.objects.get(id=lesson_id)
+            
+            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and not request.user.is_staff:
+                return Response({'error': 'You must be enrolled to access this lesson'}, status=403)
+            
+            progress, created = UserLessonProgress.objects.get_or_create(
+                user=request.user,
+                lesson=lesson
+            )
+            # Just hitting save updates the auto_now=True updated_at field, moving it to top.
+            progress.save()
+            
+            return Response({'status': 'success'})
         except Lesson.DoesNotExist:
             return Response({'error': 'Lesson not found'}, status=404)
         except Exception as e:

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpen, GraduationCap, LayoutDashboard, LogOut, ShieldCheck, Users, ShoppingBag, Settings } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Award, BookOpen, GraduationCap, LayoutDashboard, LogOut, Settings, ShieldCheck, ShoppingBag, Users } from 'lucide-react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 function decodeJwt(token: string) {
     try {
@@ -15,33 +15,87 @@ function decodeJwt(token: string) {
     }
 }
 
+type AuthState = {
+    authorized: boolean;
+    redirectTo: string | null;
+    resetToken: boolean;
+    checking: boolean;
+};
+
+const AUTH_CHECKING_STATE: AuthState = {
+    authorized: false,
+    redirectTo: null,
+    resetToken: false,
+    checking: true,
+};
+
+let cachedAuthState: AuthState = AUTH_CHECKING_STATE;
+
+function isSameAuthState(a: AuthState, b: AuthState) {
+    return (
+        a.authorized === b.authorized &&
+        a.redirectTo === b.redirectTo &&
+        a.resetToken === b.resetToken &&
+        a.checking === b.checking
+    );
+}
+
+function getClientAuthState(): AuthState {
+    let nextState: AuthState;
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        nextState = { authorized: false, redirectTo: '/login', resetToken: false, checking: false };
+    } else {
+        const payload = decodeJwt(token);
+        if (!payload || payload.is_staff === undefined) {
+            nextState = { authorized: false, redirectTo: '/login', resetToken: true, checking: false };
+        } else if (!payload.is_staff && !payload.is_superuser) {
+            nextState = { authorized: false, redirectTo: '/', resetToken: false, checking: false };
+        } else {
+            nextState = { authorized: true, redirectTo: null, resetToken: false, checking: false };
+        }
+    }
+
+    if (isSameAuthState(cachedAuthState, nextState)) {
+        return cachedAuthState;
+    }
+
+    cachedAuthState = nextState;
+    return cachedAuthState;
+}
+
+function subscribeAuth(callback: () => void) {
+    if (typeof window === 'undefined') return () => {};
+
+    const handler = () => callback();
+    window.addEventListener('storage', handler);
+    window.addEventListener('focus', handler);
+
+    return () => {
+        window.removeEventListener('storage', handler);
+        window.removeEventListener('focus', handler);
+    };
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
-    const [authorized, setAuthorized] = useState(false);
+    const authState = useSyncExternalStore(
+        subscribeAuth,
+        getClientAuthState,
+        () => AUTH_CHECKING_STATE
+    );
 
     useEffect(() => {
-        const token = localStorage.getItem('access_token');
-        if (!token) {
-            router.replace('/login');
-            return;
-        }
-        const payload = decodeJwt(token);
-        // No payload or old token without is_staff claim → force re-login
-        if (!payload || payload.is_staff === undefined) {
+        if (authState.resetToken) {
             localStorage.removeItem('access_token');
             localStorage.removeItem('refresh_token');
-            router.replace('/login');
-            return;
         }
-        // Has is_staff claim but it's false → not an admin
-        if (!payload.is_staff && !payload.is_superuser) {
-            router.replace('/');
-            return;
-        }
-        setAuthorized(true);
-    }, [router]);
 
+        if (authState.redirectTo) {
+            router.replace(authState.redirectTo);
+        }
+    }, [authState, router]);
 
     const handleLogout = () => {
         localStorage.removeItem('access_token');
@@ -55,10 +109,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: 'Instructors', href: '/admin/instructors', icon: GraduationCap },
         { name: 'Students', href: '/admin/users', icon: Users },
         { name: 'Orders', href: '/admin/orders', icon: ShoppingBag },
+        { name: 'Sertifikat', href: '/admin/certificates', icon: Award },
         { name: 'Pengaturan', href: '/admin/settings', icon: Settings },
     ];
 
-    if (!authorized) {
+    if (authState.checking || !authState.authorized) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <div className="text-gray-500">Memeriksa akses...</div>
@@ -68,7 +123,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
-            {/* Sidebar */}
             <aside className="fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-100 w-64 flex flex-col transition-all duration-300">
                 <div className="h-20 flex items-center px-6 border-b border-gray-50">
                     <Link href="/admin" className="flex items-center gap-2">
@@ -114,11 +168,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
             </aside>
 
-            {/* Main Content */}
             <main className="flex-1 md:ml-64 p-8 transition-all duration-300">
                 {children}
             </main>
         </div>
     );
 }
-

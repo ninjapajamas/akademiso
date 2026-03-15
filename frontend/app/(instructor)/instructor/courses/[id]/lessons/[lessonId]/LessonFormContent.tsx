@@ -13,7 +13,17 @@ const ReactQuill = dynamic(() => import('react-quill-new'), {
 });
 import 'react-quill-new/dist/quill.snow.css';
 
-export default function LessonFormContent({ courseId, lessonId }: { courseId: string; lessonId: string }) {
+type LessonFormContentProps = {
+    courseId: string;
+    lessonId: string;
+    courseBasePath?: string;
+};
+
+export default function LessonFormContent({
+    courseId,
+    lessonId,
+    courseBasePath = '/instructor/courses'
+}: LessonFormContentProps) {
     const isNew = lessonId === 'new';
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -249,7 +259,7 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
             });
 
             if (res.ok) {
-                router.push(`/instructor/courses/${courseId}/lessons`);
+                router.push(`${courseBasePath}/${courseId}/lessons`);
             } else {
                 alert('Gagal menyimpan materi. Periksa kembali input Anda.');
             }
@@ -299,7 +309,7 @@ export default function LessonFormContent({ courseId, lessonId }: { courseId: st
 
             <div className="flex items-center gap-4">
                 <Link
-                    href={`/instructor/courses/${courseId}/lessons`}
+                    href={`${courseBasePath}/${courseId}/lessons`}
                     className="p-3 hover:bg-white rounded-2xl text-gray-400 hover:text-indigo-600 transition-all border border-transparent hover:border-gray-100"
                 >
                     <ArrowLeft className="w-5 h-5" />

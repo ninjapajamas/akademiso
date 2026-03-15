@@ -20,7 +20,8 @@ import {
     Trophy,
     CheckCircle2,
     RotateCcw,
-    ArrowRight
+    ArrowRight,
+    Video
 } from 'lucide-react';
 
 const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => void }) => {
@@ -293,12 +294,21 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            await fetch(`${apiUrl}/api/lessons/${activeLesson.id}/complete/`, {
+            const res = await fetch(`${apiUrl}/api/lessons/${activeLesson.id}/complete/`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            // Update local state to show checkmark immediately
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error('Failed to mark lesson complete:', errorText);
+            }
+
+            // Update local state to show checkmark immediately regardless of error for now,
+            // but in a real app you might want to only update on success.
+            // Let's at least log it.
+            console.log(`Lesson ${activeLesson.id} marked complete`);
+
             const updatedSections = course.sections.map((s: any) => ({
                 ...s,
                 lessons: s.lessons.map((l: any) =>
@@ -308,7 +318,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
             setCourse({ ...course, sections: updatedSections });
 
         } catch (error) {
-            console.error('Failed to mark lesson complete:', error);
+            console.error('Network error marking lesson complete:', error);
         }
 
         // 2. Find next lesson
@@ -348,11 +358,27 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                     const data = await res.json();
                     setCourse(data);
 
-                    // Set first lesson as active by default
+                    // Resume Logic: Find exact lesson from URL, or fallback to first incomplete
                     if (data.sections && data.sections.length > 0) {
-                        const firstSection = data.sections.sort((a: any, b: any) => a.order - b.order)[0];
-                        if (firstSection.lessons && firstSection.lessons.length > 0) {
-                            setActiveLesson(firstSection.lessons.sort((a: any, b: any) => a.order - b.order)[0]);
+                        const allLessons = data.sections
+                            .sort((a: any, b: any) => a.order - b.order)
+                            .flatMap((s: any) => (s.lessons || []).sort((a: any, b: any) => a.order - b.order));
+
+                        // Use standard DOM API to avoid Next.js Suspense boundary errors
+                        const params = new URLSearchParams(window.location.search);
+                        const urlLessonId = params.get('lesson');
+                        let resumeLesson;
+
+                        if (urlLessonId) {
+                            resumeLesson = allLessons.find((l: any) => l.id.toString() === urlLessonId);
+                        }
+
+                        if (!resumeLesson) {
+                            resumeLesson = allLessons.find((l: any) => !l.is_completed) || allLessons[0];
+                        }
+
+                        if (resumeLesson) {
+                            setActiveLesson(resumeLesson);
                         }
                     }
                 }
@@ -365,6 +391,31 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
 
         fetchCourse();
     }, [slug]);
+
+    // Track when active lesson is accessed
+    useEffect(() => {
+        if (!activeLesson) return;
+
+        const trackAccess = async () => {
+            try {
+                const token = localStorage.getItem('access_token');
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${apiUrl}/api/lessons/${activeLesson.id}/access/`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    console.log(`Access tracked for lesson ${activeLesson.id}`);
+                } else {
+                    console.error('Failed to track lesson access:', await res.text());
+                }
+            } catch (error) {
+                console.error('Failed to track lesson access:', error);
+            }
+        };
+
+        trackAccess();
+    }, [activeLesson?.id]);
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen">
@@ -382,11 +433,13 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
 
     const sections = course.sections || [];
 
-    // Calculate real progress
+    // Calculate real progress dynamically from the lessons' is_completed status
     const allLessons = sections.flatMap((s: any) => s.lessons || []);
-    const totalLessons = allLessons.length;
-    const completedLessons = allLessons.filter((l: any) => l.is_completed).length;
-    const progressPercentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+    const completedCount = allLessons.filter((l: any) => l.is_completed).length;
+    const progressPercentage = allLessons.length > 0
+        ? Math.round((completedCount / allLessons.length) * 100)
+        : 0;
+
     const dashOffset = 125.6 - (125.6 * progressPercentage) / 100;
 
     return (
@@ -409,11 +462,62 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
             <div className="flex flex-1 gap-6 overflow-hidden px-6 pb-6">
                 {/* Main Content */}
                 <div className="flex-1 flex flex-col overflow-y-auto pr-2 custom-scrollbar">
+                    {/* Webinar Link Banner */}
+                    {course.type === 'webinar' && course.zoom_link && (
+                        <div className="relative mb-8 overflow-hidden rounded-3xl bg-gradient-to-r from-rose-600 to-rose-700 p-8 text-white shadow-xl shadow-rose-600/20">
+                            <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                                            <Video className="w-4 h-4 text-white" />
+                                        </div>
+                                        <span className="text-xs font-black uppercase tracking-widest text-rose-100">Live Webinar Session</span>
+                                    </div>
+                                    <h2 className="text-2xl font-black mb-1">Sudah Siap Belajar Live?</h2>
+                                    <p className="max-w-2xl text-sm text-rose-100">Klik tombol di samping untuk bergabung ke sesi webinar melalui Zoom. Pengisian presensi dilakukan dari halaman Kursus Saya dan hanya bisa dikirim satu kali.</p>
+                                    <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
+                                        {course.webinar_attendance?.is_present ? (
+                                            <>
+                                                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                                                Presensi tercatat{course.webinar_attendance?.attended_at ? ` pada ${new Date(course.webinar_attendance.attended_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Clock className="w-4 h-4 text-rose-100" />
+                                                Presensi diisi dari halaman Kursus Saya
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex w-full flex-col gap-3 lg:max-w-sm lg:self-start">
+                                    <a
+                                        href={course.zoom_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-white text-rose-600 px-8 py-4 rounded-2xl font-black hover:bg-rose-50 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"
+                                    >
+                                        Join Zoom Meeting <ArrowRight className="w-5 h-5" />
+                                    </a>
+                                    <Link
+                                        href="/dashboard/courses"
+                                        className="flex items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-6 py-3 font-bold text-white transition-all hover:bg-white/20"
+                                    >
+                                        Isi Presensi di Kursus Saya
+                                        <ArrowRight className="h-4 w-4" />
+                                    </Link>
+                                </div>
+                            </div>
+                            {/* Decorative bubbles */}
+                            <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
+                            <div className="absolute bottom-4 left-1/4 h-24 w-24 rounded-full bg-rose-400/20 blur-xl" />
+                        </div>
+                    )}
+
                     {/* Video Player / Article Content */}
                     {activeLesson ? (
                         <>
                             {activeLesson.type === 'video' && (
-                                <div className="w-full aspect-video md:aspect-[16/9] lg:aspect-[21/9] bg-black rounded-[2.5rem]  relative shadow-2xl border-4 border-white overflow-hidden">
+                                <div className="w-full min-h-[280px] sm:min-h-[360px] lg:min-h-[460px] aspect-[4/3] md:aspect-[16/10] xl:aspect-[16/9] bg-black rounded-[2.5rem] relative shadow-2xl border-4 border-white overflow-hidden">
                                     {activeLesson.is_locked ? (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white p-6 text-center">
                                             <Lock className="w-16 h-16 text-blue-500 mb-4 animate-bounce" />

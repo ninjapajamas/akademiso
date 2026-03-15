@@ -4,6 +4,12 @@ import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Save, BookOpen, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
+import { Category } from '@/types';
+import { formatNumberInput, normalizePriceForApi } from '@/types/currency';
+import { formatApiDateTimeForInput, formatInputDateTimeForApi } from '@/types/datetime';
+
+type CourseType = 'course' | 'webinar' | 'workshop';
+type DeliveryMode = 'online' | 'offline';
 
 export default function InstructorCourseFormPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -14,7 +20,7 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
     const [error, setError] = useState<string | null>(null);
 
     // Dropdown data
-    const [categories, setCategories] = useState([]);
+    const [categories, setCategories] = useState<Category[]>([]);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -27,8 +33,13 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
         is_featured: false,
         discount_price: '',
         type: 'course',
+        delivery_mode: 'online' as DeliveryMode,
         scheduled_at: '',
-        location: ''
+        scheduled_end_at: '',
+        location: '',
+        zoom_link: '',
+        is_free: false,
+        has_certification_exam: false
     });
 
     useEffect(() => {
@@ -55,15 +66,20 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                             title: data.title,
                             slug: data.slug,
                             description: data.description,
-                            price: data.price,
+                            price: formatNumberInput(data.price),
                             level: data.level,
                             duration: data.duration,
                             category_id: data.category?.id || '',
                             is_featured: data.is_featured,
-                            discount_price: data.discount_price || '',
+                            discount_price: formatNumberInput(data.discount_price),
                             type: data.type || 'course',
-                            scheduled_at: data.scheduled_at ? new Date(data.scheduled_at).toISOString().slice(0, 16) : '',
-                            location: data.location || ''
+                            delivery_mode: data.delivery_mode || 'online',
+                            scheduled_at: formatApiDateTimeForInput(data.scheduled_at),
+                            scheduled_end_at: formatApiDateTimeForInput(data.scheduled_end_at),
+                            location: data.location || '',
+                            zoom_link: data.zoom_link || '',
+                            is_free: data.is_free || false,
+                            has_certification_exam: data.has_certification_exam || false
                         });
                     } else if (res.status === 403) {
                         setError('Anda tidak memiliki izin untuk mengedit kursus ini.');
@@ -79,17 +95,58 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
         }
     }, [id, isNew]);
 
-    const handleChange = (e: any) => {
-        const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-        const name = e.target.name;
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+        const isCheckbox = target instanceof HTMLInputElement && target.type === 'checkbox';
+        const value: string | boolean = isCheckbox ? target.checked : target.value;
+        const name = target.name;
+        const normalizedValue = !isCheckbox && (name === 'price' || name === 'discount_price')
+            ? formatNumberInput(String(value))
+            : value;
 
-        setFormData(prev => ({ ...prev, [name]: value }));
+        if (name === 'type') {
+            const nextType = normalizedValue as CourseType;
+            setFormData(prev => ({
+                ...prev,
+                type: nextType,
+                delivery_mode: nextType === 'webinar' ? 'online' : prev.delivery_mode,
+                is_free: nextType === 'webinar' ? prev.is_free : false,
+                price: nextType === 'webinar' && prev.is_free ? '0' : prev.price,
+                discount_price: nextType === 'webinar' && prev.is_free ? '' : prev.discount_price,
+                has_certification_exam: nextType === 'course' ? prev.has_certification_exam : false
+            }));
+            return;
+        }
+
+        if (name === 'delivery_mode') {
+            const nextMode = normalizedValue as DeliveryMode;
+            setFormData(prev => ({
+                ...prev,
+                delivery_mode: nextMode,
+                location: nextMode === 'online' ? '' : prev.location,
+                zoom_link: nextMode === 'offline' ? '' : prev.zoom_link,
+            }));
+            return;
+        }
+
+        if (name === 'is_free') {
+            const checked = Boolean(normalizedValue);
+            setFormData(prev => ({
+                ...prev,
+                is_free: checked,
+                price: checked ? '0' : prev.price === '0' ? '' : prev.price,
+                discount_price: ''
+            }));
+            return;
+        }
+
+        setFormData(prev => ({ ...prev, [name]: normalizedValue }));
 
         // Auto-generate slug from title if new
         if (name === 'title' && isNew) {
             setFormData(prev => ({
                 ...prev,
-                slug: value.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '')
+                slug: String(value).toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '')
             }));
         }
     };
@@ -107,6 +164,14 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                 : `${apiUrl}/api/courses/${id}/`;
 
             const method = isNew ? 'POST' : 'PATCH';
+            const payload = {
+                ...formData,
+                price: normalizePriceForApi(formData.price),
+                discount_price: normalizePriceForApi(formData.discount_price) || null,
+                scheduled_at: formatInputDateTimeForApi(formData.scheduled_at),
+                scheduled_end_at: formatInputDateTimeForApi(formData.scheduled_end_at),
+                delivery_mode: formData.type === 'webinar' ? 'online' : formData.delivery_mode
+            };
 
             const res = await fetch(url, {
                 method: method,
@@ -114,7 +179,7 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
@@ -221,9 +286,25 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                             onChange={handleChange}
                         >
                             <option value="">Pilih Kategori</option>
-                            {categories.map((opt: any) => (
+                            {categories.map((opt) => (
                                 <option key={opt.id} value={opt.id}>{opt.name}</option>
                             ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">
+                            {formData.type === 'webinar' ? 'Mode Pelaksanaan' : formData.type === 'workshop' ? 'Mode Workshop' : 'Mode Pelatihan'}
+                        </label>
+                        <select
+                            name="delivery_mode"
+                            className="w-full px-5 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-medium appearance-none cursor-pointer"
+                            value={formData.type === 'webinar' ? 'online' : formData.delivery_mode}
+                            onChange={handleChange}
+                            disabled={formData.type === 'webinar'}
+                        >
+                            <option value="online">Online</option>
+                            <option value="offline">Offline</option>
                         </select>
                     </div>
 
@@ -255,39 +336,101 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                         </select>
                     </div>
 
-                    {formData.type !== 'course' && (
-                        <>
+                    {(formData.type === 'webinar' || formData.delivery_mode === 'online') && (
+                        <div className="md:col-span-2">
+                            <label className="block font-bold text-rose-600 mb-2 uppercase tracking-widest text-[10px] italic underline">
+                                {formData.type === 'webinar' ? 'Link Zoom Webinar' : 'Link Meeting Online'}
+                            </label>
+                            <input
+                                name="zoom_link"
+                                type="url"
+                                placeholder="https://zoom.us/j/..."
+                                className="w-full px-5 py-3 bg-rose-50/30 border-none rounded-2xl focus:ring-2 focus:ring-rose-500 outline-none text-rose-700 font-bold placeholder:text-rose-300/50"
+                                value={formData.zoom_link}
+                                onChange={handleChange}
+                            />
+                        </div>
+                    )}
+
+                    <div className="md:col-span-2 rounded-[1.5rem] border border-indigo-100 bg-indigo-50/50 p-5 space-y-4">
+                        <div>
+                            <label className="block font-bold text-indigo-600 uppercase tracking-widest text-[10px]">
+                                {formData.type === 'course' ? 'Rentang Tanggal Pelatihan' : 'Rentang Waktu Pelaksanaan'}
+                            </label>
+                            <p className="mt-2 text-[11px] text-indigo-500 font-medium">
+                                {formData.type === 'course'
+                                    ? 'Isi tanggal mulai dan selesai dalam satu baris agar jadwal pelatihan lebih mudah dicek.'
+                                    : 'Isi waktu mulai dan selesai agar jadwal sesi tampil lebih ringkas.'}
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block font-bold text-indigo-600 mb-2 uppercase tracking-widest text-[10px]">Waktu Pelaksanaan</label>
+                                <label className="block font-bold text-indigo-600 mb-2 uppercase tracking-widest text-[10px]">Tanggal Mulai</label>
                                 <input
                                     name="scheduled_at"
                                     type="datetime-local"
-                                    className="w-full px-5 py-3 bg-indigo-50/50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700 font-bold"
+                                    required={formData.type === 'course'}
+                                    className="w-full px-5 py-3 bg-white border border-indigo-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700 font-bold"
                                     value={formData.scheduled_at}
                                     onChange={handleChange}
                                 />
                             </div>
                             <div>
-                                <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Lokasi (Jika Offline)</label>
+                                <label className="block font-bold text-indigo-600 mb-2 uppercase tracking-widest text-[10px]">Tanggal Selesai</label>
                                 <input
-                                    name="location"
-                                    type="text"
-                                    placeholder="Alamat atau Nama Gedung"
-                                    className="w-full px-5 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-medium"
-                                    value={formData.location}
+                                    name="scheduled_end_at"
+                                    type="datetime-local"
+                                    required={formData.type === 'course'}
+                                    className="w-full px-5 py-3 bg-white border border-indigo-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700 font-bold"
+                                    value={formData.scheduled_end_at}
                                     onChange={handleChange}
                                 />
                             </div>
-                        </>
+                        </div>
+                        {formData.type === 'course' && (
+                            <p className="text-[11px] text-indigo-500 font-medium">Status course akan otomatis nonaktif setelah tanggal selesai lewat.</p>
+                        )}
+                    </div>
+                    {(formData.type === 'workshop' || formData.type === 'course') && formData.delivery_mode === 'offline' && (
+                        <div>
+                            <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">
+                                {formData.type === 'workshop' ? 'Lokasi Workshop Offline' : 'Lokasi Pelatihan Offline'}
+                            </label>
+                            <input
+                                name="location"
+                                type="text"
+                                placeholder="Alamat atau Nama Gedung"
+                                className="w-full px-5 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-medium"
+                                value={formData.location}
+                                onChange={handleChange}
+                            />
+                        </div>
+                    )}
+
+                    {formData.type === 'webinar' && (
+                        <div className="md:col-span-2">
+                            <label className="flex items-center gap-3 cursor-pointer group rounded-2xl border border-emerald-100 bg-emerald-50 px-5 py-4">
+                                <input
+                                    name="is_free"
+                                    type="checkbox"
+                                    className="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300"
+                                    checked={formData.is_free}
+                                    onChange={handleChange}
+                                />
+                                <span className="text-emerald-700 font-bold text-xs uppercase tracking-widest">Webinar Gratis</span>
+                            </label>
+                        </div>
                     )}
 
                     <div>
                         <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Harga (Rp)</label>
                         <input
                             name="price"
-                            type="number"
-                            required
-                            placeholder="750000"
+                            type="text"
+                            inputMode="numeric"
+                            required={!formData.is_free}
+                            disabled={formData.is_free}
+                            placeholder="750.000"
                             className="w-full px-5 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-bold placeholder:text-gray-300"
                             value={formData.price}
                             onChange={handleChange}
@@ -298,8 +441,10 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                         <label className="block font-bold text-indigo-600 mb-2 uppercase tracking-widest text-[10px]">Biaya Diskon (Opsional)</label>
                         <input
                             name="discount_price"
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             placeholder="Biarkan kosong jika normal"
+                            disabled={formData.is_free}
                             className="w-full px-5 py-3 bg-indigo-50/50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700 font-bold placeholder:text-indigo-300/50"
                             value={formData.discount_price}
                             onChange={handleChange}
@@ -335,6 +480,24 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                         </label>
                     </div>
 
+                    {formData.type === 'course' && (
+                        <div className="flex items-center pt-2">
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                                <div className={`relative w-6 h-6 rounded-lg border-2 transition-all flex items-center justify-center ${formData.has_certification_exam ? 'bg-indigo-600 border-indigo-600' : 'border-gray-200 group-hover:border-indigo-400'}`}>
+                                    <input
+                                        name="has_certification_exam"
+                                        type="checkbox"
+                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                        checked={formData.has_certification_exam}
+                                        onChange={handleChange}
+                                    />
+                                    {formData.has_certification_exam && <div className="w-1.5 h-3 border-r-2 border-b-2 border-white rotate-45 mb-0.5" />}
+                                </div>
+                                <span className="text-indigo-600 font-bold text-xs uppercase tracking-widest">Sediakan Ujian Sertifikasi</span>
+                            </label>
+                        </div>
+                    )}
+
                 </div>
 
                 <div className="pt-8 border-t border-gray-50 flex justify-end">
@@ -348,6 +511,12 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                     </button>
                 </div>
             </form>
+
+            {!isNew && formData.type === 'course' && formData.has_certification_exam && (
+                <InstructorExamManager courseId={parseInt(id)} />
+            )}
         </div>
     );
 }
+
+import InstructorExamManager from '@/components/exam/InstructorExamManager';

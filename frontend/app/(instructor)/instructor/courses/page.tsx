@@ -6,18 +6,18 @@ import {
     BookOpen,
     Plus,
     Search,
-    MoreVertical,
     Edit2,
     Eye,
     Users,
     Star,
     LayoutGrid,
-    List as ListIcon,
-    ChevronRight
+    List as ListIcon
 } from 'lucide-react';
+import { Course } from '@/types';
+import { formatRupiah } from '@/types/currency';
 
 export default function InstructorCoursesPage() {
-    const [courses, setCourses] = useState<any[]>([]);
+    const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -155,7 +155,7 @@ export default function InstructorCoursesPage() {
                                         <span>{course.enrolled_count} Siswa</span>
                                     </div>
                                     <span className="font-bold text-indigo-600">
-                                        Rp {parseFloat(course.price).toLocaleString('id-ID')}
+                                        {formatRupiah(course.price)}
                                     </span>
                                 </div>
 
@@ -225,10 +225,12 @@ export default function InstructorCoursesPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="font-bold text-gray-900 text-sm">Rp {parseFloat(course.price).toLocaleString('id-ID')}</div>
+                                        <div className="font-bold text-gray-900 text-sm">{formatRupiah(course.price)}</div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="px-2.5 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-black uppercase">Published</span>
+                                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${course.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+                                            {course.is_active ? 'Aktif' : 'Nonaktif'}
+                                        </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-2">

@@ -53,6 +53,7 @@ function CheckoutContent() {
     if (!course) return null;
 
     const price = parseInt(course.discount_price || course.price);
+    const isFreeWebinar = course.type === 'webinar' && course.is_free;
 
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
@@ -162,9 +163,9 @@ function CheckoutContent() {
                                 <div className="space-y-3 mb-6 pb-6 border-b border-gray-100 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Harga Pelatihan</span>
-                                        <span className="font-medium text-gray-900">Rp {parseInt(course.price).toLocaleString('id-ID')}</span>
+                                        <span className="font-medium text-gray-900">{isFreeWebinar ? 'Gratis' : `Rp ${parseInt(course.price).toLocaleString('id-ID')}`}</span>
                                     </div>
-                                    {course.discount_price && (
+                                    {course.discount_price && !isFreeWebinar && (
                                         <div className="flex justify-between text-green-600">
                                             <span className="text-gray-500">Potongan Harga</span>
                                             <span className="font-medium">- Rp {(parseInt(course.price) - parseInt(course.discount_price)).toLocaleString('id-ID')}</span>
@@ -182,7 +183,7 @@ function CheckoutContent() {
 
                                 <div className="flex justify-between items-center mb-6">
                                     <span className="font-bold text-gray-900">Total Bayar</span>
-                                    <span className="font-bold text-xl text-blue-600">Rp {price.toLocaleString('id-ID')}</span>
+                                    <span className="font-bold text-xl text-blue-600">{isFreeWebinar ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                 </div>
 
                                 <Link href={`/payment?slug=${slug}`} className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">

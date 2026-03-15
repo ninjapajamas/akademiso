@@ -5,7 +5,9 @@ from .views import (
     RegisterView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
     SectionViewSet, StatsView, InstructorCoursesView, InstructorStudentsView,
     AdminResetPasswordView, AdminEditUserView, AdminImpersonateView, ProfileView,
-    MidtransNotificationView, QuizAttemptView, CompleteLessonView,
+    MidtransNotificationView, QuizAttemptView, CompleteLessonView, AccessLessonView,
+    CertificationExamViewSet, CertificationQuestionViewSet, CertificationAlternativeViewSet, CertificationInstructorSlotViewSet,
+    CertificationAttemptViewSet, CertificateViewSet, CertificateTemplateViewSet
 )
 
 router = DefaultRouter()
@@ -17,6 +19,13 @@ router.register(r'sections', SectionViewSet)
 router.register(r'lessons', LessonViewSet)
 router.register(r'orders', OrderViewSet)
 router.register(r'cart', CartViewSet, basename='cart')
+router.register(r'certification-exams', CertificationExamViewSet)
+router.register(r'certification-questions', CertificationQuestionViewSet)
+router.register(r'certification-alternatives', CertificationAlternativeViewSet)
+router.register(r'certification-slots', CertificationInstructorSlotViewSet)
+router.register(r'certification-attempts', CertificationAttemptViewSet)
+router.register(r'certificates', CertificateViewSet)
+router.register(r'certificate-templates', CertificateTemplateViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -33,4 +42,5 @@ urlpatterns = [
     path('orders/notification/', MidtransNotificationView.as_view(), name='midtrans-notification'),
     path('lessons/<int:lesson_id>/quiz-attempt/', QuizAttemptView.as_view(), name='quiz-attempt'),
     path('lessons/<int:lesson_id>/complete/', CompleteLessonView.as_view(), name='lesson-complete'),
+    path('lessons/<int:lesson_id>/access/', AccessLessonView.as_view(), name='lesson-access'),
 ]
