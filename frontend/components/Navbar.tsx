@@ -2,64 +2,105 @@
 
 import Link from 'next/link';
 import { Search, Menu, X, ShieldCheck, User, LayoutDashboard, LogOut, ShoppingCart } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '../context/CartContext';
+import { getPortalPathForRole } from '@/utils/auth';
+import type { UserProfilePayload } from '@/utils/profile';
+
+function subscribeToAuthToken(onStoreChange: () => void) {
+    if (typeof window === 'undefined') {
+        return () => {};
+    }
+
+    const handleChange = () => onStoreChange();
+
+    window.addEventListener('storage', handleChange);
+    window.addEventListener('focus', handleChange);
+    window.addEventListener('auth-change', handleChange);
+
+    return () => {
+        window.removeEventListener('storage', handleChange);
+        window.removeEventListener('focus', handleChange);
+        window.removeEventListener('auth-change', handleChange);
+    };
+}
+
+function getAccessTokenSnapshot() {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    return localStorage.getItem('access_token');
+}
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
-    const [userData, setUserData] = useState<any>(null);
+    const [userData, setUserData] = useState<UserProfilePayload | null>(null);
     const router = useRouter();
     const { cartCount } = useCart();
+    const accessToken = useSyncExternalStore(
+        subscribeToAuthToken,
+        getAccessTokenSnapshot,
+        () => null
+    );
+    const isLoggedIn = Boolean(accessToken);
 
     useEffect(() => {
-        // Check for token on mount
-        const token = localStorage.getItem('access_token');
-        setIsLoggedIn(!!token);
-
-        if (token) {
-            fetchUserProfile(token);
+        if (!accessToken) {
+            return;
         }
-    }, []);
 
-    const fetchUserProfile = async (token: string) => {
-        try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const res = await fetch(`${apiUrl}/api/profile/`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
+        const loadProfile = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${apiUrl}/api/profile/`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setUserData(data);
                 }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setUserData(data);
+            } catch (error) {
+                console.error('Error fetching profile:', error);
             }
-        } catch (error) {
-            console.error('Error fetching profile:', error);
-        }
-    };
+        };
+
+        void loadProfile();
+    }, [accessToken]);
 
     const handleLogout = () => {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        setIsLoggedIn(false);
+        window.dispatchEvent(new Event('auth-change'));
+        setUserData(null);
         setUserMenuOpen(false);
         router.push('/');
     };
 
+    const portalHref = getPortalPathForRole(userData?.role || 'student');
+    const portalLabel = userData?.role === 'admin'
+        ? 'Dashboard Admin'
+        : userData?.role === 'akuntan'
+            ? 'Portal Akuntan'
+            : userData?.role === 'instructor'
+                ? 'Portal Instruktur'
+                : 'Dashboard Saya';
+
     return (
         <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between h-20 items-center gap-8">
+                <div className="flex justify-between h-16 md:h-20 items-center gap-3 md:gap-8">
 
                     {/* Logo */}
-                    <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-                        <div className="w-9 h-9 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
+                    <Link href="/" className="flex min-w-0 items-center gap-2 flex-shrink-0">
+                        <div className="w-9 h-9 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0">
                             <ShieldCheck className="w-5 h-5 fill-current" />
                         </div>
-                        <span className="font-bold text-xl tracking-tight text-gray-900">Akademiso</span>
+                        <span className="truncate font-bold text-lg tracking-tight text-gray-900 sm:text-xl">Akademiso</span>
                     </Link>
 
                     {/* Search Bar */}
@@ -115,16 +156,10 @@ export default function Navbar() {
                                                     </span>
                                                 )}
                                             </Link>
-                                            <Link href="/dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                                            <Link href={portalHref} className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors">
                                                 <LayoutDashboard className="w-4 h-4" />
-                                                Dashboard Saya
+                                                {portalLabel}
                                             </Link>
-                                            {userData?.is_staff && (
-                                                <Link href="/admin" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
-                                                    <ShieldCheck className="w-4 h-4" />
-                                                    Dashboard Admin
-                                                </Link>
-                                            )}
                                             <div className="border-t border-gray-50 my-1"></div>
                                             <button
                                                 onClick={handleLogout}
@@ -148,52 +183,75 @@ export default function Navbar() {
                     </div>
 
                     {/* Mobile Menu Button */}
-                    <button
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="md:hidden p-2 rounded-md text-gray-500 hover:text-gray-900 focus:outline-none"
-                    >
-                        {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-                    </button>
+                    <div className="flex items-center gap-1 md:hidden">
+                        {isLoggedIn && (
+                            <Link
+                                href="/cart"
+                                aria-label="Keranjang belanja"
+                                className="relative flex h-11 w-11 items-center justify-center rounded-full text-gray-600 hover:bg-gray-50 hover:text-blue-600"
+                            >
+                                <ShoppingCart className="h-5 w-5" />
+                                {cartCount > 0 && (
+                                    <span className="absolute right-2 top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                                        {cartCount}
+                                    </span>
+                                )}
+                            </Link>
+                        )}
+                        <button
+                            onClick={() => setIsOpen(!isOpen)}
+                            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-600 hover:bg-gray-50 hover:text-gray-900 focus:outline-none"
+                            aria-label={isOpen ? 'Tutup menu' : 'Buka menu'}
+                            aria-expanded={isOpen}
+                        >
+                            {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Mobile Menu */}
             {isOpen && (
-                <div className="md:hidden bg-white border-t border-gray-100 absolute w-full shadow-lg">
-                    <div className="px-4 py-6 space-y-4">
+                <div className="absolute left-0 right-0 max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-gray-100 bg-white shadow-xl md:hidden">
+                    <div className="space-y-4 px-4 py-5">
                         <div className="relative">
                             <input
                                 type="text"
                                 placeholder="Cari pelatihan..."
-                                className="w-full pl-10 pr-4 py-3 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:border-blue-500"
+                                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-10 pr-4 text-base text-gray-800 outline-none focus:border-blue-500"
                             />
                             <Search className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
                         </div>
 
-                        <Link href="/courses" className="block text-gray-600 font-medium py-2 hover:text-blue-600">Program ISO</Link>
+                        <Link href="/courses" onClick={() => setIsOpen(false)} className="block rounded-xl px-2 py-3 font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-600">Program ISO</Link>
                         <hr className="border-gray-100" />
 
                         {isLoggedIn ? (
                             <>
-                                <Link href="/dashboard" className="flex items-center gap-2 text-gray-900 font-bold py-2 hover:text-blue-600">
-                                    <LayoutDashboard className="w-5 h-5" />
-                                    Dashboard Saya
+                                <Link href="/cart" onClick={() => setIsOpen(false)} className="flex items-center justify-between rounded-xl px-2 py-3 font-bold text-gray-900 hover:bg-blue-50 hover:text-blue-600">
+                                    <span className="flex items-center gap-2">
+                                        <ShoppingCart className="w-5 h-5" />
+                                        Keranjang Belanja
+                                    </span>
+                                    {cartCount > 0 && (
+                                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
+                                            {cartCount}
+                                        </span>
+                                    )}
                                 </Link>
-                                {userData?.is_staff && (
-                                    <Link href="/admin" className="flex items-center gap-2 text-indigo-600 font-bold py-2 hover:bg-indigo-50 rounded-lg">
-                                        <ShieldCheck className="w-5 h-5" />
-                                        Dashboard Admin
-                                    </Link>
-                                )}
-                                <button onClick={handleLogout} className="flex w-full items-center gap-2 text-red-600 font-bold py-2 hover:bg-red-50 rounded-lg">
+                                <Link href={portalHref} onClick={() => setIsOpen(false)} className="flex items-center gap-2 rounded-xl px-2 py-3 font-bold text-gray-900 hover:bg-blue-50 hover:text-blue-600">
+                                    <LayoutDashboard className="w-5 h-5" />
+                                    {portalLabel}
+                                </Link>
+                                <button onClick={handleLogout} className="flex w-full items-center gap-2 rounded-xl px-2 py-3 font-bold text-red-600 hover:bg-red-50">
                                     <LogOut className="w-5 h-5" />
                                     Keluar
                                 </button>
                             </>
                         ) : (
                             <>
-                                <Link href="/login" className="block text-gray-600 font-medium py-2 hover:text-blue-600">Masuk</Link>
-                                <Link href="/register" className="block text-center bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">
+                                <Link href="/login" onClick={() => setIsOpen(false)} className="block rounded-xl px-2 py-3 font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-600">Masuk</Link>
+                                <Link href="/register" onClick={() => setIsOpen(false)} className="block rounded-xl bg-blue-600 py-3.5 text-center font-bold text-white hover:bg-blue-700">
                                     Daftar Sekarang
                                 </Link>
                             </>

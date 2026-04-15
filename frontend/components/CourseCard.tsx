@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Star, Clock, BarChart, BookOpen, ShoppingCart } from 'lucide-react';
+import { Star, Clock, BarChart, BookOpen, ShoppingCart, MapPin } from 'lucide-react';
 import { Course } from '@/types';
 import { useCart } from '../context/CartContext';
 import AddToCartModal from './AddToCartModal';
@@ -60,7 +60,7 @@ export default function CourseCard({ course }: CourseCardProps) {
 
     return (
         <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100 overflow-hidden group flex flex-col h-full">
-            <div className="relative h-48 w-full overflow-hidden">
+            <div className="relative h-44 w-full overflow-hidden sm:h-48">
                 {/* Tag & Type Badge */}
                 <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
                     <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest text-gray-800 shadow-sm">
@@ -104,7 +104,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                 )}
             </div>
 
-            <div className="p-5 flex flex-col flex-1">
+            <div className="p-4 sm:p-5 flex flex-col flex-1">
                 <div className="flex items-center gap-1 mb-2 text-yellow-500 text-xs font-bold">
                     <Star className="w-3 h-3 fill-current" />
                     <span>{course.rating}</span>
@@ -112,14 +112,14 @@ export default function CourseCard({ course }: CourseCardProps) {
                 </div>
 
                 <Link href={`/courses/${course.slug}`}>
-                    <h3 className="font-bold text-lg text-gray-900 mb-2 leading-tight group-hover:text-blue-600 transition-colors line-clamp-2">
+                    <h3 className="font-bold text-base text-gray-900 mb-2 leading-tight group-hover:text-blue-600 transition-colors line-clamp-2 sm:text-lg">
                         {course.title}
                     </h3>
                 </Link>
 
                 {/* Metadata */}
                 <div className="flex flex-col gap-2 text-xs text-gray-500 mb-4">
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                         <div className="flex items-center gap-1">
                             <BarChart className="w-3 h-3" />
                             <span>{course.level}</span>
@@ -131,9 +131,9 @@ export default function CourseCard({ course }: CourseCardProps) {
                     </div>
 
                     {course.scheduled_at && (
-                        <div className="flex items-center gap-1 text-blue-600 font-medium">
-                            <Clock className="w-3 h-3" />
-                            <span>
+                        <div className="flex items-start gap-1 text-blue-600 font-medium">
+                            <Clock className="mt-0.5 w-3 h-3 shrink-0" />
+                            <span className="leading-relaxed">
                                 {new Date(course.scheduled_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                 {course.scheduled_end_at && ` - ${new Date(course.scheduled_end_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
                             </span>
@@ -141,8 +141,9 @@ export default function CourseCard({ course }: CourseCardProps) {
                     )}
 
                     {course.location && (
-                        <div className="flex items-center gap-1 text-gray-500 italic">
-                            <span>📍 {course.location}</span>
+                        <div className="flex items-start gap-1 text-gray-500 italic">
+                            <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span className="leading-relaxed">{course.location}</span>
                         </div>
                     )}
                 </div>
@@ -161,16 +162,18 @@ export default function CourseCard({ course }: CourseCardProps) {
                     <span className="text-xs text-gray-600 truncate">{course.instructor.name}</span>
                 </div>
 
-                <div className="border-t border-gray-100 pt-3 flex justify-between items-end">
-                    <div>
-                        <p className="text-blue-600 font-bold text-lg">
+                <div className="border-t border-gray-100 pt-3 flex justify-between items-end gap-3">
+                    <div className="min-w-0">
+                        <p className="text-blue-600 font-bold text-base sm:text-lg">
                             {isFreeWebinar ? 'Gratis' : formatRupiah(course.price)}
                         </p>
                     </div>
                     <button
                         onClick={addToCart}
                         disabled={isAdding}
-                        className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        className="h-10 w-10 shrink-0 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        aria-label="Tambah ke keranjang"
+                    >
                         {isAdding ? (
                             <div className="w-4 h-4 border-2 border-current rounded-full border-t-transparent animate-spin"></div>
                         ) : (

@@ -94,12 +94,12 @@ export default function CartPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 py-12">
+        <div className="min-h-screen bg-gray-50 py-8 sm:py-12">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <h1 className="text-3xl font-bold text-gray-900 mb-8">Keranjang Belanja</h1>
+                <h1 className="mb-6 text-2xl font-bold text-gray-900 sm:mb-8 sm:text-3xl">Keranjang Belanja</h1>
 
                 {items.length === 0 ? (
-                    <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                    <div className="bg-white rounded-xl shadow-sm p-6 text-center sm:p-12">
                         <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6 text-gray-400">
                             <ShieldCheck className="w-10 h-10" />
                         </div>
@@ -111,12 +111,12 @@ export default function CartPage() {
                         </Link>
                     </div>
                 ) : (
-                    <div className="flex flex-col lg:flex-row gap-8">
+                    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
                         {/* Cart Items */}
                         <div className="flex-1 space-y-4">
                             {items.map((item) => (
-                                <div key={item.id} className="bg-white p-6 rounded-xl shadow-sm flex gap-6 items-center">
-                                    <div className="w-24 h-24 bg-gray-200 rounded-lg overflow-hidden relative flex-shrink-0">
+                                <div key={item.id} className="flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:gap-6 sm:p-6">
+                                    <div className="relative h-40 w-full flex-shrink-0 overflow-hidden rounded-lg bg-gray-200 sm:h-24 sm:w-24">
                                         {item.course.thumbnail ? (
                                             <Image src={item.course.thumbnail} alt={item.course.title} fill className="object-cover" />
                                         ) : (
@@ -124,9 +124,9 @@ export default function CartPage() {
                                         )}
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="font-bold text-lg text-gray-900 mb-1">{item.course.title}</h3>
+                                        <h3 className="mb-1 text-base font-bold text-gray-900 sm:text-lg">{item.course.title}</h3>
                                         <p className="text-sm text-gray-500 mb-2">Instructor: {item.course.instructor.name}</p>
-                                        <div className="flex justify-between items-center">
+                                        <div className="flex items-center justify-between gap-3">
                                             <span className="text-blue-600 font-bold">{formatPrice(Number(item.course.price))}</span>
                                             <button
                                                 onClick={() => removeItem(item.course.id)}
@@ -142,7 +142,7 @@ export default function CartPage() {
 
                         {/* Summary */}
                         <div className="lg:w-96">
-                            <div className="bg-white p-6 rounded-xl shadow-sm sticky top-24">
+                            <div className="sticky top-20 rounded-xl bg-white p-5 shadow-sm sm:p-6 lg:top-24">
                                 <h3 className="font-bold text-lg text-gray-900 mb-6">Ringkasan Pesanan</h3>
                                 <div className="space-y-4 mb-6">
                                     <div className="flex justify-between text-gray-600">

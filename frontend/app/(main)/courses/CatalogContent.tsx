@@ -92,7 +92,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
         });
 
         return result;
-    }, [initialCourses, searchQuery, selectedCategories, priceFilter, levelFilter, sortBy]);
+    }, [initialCourses, searchQuery, selectedCategories, priceFilter, levelFilter, typeFilter, sortBy]);
 
     const activeFilterCount =
         (selectedCategories.length > 0 ? 1 : 0) +
@@ -100,7 +100,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
         (levelFilter !== 'all' ? 1 : 0) +
         (typeFilter !== 'all' ? 1 : 0);
 
-    const FilterSidebar = () => (
+    const renderFilterSidebar = () => (
         <div className="space-y-7">
             <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-gray-900">Filter</h3>
@@ -244,22 +244,22 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
 
             {/* Page Header */}
             <div className="bg-white border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 py-8">
+                <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
                     <nav className="text-sm text-gray-500 mb-2">Beranda / Katalog Pelatihan ISO</nav>
-                    <h1 className="text-3xl font-bold text-gray-900">Jelajahi Pelatihan ISO</h1>
-                    <p className="text-gray-600 mt-2">
+                    <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Jelajahi Pelatihan ISO</h1>
+                    <p className="mt-2 text-sm leading-relaxed text-gray-600 sm:text-base">
                         Tingkatkan standar kualitas dan kepatuhan organisasi Anda dengan sertifikasi BNSP dan Internasional.
                     </p>
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 py-8">
+            <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
 
                 {/* Mobile filter toggle */}
                 <div className="lg:hidden mb-4">
                     <button
                         onClick={() => setShowMobileFilter(!showMobileFilter)}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:border-blue-400 transition-colors"
+                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-blue-400"
                     >
                         <SlidersHorizontal className="w-4 h-4" />
                         Filter
@@ -270,8 +270,8 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
                         )}
                     </button>
                     {showMobileFilter && (
-                        <div className="mt-3 p-5 bg-white rounded-xl border border-gray-200 shadow-sm">
-                            <FilterSidebar />
+                        <div className="mt-3 max-h-[70vh] overflow-y-auto rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                            {renderFilterSidebar()}
                         </div>
                     )}
                 </div>
@@ -280,14 +280,14 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
 
                     {/* Desktop Sidebar */}
                     <aside className="hidden lg:block w-64 flex-shrink-0 bg-white rounded-xl border border-gray-100 shadow-sm p-6 self-start sticky top-24">
-                        <FilterSidebar />
+                        {renderFilterSidebar()}
                     </aside>
 
                     {/* Main Content */}
                     <div className="flex-1 min-w-0">
 
                         {/* Toolbar */}
-                        <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
+                        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-gray-500 text-sm">
                                 Menampilkan <span className="font-bold text-gray-900">{filteredAndSorted.length}</span> dari{' '}
                                 <span className="font-bold text-gray-900">{initialCourses.length}</span> program pelatihan
@@ -297,10 +297,10 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
                                     </button>
                                 )}
                             </p>
-                            <div className="flex items-center gap-2 text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                            <div className="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm sm:w-auto">
                                 <span className="text-gray-500">Urutkan:</span>
                                 <select
-                                    className="border-none bg-transparent font-bold text-gray-900 outline-none cursor-pointer"
+                                    className="min-w-0 flex-1 cursor-pointer border-none bg-transparent font-bold text-gray-900 outline-none sm:flex-none"
                                     value={sortBy}
                                     onChange={e => setSortBy(e.target.value as SortOption)}
                                 >
@@ -313,7 +313,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
                         </div>
 
                         {/* Active filter chips */}
-                        {(selectedCategories.length > 0 || priceFilter !== 'all' || levelFilter !== 'all' || searchQuery) && (
+                        {(selectedCategories.length > 0 || priceFilter !== 'all' || levelFilter !== 'all' || typeFilter !== 'all' || searchQuery) && (
                             <div className="flex flex-wrap gap-2 mb-5">
                                 {searchQuery && (
                                     <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">

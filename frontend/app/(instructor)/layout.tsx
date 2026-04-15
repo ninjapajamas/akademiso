@@ -4,10 +4,11 @@ import { useEffect, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Award, BookOpen, GraduationCap, LayoutDashboard, LogOut, Settings, ShieldAlert, Users } from 'lucide-react';
+import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
 
 type InstructorAuthSnapshot = {
     hijackUser: string | null;
-    redirectTo: '/dashboard' | '/login' | null;
+    redirectTo: string | null;
     username: string;
 };
 
@@ -34,14 +35,6 @@ function cacheInstructorAuthSnapshot(nextSnapshot: InstructorAuthSnapshot) {
     return nextSnapshot;
 }
 
-function decodeJwt(token: string) {
-    try {
-        return JSON.parse(atob(token.split('.')[1]));
-    } catch {
-        return null;
-    }
-}
-
 function getInstructorAuthSnapshot() {
     if (typeof window === 'undefined') {
         return INSTRUCTOR_AUTH_EMPTY;
@@ -56,7 +49,7 @@ function getInstructorAuthSnapshot() {
         });
     }
 
-    const payload = decodeJwt(token);
+    const payload = decodeJwtPayload(token);
     if (!payload) {
         return cacheInstructorAuthSnapshot({
             hijackUser: null,
@@ -65,10 +58,11 @@ function getInstructorAuthSnapshot() {
         });
     }
 
-    if (!payload.is_instructor && !payload.is_staff && !payload.is_superuser) {
+    const role = getRoleFromPayload(payload);
+    if (role !== 'instructor' && role !== 'admin') {
         return cacheInstructorAuthSnapshot({
             hijackUser: null,
-            redirectTo: '/dashboard',
+            redirectTo: getPortalPathForRole(role),
             username: '',
         });
     }
@@ -118,19 +112,14 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
             return;
         }
 
-        if (authState.redirectTo === '/dashboard') {
-            router.replace('/dashboard');
-            return;
-        }
-
-        router.replace('/login');
+        router.replace(authState.redirectTo);
     }, [authState.redirectTo, router]);
 
     const menuItems = [
         { label: 'Dashboard', href: '/instructor', icon: LayoutDashboard },
         { label: 'Kursus Saya', href: '/instructor/courses', icon: BookOpen },
         { label: 'Siswa', href: '/instructor/students', icon: Users },
-        { label: 'Ujian & Sertifikasi', href: '/instructor/certification', icon: Award },
+        { label: 'Ujian Akhir', href: '/instructor/certification', icon: Award },
         { label: 'Pengaturan', href: '/instructor/settings', icon: Settings },
     ];
 
@@ -164,7 +153,7 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
-            <aside className="fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-100 w-64 flex flex-col">
+            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-gray-100 bg-white md:flex">
                 <div className="h-20 flex items-center px-6 border-b border-gray-50">
                     <Link href="/instructor" className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
@@ -211,9 +200,29 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
                 </div>
             </aside>
 
-            <main className="flex-1 md:ml-64 p-8">
+            <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+                <div className="flex gap-1 overflow-x-auto">
+                    {menuItems.map((item) => {
+                        const isActive = pathname === item.href || (item.href !== '/instructor' && pathname.startsWith(item.href));
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`flex min-w-[76px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold ${
+                                    isActive ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500'
+                                }`}
+                            >
+                                <item.icon className="h-5 w-5" />
+                                <span className="truncate">{item.label}</span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            </nav>
+
+            <main className="flex-1 p-4 pb-24 sm:p-6 md:ml-64 md:p-8">
                 {authState.hijackUser && (
-                    <div className="mb-6 bg-orange-500 text-white rounded-2xl px-5 py-3 flex items-center gap-3 shadow-lg shadow-orange-500/30">
+                    <div className="mb-6 flex flex-col gap-3 rounded-2xl bg-orange-500 px-5 py-3 text-white shadow-lg shadow-orange-500/30 sm:flex-row sm:items-center">
                         <ShieldAlert className="w-5 h-5 flex-shrink-0" />
                         <div className="flex-1 text-sm">
                             <span className="font-bold">Mode Impersonasi Aktif</span>
@@ -221,7 +230,7 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
                         </div>
                         <button
                             onClick={restoreAdmin}
-                            className="bg-white text-orange-600 font-bold text-xs px-4 py-1.5 rounded-lg hover:bg-orange-50 transition-colors flex-shrink-0"
+                            className="rounded-lg bg-white px-4 py-2 text-xs font-bold text-orange-600 transition-colors hover:bg-orange-50 sm:py-1.5"
                         >
                             Kembali ke Admin
                         </button>

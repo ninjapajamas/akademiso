@@ -13,16 +13,18 @@ import {
     ShieldAlert,
     ShieldCheck,
 } from 'lucide-react';
+import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
 
 type DashboardUser = {
     name: string;
     email: string;
     is_staff: boolean;
+    role: string;
 };
 
 type DashboardAuthSnapshot = {
     hijackUser: string | null;
-    redirectTo: '/login' | '/instructor' | null;
+    redirectTo: string | null;
     user: DashboardUser | null;
 };
 
@@ -42,7 +44,8 @@ function cacheDashboardAuthSnapshot(nextSnapshot: DashboardAuthSnapshot) {
         previousSnapshot.redirectTo === nextSnapshot.redirectTo &&
         previousSnapshot.user?.name === nextSnapshot.user?.name &&
         previousSnapshot.user?.email === nextSnapshot.user?.email &&
-        previousSnapshot.user?.is_staff === nextSnapshot.user?.is_staff
+        previousSnapshot.user?.is_staff === nextSnapshot.user?.is_staff &&
+        previousSnapshot.user?.role === nextSnapshot.user?.role
     ) {
         return previousSnapshot;
     }
@@ -66,12 +69,20 @@ function getDashboardAuthSnapshot() {
     }
 
     try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-
-        if (payload.is_instructor) {
+        const payload = decodeJwtPayload(token);
+        const role = getRoleFromPayload(payload);
+        if (!payload) {
             return cacheDashboardAuthSnapshot({
                 hijackUser: null,
-                redirectTo: '/instructor',
+                redirectTo: '/login',
+                user: null,
+            });
+        }
+
+        if (role !== 'student') {
+            return cacheDashboardAuthSnapshot({
+                hijackUser: null,
+                redirectTo: getPortalPathForRole(role),
                 user: null,
             });
         }
@@ -82,6 +93,7 @@ function getDashboardAuthSnapshot() {
             user: {
                 email: payload.email || '',
                 is_staff: Boolean(payload.is_staff),
+                role,
                 name: payload.username || '',
             },
         });
@@ -137,12 +149,7 @@ export default function DashboardLayout({
             return;
         }
 
-        if (authState.redirectTo === '/instructor') {
-            router.replace('/instructor');
-            return;
-        }
-
-        router.push('/login');
+        router.replace(authState.redirectTo);
     }, [authState.redirectTo, router]);
 
     const menuItems = [
@@ -237,10 +244,30 @@ export default function DashboardLayout({
                 </div>
             </aside>
 
+            <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+                <div className="flex gap-1 overflow-x-auto">
+                    {menuItems.map((item) => {
+                        const isActive = pathname === item.href;
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`flex min-w-[76px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold ${
+                                    isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-500'
+                                }`}
+                            >
+                                <item.icon className="h-5 w-5" />
+                                <span className="truncate">{item.label}</span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            </nav>
+
             <div className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'md:ml-20'}`}>
-                <main className="p-8">
+                <main className="p-4 pb-24 sm:p-6 md:p-8">
                     {authState.hijackUser && (
-                        <div className="mb-6 bg-orange-500 text-white rounded-2xl px-5 py-3 flex items-center gap-3 shadow-lg shadow-orange-500/30">
+                        <div className="mb-6 flex flex-col gap-3 rounded-2xl bg-orange-500 px-5 py-3 text-white shadow-lg shadow-orange-500/30 sm:flex-row sm:items-center">
                             <ShieldAlert className="w-5 h-5 flex-shrink-0" />
                             <div className="flex-1 text-sm">
                                 <span className="font-bold">Mode Impersonasi Aktif</span>
@@ -248,7 +275,7 @@ export default function DashboardLayout({
                             </div>
                             <button
                                 onClick={restoreAdmin}
-                                className="bg-white text-orange-600 font-bold text-xs px-4 py-1.5 rounded-lg hover:bg-orange-50 transition-colors flex-shrink-0"
+                                className="rounded-lg bg-white px-4 py-2 text-xs font-bold text-orange-600 transition-colors hover:bg-orange-50 sm:py-1.5"
                             >
                                 Kembali ke Admin
                             </button>
