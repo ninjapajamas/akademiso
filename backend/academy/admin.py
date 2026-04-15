@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Category, Instructor, Course, Lesson, Order
+from .models import Category, Instructor, Course, Lesson, Order, InhouseTrainingRequest
 
 class LessonInline(admin.TabularInline):
     model = Lesson
@@ -20,12 +20,21 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Instructor)
 class InstructorAdmin(admin.ModelAdmin):
-    list_display = ('name', 'title')
+    list_display = ('name', 'title', 'approval_status', 'approved_by', 'approved_at')
+    list_filter = ('approval_status',)
+    search_fields = ('name', 'title', 'user__email', 'user__username')
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'course', 'status', 'total_amount', 'created_at')
     list_filter = ('status', 'created_at')
+
+
+@admin.register(InhouseTrainingRequest)
+class InhouseTrainingRequestAdmin(admin.ModelAdmin):
+    list_display = ('course', 'company_name', 'contact_name', 'preferred_mode', 'participants_count', 'status', 'created_at')
+    list_filter = ('status', 'preferred_mode', 'created_at')
+    search_fields = ('course__title', 'company_name', 'contact_name', 'email', 'phone')
 
 from .models import Cart, CartItem
 

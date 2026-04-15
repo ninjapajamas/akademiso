@@ -3,11 +3,11 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, InstructorViewSet, CourseViewSet, OrderViewSet,
     RegisterView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
-    SectionViewSet, StatsView, InstructorCoursesView, InstructorStudentsView,
+    SectionViewSet, StatsView, AccountantStatsView, InstructorCoursesView, InstructorStudentsView,
     AdminResetPasswordView, AdminEditUserView, AdminImpersonateView, ProfileView,
     MidtransNotificationView, QuizAttemptView, CompleteLessonView, AccessLessonView,
     CertificationExamViewSet, CertificationQuestionViewSet, CertificationAlternativeViewSet, CertificationInstructorSlotViewSet,
-    CertificationAttemptViewSet, CertificateViewSet, CertificateTemplateViewSet
+    CertificationAttemptViewSet, CertificateViewSet, CertificateTemplateViewSet, InhouseTrainingRequestViewSet
 )
 
 router = DefaultRouter()
@@ -19,6 +19,7 @@ router.register(r'sections', SectionViewSet)
 router.register(r'lessons', LessonViewSet)
 router.register(r'orders', OrderViewSet)
 router.register(r'cart', CartViewSet, basename='cart')
+router.register(r'inhouse-requests', InhouseTrainingRequestViewSet, basename='inhouse-request')
 router.register(r'certification-exams', CertificationExamViewSet)
 router.register(r'certification-questions', CertificationQuestionViewSet)
 router.register(r'certification-alternatives', CertificationAlternativeViewSet)
@@ -32,6 +33,7 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='auth_register'),
     path('my-courses/', MyCoursesView.as_view(), name='my-courses'),
     path('stats/', StatsView.as_view(), name='admin-stats'),
+    path('accountant/stats/', AccountantStatsView.as_view(), name='accountant-stats'),
     path('instructor/courses/', InstructorCoursesView.as_view(), name='instructor-courses'),
     path('instructor/students/', InstructorStudentsView.as_view(), name='instructor-students'),
     # Admin user actions

@@ -7,14 +7,15 @@ from .models import (
     Category, Instructor, Course, Order, Lesson, Section, UserProfile, 
     Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress,
     CertificationExam, CertificationQuestion, CertificationAlternative, 
-    CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance
+    CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance,
+    InhouseTrainingRequest, STAFF_ROLE_ACCOUNTANT, STAFF_ROLE_ADMIN, get_staff_role, get_user_role
 )
 from .serializers import (
     CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, 
     RegisterSerializer, LessonSerializer, SectionSerializer, ProfileSerializer,
     CertificationExamSerializer, CertificationQuestionSerializer, CertificationAlternativeSerializer,
     CertificationInstructorSlotSerializer, CertificationAttemptSerializer, CertificationAnswerSerializer,
-    CertificateSerializer, CertificateTemplateSerializer, WebinarAttendanceSerializer
+    CertificateSerializer, CertificateTemplateSerializer, WebinarAttendanceSerializer, InhouseTrainingRequestSerializer
 )
 from .certificates import generate_certificate_pdf
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, BasePermission, SAFE_METHODS
@@ -23,12 +24,16 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from datetime import datetime
 from django.db import transaction
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, Max, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-import midtransclient
 from django.conf import settings
+
+try:
+    import midtransclient
+except ImportError:  # pragma: no cover - optional in local dev/check environments
+    midtransclient = None
 
 
 class IsInstructorOrAdmin(BasePermission):
@@ -41,14 +46,13 @@ class IsInstructorOrAdmin(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         return request.user.is_authenticated and (
-            request.user.is_staff or 
-            request.user.is_superuser or 
-            hasattr(request.user, 'instructor_profile')
+            get_user_role(request.user) == STAFF_ROLE_ADMIN or
+            bool(_get_instructor_for_user(request.user))
         )
 
     def has_object_permission(self, request, view, obj):
         # Admin can do anything
-        if request.user.is_staff or request.user.is_superuser:
+        if get_user_role(request.user) == STAFF_ROLE_ADMIN:
             return True
         
         # Read permissions are allowed to any request,
@@ -79,13 +83,21 @@ class IsAdmin(BasePermission):
     Permission to allow only staff or superusers.
     """
     def has_permission(self, request, view):
-        return bool(request.user and (request.user.is_staff or request.user.is_superuser))
+        return bool(request.user and get_user_role(request.user) == STAFF_ROLE_ADMIN)
+
+
+class IsAccountant(BasePermission):
+    """
+    Permission to allow only accountant staff.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and get_user_role(request.user) == STAFF_ROLE_ACCOUNTANT)
 
 
 def _can_manage_course(user, course):
     if not user.is_authenticated:
         return False
-    if user.is_staff or user.is_superuser:
+    if get_user_role(user) == STAFF_ROLE_ADMIN:
         return True
     instructor = _get_instructor_for_user(user)
     return bool(instructor and course.instructor_id == instructor.id)
@@ -193,10 +205,36 @@ def _sync_course_activity(queryset=None):
     base_queryset.filter(type='course', scheduled_end_at__isnull=True, scheduled_at__gte=now, is_active=False).update(is_active=True)
 
 
+class InhouseTrainingRequestViewSet(viewsets.ModelViewSet):
+    queryset = InhouseTrainingRequest.objects.select_related('course').all()
+    serializer_class = InhouseTrainingRequestSerializer
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [AllowAny()]
+        return [IsAdmin()]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        course_id = self.request.query_params.get('course')
+        status_filter = self.request.query_params.get('status')
+
+        if course_id:
+            queryset = queryset.filter(course_id=course_id)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        return queryset.order_by('-created_at', '-id')
+
+    def perform_create(self, serializer):
+        serializer.save(status='new', sales_notes='')
+
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = (AllowAny,)
     serializer_class = RegisterSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -222,14 +260,134 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 
 class InstructorViewSet(viewsets.ModelViewSet):
-    queryset = Instructor.objects.all()
+    queryset = Instructor.objects.select_related('user', 'approved_by').all()
     serializer_class = InstructorSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'approve', 'reject']:
+            return [IsAdmin()]
+        return [AllowAny()]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(approval_status=status_filter.upper())
+
+        user = self.request.user
+        if user.is_authenticated and get_user_role(user) == STAFF_ROLE_ADMIN:
+            return queryset.order_by('approval_status', 'name')
+        return queryset.filter(approval_status=Instructor.APPROVAL_APPROVED).order_by('name')
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        instructor = self.get_object()
+        instructor.approval_status = Instructor.APPROVAL_APPROVED
+        instructor.rejection_reason = ''
+        instructor.approved_by = request.user
+        instructor.approved_at = timezone.now()
+        instructor.save(update_fields=['approval_status', 'rejection_reason', 'approved_by', 'approved_at'])
+        return Response(self.get_serializer(instructor).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def reject(self, request, pk=None):
+        instructor = self.get_object()
+        instructor.approval_status = Instructor.APPROVAL_REJECTED
+        instructor.rejection_reason = request.data.get('reason', '')
+        instructor.approved_by = None
+        instructor.approved_at = None
+        instructor.save(update_fields=['approval_status', 'rejection_reason', 'approved_by', 'approved_at'])
+        return Response(self.get_serializer(instructor).data)
 
 
 class LessonViewSet(viewsets.ModelViewSet):
     queryset = Lesson.objects.all()
     serializer_class = LessonSerializer
     permission_classes = [IsInstructorOrAdmin]
+
+    def _get_manageable_lessons(self, user):
+        queryset = Lesson.objects.select_related('course', 'section').prefetch_related(
+            'quiz_data__questions__alternatives'
+        )
+        if not user.is_authenticated:
+            return queryset.none()
+        if get_user_role(user) == STAFF_ROLE_ADMIN:
+            return queryset
+
+        instructor = _get_instructor_for_user(user)
+        if instructor:
+            return queryset.filter(course__instructor=instructor)
+        return queryset.none()
+
+    def _serialize_question_bank_item(self, question):
+        lesson = question.quiz.lesson
+        return {
+            'id': question.id,
+            'question_type': question.question_type,
+            'text': question.text,
+            'correct_answer': question.correct_answer,
+            'order': question.order,
+            'alternatives': [
+                {
+                    'id': alternative.id,
+                    'text': alternative.text,
+                    'is_correct': alternative.is_correct,
+                    'order': alternative.order,
+                }
+                for alternative in question.alternatives.all()
+            ],
+            'source_lesson_id': lesson.id,
+            'source_lesson_title': lesson.title,
+            'source_lesson_type': lesson.type,
+            'source_course_id': lesson.course_id,
+            'source_course_title': lesson.course.title,
+        }
+
+    def _copy_question(self, source_question, target_quiz, order=None):
+        copied_question = Question.objects.create(
+            quiz=target_quiz,
+            question_type=source_question.question_type,
+            text=source_question.text,
+            correct_answer=source_question.correct_answer,
+            order=order if order is not None else source_question.order,
+        )
+
+        if copied_question.question_type == Question.QUESTION_TYPE_MULTIPLE_CHOICE:
+            for alternative in source_question.alternatives.all():
+                Alternative.objects.create(
+                    question=copied_question,
+                    text=alternative.text,
+                    is_correct=alternative.is_correct,
+                    order=alternative.order,
+                )
+
+        return copied_question
+
+    def _copy_lesson(self, source_lesson, target_course, target_section, order):
+        copied_lesson = Lesson.objects.create(
+            course=target_course,
+            section=target_section,
+            title=source_lesson.title,
+            type=source_lesson.type,
+            content=source_lesson.content,
+            video_url=source_lesson.video_url,
+            image=source_lesson.image,
+            duration=source_lesson.duration,
+            order=order,
+        )
+
+        source_quiz = getattr(source_lesson, 'quiz_data', None)
+        if source_quiz and copied_lesson.type in ['quiz', 'mid_test', 'final_test', 'exam']:
+            copied_quiz = Quiz.objects.create(
+                lesson=copied_lesson,
+                pass_score=source_quiz.pass_score,
+                time_limit=source_quiz.time_limit,
+            )
+            for question in source_quiz.questions.all():
+                self._copy_question(question, copied_quiz)
+
+        return copied_lesson
 
     def get_queryset(self):
         queryset = Lesson.objects.all()
@@ -238,13 +396,95 @@ class LessonViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(course_id=course_id)
         
         # If not admin, filter by instructor's courses
-        if not self.request.user.is_staff and self.request.user.is_authenticated:
+        if get_user_role(self.request.user) != STAFF_ROLE_ADMIN and self.request.user.is_authenticated:
             instructor = _get_instructor_for_user(self.request.user)
             if instructor:
                 queryset = queryset.filter(course__instructor=instructor)
             else:
                 queryset = queryset.none()
         return queryset
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated], url_path='bank')
+    def bank(self, request):
+        if get_user_role(request.user) != STAFF_ROLE_ADMIN and not _get_instructor_for_user(request.user):
+            return Response({'error': 'Hanya admin atau instruktur yang dapat mengakses bank materi.'}, status=403)
+
+        content_type = request.query_params.get('content_type', 'lessons')
+        search = (request.query_params.get('q') or '').strip()
+        lessons = self._get_manageable_lessons(request.user)
+
+        if content_type == 'questions':
+            questions = Question.objects.filter(quiz__lesson__in=lessons).select_related(
+                'quiz__lesson__course'
+            ).prefetch_related('alternatives').order_by(
+                'quiz__lesson__course__title',
+                'quiz__lesson__title',
+                'order',
+                'id',
+            )
+            if search:
+                questions = questions.filter(
+                    Q(text__icontains=search) |
+                    Q(correct_answer__icontains=search) |
+                    Q(quiz__lesson__title__icontains=search) |
+                    Q(quiz__lesson__course__title__icontains=search)
+                ).distinct()
+            return Response([self._serialize_question_bank_item(question) for question in questions])
+
+        if search:
+            lessons = lessons.filter(
+                Q(title__icontains=search) |
+                Q(content__icontains=search) |
+                Q(course__title__icontains=search) |
+                Q(section__title__icontains=search)
+            ).distinct()
+
+        data = [
+            {
+                'id': lesson.id,
+                'title': lesson.title,
+                'type': lesson.type,
+                'duration': lesson.duration,
+                'order': lesson.order,
+                'course_id': lesson.course_id,
+                'course_title': lesson.course.title,
+                'section_id': lesson.section_id,
+                'section_title': lesson.section.title if lesson.section else None,
+                'question_count': lesson.quiz_data.questions.count() if hasattr(lesson, 'quiz_data') else 0,
+            }
+            for lesson in lessons.order_by('course__title', 'section__order', 'order', 'id')
+        ]
+        return Response(data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated], url_path='copy-to-course')
+    def copy_to_course(self, request, pk=None):
+        source_lesson = self.get_object()
+        course_id = request.data.get('course') or request.data.get('course_id')
+        section_id = request.data.get('section') or request.data.get('section_id')
+
+        if not course_id or not section_id:
+            return Response({'error': 'course dan section wajib diisi.'}, status=400)
+
+        target_course = get_object_or_404(Course, pk=course_id)
+        if not _can_manage_course(request.user, target_course):
+            return Response({'error': 'Anda tidak memiliki akses ke course tujuan.'}, status=403)
+
+        target_section = get_object_or_404(Section, pk=section_id, course=target_course)
+        requested_order = request.data.get('order')
+        if requested_order:
+            try:
+                order = int(requested_order)
+            except (TypeError, ValueError):
+                return Response({'error': 'order harus berupa angka.'}, status=400)
+        else:
+            max_order = Lesson.objects.filter(course=target_course, section=target_section).aggregate(Max('order'))['order__max'] or 0
+            order = max_order + 1
+
+        with transaction.atomic():
+            copied_lesson = self._copy_lesson(source_lesson, target_course, target_section, order)
+
+        serializer = self.get_serializer(copied_lesson)
+        return Response(serializer.data, status=201)
 
 
 class SectionViewSet(viewsets.ModelViewSet):
@@ -259,7 +499,7 @@ class SectionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(course_id=course_id)
             
         # If not admin, filter by instructor's courses
-        if not self.request.user.is_staff and self.request.user.is_authenticated:
+        if get_user_role(self.request.user) != STAFF_ROLE_ADMIN and self.request.user.is_authenticated:
             instructor = _get_instructor_for_user(self.request.user)
             if instructor:
                 queryset = queryset.filter(course__instructor=instructor)
@@ -273,6 +513,7 @@ class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
     lookup_field = 'slug'
     permission_classes = [IsInstructorOrAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_object(self):
         queryset = self.filter_queryset(self.get_queryset())
@@ -294,7 +535,7 @@ class CourseViewSet(viewsets.ModelViewSet):
         queryset = Course.objects.all()
         user = self.request.user
         is_management_user = user.is_authenticated and (
-            user.is_staff or user.is_superuser or hasattr(user, 'instructor_profile')
+            get_user_role(user) == STAFF_ROLE_ADMIN or bool(_get_instructor_for_user(user))
         )
 
         if not is_management_user:
@@ -302,7 +543,7 @@ class CourseViewSet(viewsets.ModelViewSet):
 
         # If not admin, filter by instructor's courses for non-GET methods
         # or if they are in the instructor portal context
-        if not user.is_staff and user.is_authenticated:
+        if get_user_role(user) != STAFF_ROLE_ADMIN and user.is_authenticated:
             instructor = _get_instructor_for_user(user)
             if instructor:
                 if self.request.method not in SAFE_METHODS:
@@ -314,7 +555,7 @@ class CourseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # Auto-assign instructor if not admin and user is instructor
-        if not self.request.user.is_staff:
+        if get_user_role(self.request.user) != STAFF_ROLE_ADMIN:
             instructor = _get_instructor_for_user(self.request.user)
             if instructor:
                 serializer.save(instructor=instructor)
@@ -422,9 +663,14 @@ class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAccountant()]
+        return [IsAuthenticated()]
+
     def get_queryset(self):
         qs = super().get_queryset()
-        if not self.request.user.is_staff:
+        if get_user_role(self.request.user) != STAFF_ROLE_ACCOUNTANT:
             qs = qs.filter(user=self.request.user)
         return qs
 
@@ -441,6 +687,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             serializer.instance.snap_token = order.snap_token
             serializer.instance.midtrans_id = order.midtrans_id
             return
+
+        if midtransclient is None:
+            order.delete()
+            raise serializers.ValidationError({
+                "error": "Integrasi pembayaran Midtrans belum tersedia pada environment ini."
+            })
         
         # 2. Initialize Midtrans Snap
         server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
@@ -504,6 +756,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         if not order.midtrans_id:
             return Response({'error': 'No Midtrans ID found for this order'}, status=400)
+
+        if midtransclient is None:
+            return Response({'error': 'Integrasi pembayaran Midtrans belum tersedia pada environment ini.'}, status=503)
 
         server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
         is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
@@ -575,13 +830,39 @@ class StatsView(APIView):
         total_users    = User.objects.filter(is_staff=False).count()
         total_courses  = Course.objects.count()
         total_instructors = Instructor.objects.count()
-        total_orders   = Order.objects.count()
+        active_courses = Course.objects.filter(is_active=True).count()
+        inhouse_requests = InhouseTrainingRequest.objects.count()
+        pending_certificates = Certificate.objects.filter(
+            approval_status=Certificate.APPROVAL_PENDING
+        ).count()
+
+        return Response({
+            'total_users': total_users,
+            'total_courses': total_courses,
+            'total_instructors': total_instructors,
+            'active_courses': active_courses,
+            'inhouse_requests': inhouse_requests,
+            'pending_certificates': pending_certificates,
+        })
+
+
+class AccountantStatsView(APIView):
+    permission_classes = [IsAccountant]
+
+    def get(self, request):
+        total_orders = Order.objects.count()
         completed_orders = Order.objects.filter(status='Completed').count()
         pending_orders = Order.objects.filter(status='Pending').count()
-        revenue        = Order.objects.filter(status='Completed').aggregate(
-                            total=Sum('total_amount'))['total'] or 0
+        cancelled_orders = Order.objects.filter(status='Cancelled').count()
+        completed_summary = Order.objects.filter(status='Completed').aggregate(
+            gross=Sum('total_amount'),
+            platform=Sum('platform_fee_amount'),
+            instructor=Sum('instructor_earning_amount'),
+        )
+        revenue = completed_summary['gross'] or 0
+        platform_revenue = completed_summary['platform'] or 0
+        instructor_payout = completed_summary['instructor'] or 0
 
-        # Recent orders
         recent_orders = Order.objects.select_related('user', 'course').order_by('-created_at')[:5]
         recent = [
             {
@@ -589,6 +870,8 @@ class StatsView(APIView):
                 'user': o.user.username,
                 'course': o.course.title,
                 'amount': str(o.total_amount),
+                'platform_fee_amount': str(o.platform_fee_amount),
+                'instructor_earning_amount': str(o.instructor_earning_amount),
                 'status': o.status,
                 'created_at': o.created_at.strftime('%d %b %Y'),
             }
@@ -596,13 +879,13 @@ class StatsView(APIView):
         ]
 
         return Response({
-            'total_users': total_users,
-            'total_courses': total_courses,
-            'total_instructors': total_instructors,
             'total_orders': total_orders,
             'completed_orders': completed_orders,
             'pending_orders': pending_orders,
+            'cancelled_orders': cancelled_orders,
             'revenue': float(revenue),
+            'platform_revenue': float(platform_revenue),
+            'instructor_payout': float(instructor_payout),
             'recent_orders': recent,
         })
 
@@ -610,17 +893,23 @@ class StatsView(APIView):
 # ── Instructor Portal ────────────────────────────────────────────────────────
 def _get_instructor_for_user(user):
     """Get Instructor object for the logged-in user. Uses FK link first, then name matching."""
+    if not getattr(user, 'is_authenticated', False):
+        return None
+
     # Priority 1: direct FK link (OneToOne)
     if hasattr(user, 'instructor_profile') and user.instructor_profile:
-        return user.instructor_profile
+        if user.instructor_profile.is_approved:
+            return user.instructor_profile
+        return None
+
     # Priority 2: match by full name
     full_name = f"{user.first_name} {user.last_name}".strip()
     if full_name:
-        qs = Instructor.objects.filter(name__iexact=full_name)
+        qs = Instructor.objects.filter(name__iexact=full_name, approval_status=Instructor.APPROVAL_APPROVED)
         if qs.exists():
             return qs.first()
     # Priority 3: partial match on username
-    qs = Instructor.objects.filter(name__icontains=user.username)
+    qs = Instructor.objects.filter(name__icontains=user.username, approval_status=Instructor.APPROVAL_APPROVED)
     if qs.exists():
         return qs.first()
     return None
@@ -647,7 +936,7 @@ class CertificationExamViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return queryset.filter(is_active=True, instructor_confirmed=True)
 
-        if user.is_staff or user.is_superuser:
+        if get_user_role(user) == STAFF_ROLE_ADMIN:
             return queryset
 
         instructor = _get_instructor_for_user(user)
@@ -669,7 +958,7 @@ class CertificationExamViewSet(viewsets.ModelViewSet):
         exam = self.get_object()
         # Ensure the requester is the instructor of the course
         instructor = _get_instructor_for_user(request.user)
-        if not request.user.is_staff and exam.course.instructor != instructor:
+        if get_user_role(request.user) != STAFF_ROLE_ADMIN and exam.course.instructor != instructor:
             return Response({'error': 'You are not the instructor for this course.'}, status=403)
 
         if not exam.confirmed_start_at:
@@ -691,14 +980,17 @@ class CertificationExamViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         course = serializer.validated_data.get('course')
         if course.type != 'course':
-            raise serializers.ValidationError({"course": "Ujian sertifikasi hanya diperbolehkan untuk kursus dengan jenis Pelatihan."})
+            raise serializers.ValidationError({"course": "Ujian akhir hanya diperbolehkan untuk kursus dengan jenis Pelatihan."})
+        instructor = _get_instructor_for_user(self.request.user)
+        if get_user_role(self.request.user) != STAFF_ROLE_ADMIN and course.instructor != instructor:
+            raise serializers.ValidationError({"course": "Anda hanya bisa membuat ujian akhir untuk kursus yang Anda ampu."})
         serializer.save()
 
     def perform_update(self, serializer):
         if 'course' in serializer.validated_data:
             course = serializer.validated_data.get('course')
             if course.type != 'course':
-                raise serializers.ValidationError({"course": "Ujian sertifikasi hanya diperbolehkan untuk kursus dengan jenis Pelatihan."})
+                raise serializers.ValidationError({"course": "Ujian akhir hanya diperbolehkan untuk kursus dengan jenis Pelatihan."})
         serializer.save()
 
 class CertificationQuestionViewSet(viewsets.ModelViewSet):
@@ -713,7 +1005,7 @@ class CertificationInstructorSlotViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff:
+        if get_user_role(user) == STAFF_ROLE_ADMIN:
             return CertificationInstructorSlot.objects.all()
         instructor = _get_instructor_for_user(user)
         if instructor:
@@ -739,7 +1031,7 @@ class CertificationAttemptViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff:
+        if get_user_role(user) == STAFF_ROLE_ADMIN:
             return CertificationAttempt.objects.all()
         return CertificationAttempt.objects.filter(user=user)
 
@@ -752,17 +1044,17 @@ class CertificationAttemptViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         selected_slot = serializer.validated_data.get('interview_slot')
 
-        if not user.is_staff and not Order.objects.filter(user=user, course=exam.course, status='Completed').exists():
-            return Response({'error': 'Anda harus terdaftar pada pelatihan ini untuk mengikuti sertifikasi.'}, status=403)
+        if get_user_role(user) != STAFF_ROLE_ADMIN and not Order.objects.filter(user=user, course=exam.course, status='Completed').exists():
+            return Response({'error': 'Anda harus terdaftar pada pelatihan ini untuk mengikuti ujian akhir.'}, status=403)
 
         if not exam.is_active:
-            return Response({'error': 'Ujian sertifikasi ini belum diaktifkan oleh admin.'}, status=400)
+            return Response({'error': 'Ujian akhir ini belum diaktifkan.'}, status=400)
 
         if not exam.instructor_confirmed or not exam.confirmed_start_at:
-            return Response({'error': 'Jadwal ujian sertifikasi belum dikonfirmasi oleh instruktur.'}, status=400)
+            return Response({'error': 'Jadwal ujian akhir belum dikonfirmasi oleh instruktur.'}, status=400)
 
         if exam.confirmed_end_at and now > exam.confirmed_end_at:
-            return Response({'error': 'Jadwal ujian sertifikasi ini sudah berakhir.'}, status=400)
+            return Response({'error': 'Jadwal ujian akhir ini sudah berakhir.'}, status=400)
 
         has_instructor_slots = exam.slots.exists()
         if exam.requires_interview() and not has_instructor_slots:
@@ -848,7 +1140,7 @@ class CertificationAttemptViewSet(viewsets.ModelViewSet):
             status__in=['SUBMITTED', 'GRADED'],
         ).exists()
         if locked_attempt:
-            return Response({'error': 'Anda sudah menyelesaikan ujian sertifikasi ini.'}, status=400)
+            return Response({'error': 'Anda sudah menyelesaikan ujian akhir ini.'}, status=400)
 
         attempt_status = 'IN_PROGRESS'
         if selected_slot:
@@ -969,7 +1261,7 @@ class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff and self.request.query_params.get('scope') == 'all':
+        if get_user_role(user) == STAFF_ROLE_ADMIN and self.request.query_params.get('scope') == 'all':
             return Certificate.objects.all().select_related('course', 'exam', 'user', 'approved_by')
         return Certificate.objects.filter(
             user=user,
@@ -1083,6 +1375,9 @@ class MidtransNotificationView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if midtransclient is None:
+            return Response({'error': 'Integrasi pembayaran Midtrans belum tersedia pada environment ini.'}, status=503)
+
         server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
         is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
         
@@ -1174,9 +1469,9 @@ class AdminResetPasswordView(APIView):
 
 class AdminEditUserView(APIView):
     """
-    Admin edits user data (name, email, is_staff, is_active).
+    Admin edits user data (name, email, is_staff, staff_role, is_active).
     PATCH /api/users/{id}/edit/
-    Body: { "first_name": "..", "last_name": "..", "email": "..", "is_staff": bool, "is_active": bool }
+    Body: { "first_name": "..", "last_name": "..", "email": "..", "is_staff": bool, "staff_role": "admin|akuntan", "is_active": bool }
     """
     permission_classes = [IsAdmin]
 
@@ -1195,12 +1490,24 @@ class AdminEditUserView(APIView):
             if field in request.data:
                 setattr(user, field, request.data[field])
 
+        requested_staff_role = request.data.get('staff_role')
+        if requested_staff_role not in [None, '', STAFF_ROLE_ADMIN, STAFF_ROLE_ACCOUNTANT]:
+            return Response({'error': 'Role staff tidak valid.'}, status=400)
+
         # Validate email uniqueness
         email = request.data.get('email')
         if email and User.objects.filter(email=email).exclude(pk=pk).exists():
             return Response({'error': 'Email sudah digunakan user lain.'}, status=400)
 
         user.save()
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        if user.is_staff:
+            profile.staff_role = requested_staff_role or get_staff_role(user) or STAFF_ROLE_ADMIN
+            profile.save(update_fields=['staff_role'])
+        elif profile.staff_role:
+            profile.staff_role = None
+            profile.save(update_fields=['staff_role'])
+
         from .serializers import UserSerializer
         return Response(UserSerializer(user).data)
 
@@ -1305,7 +1612,7 @@ class QuizAttemptView(APIView):
             quiz = lesson.quiz_data
             
             # Check enrollment
-            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and not request.user.is_staff:
+            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and get_user_role(request.user) != STAFF_ROLE_ADMIN:
                 return Response({'error': 'You must be enrolled to take this quiz'}, status=403)
             
             user_answers = request.data.get('answers', {}) # {question_id: alternative_id}
@@ -1317,10 +1624,15 @@ class QuizAttemptView(APIView):
                 
             correct_count = 0
             for question in questions:
-                selected_alt_id = user_answers.get(str(question.id))
-                if selected_alt_id:
+                answer_value = user_answers.get(str(question.id))
+                if question.question_type == Question.QUESTION_TYPE_SHORT_ANSWER:
+                    submitted_answer = ' '.join(str(answer_value or '').strip().lower().split())
+                    correct_answer = ' '.join((question.correct_answer or '').strip().lower().split())
+                    if submitted_answer and correct_answer and submitted_answer == correct_answer:
+                        correct_count += 1
+                elif answer_value:
                     correct_alt = question.alternatives.filter(is_correct=True).first()
-                    if correct_alt and str(correct_alt.id) == str(selected_alt_id):
+                    if correct_alt and str(correct_alt.id) == str(answer_value):
                         correct_count += 1
             
             score = (correct_count / total_questions) * 100
@@ -1404,7 +1716,7 @@ class CompleteLessonView(APIView):
             lesson = Lesson.objects.get(id=lesson_id)
             
             # Check enrollment
-            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and not request.user.is_staff:
+            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and get_user_role(request.user) != STAFF_ROLE_ADMIN:
                 return Response({'error': 'You must be enrolled to complete this lesson'}, status=403)
             
             progress, created = UserLessonProgress.objects.get_or_create(
@@ -1435,7 +1747,7 @@ class AccessLessonView(APIView):
         try:
             lesson = Lesson.objects.get(id=lesson_id)
             
-            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and not request.user.is_staff:
+            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and get_user_role(request.user) != STAFF_ROLE_ADMIN:
                 return Response({'error': 'You must be enrolled to access this lesson'}, status=403)
             
             progress, created = UserLessonProgress.objects.get_or_create(

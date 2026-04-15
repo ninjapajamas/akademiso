@@ -1,11 +1,15 @@
+import json
+from pathlib import Path
 from decimal import Decimal
 
+from django.db import transaction
 from rest_framework import serializers
 from .models import (
     Category, Instructor, Course, Lesson, Order, Cart, CartItem, Section, UserProfile, 
     Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress,
     CertificationExam, CertificationQuestion, CertificationAlternative, 
-    CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance
+    CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance,
+    InhouseTrainingRequest, STAFF_ROLE_ADMIN, STAFF_ROLE_CHOICES, get_staff_role, get_user_role
 )
 from django.contrib.auth.models import User
 from rest_framework.validators import UniqueValidator
@@ -16,48 +20,148 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
+        role = get_user_role(user)
+        token['role'] = role
+        token['staff_role'] = get_staff_role(user) or ''
         token['is_staff'] = user.is_staff
         token['is_superuser'] = user.is_superuser
-        token['is_instructor'] = hasattr(user, 'instructor_profile')
+        token['is_instructor'] = role == 'instructor'
         token['username'] = user.username
+        token['email'] = user.email or ''
         return token
 
+    def validate(self, attrs):
+        identifier = (attrs.get(self.username_field) or '').strip()
+        if identifier:
+            matched_user = User.objects.filter(email__iexact=identifier).only('username').first()
+            if matched_user:
+                attrs[self.username_field] = matched_user.username
+        return super().validate(attrs)
+
 class RegisterSerializer(serializers.ModelSerializer):
+    ACCOUNT_TYPE_STUDENT = 'student'
+    ACCOUNT_TYPE_INSTRUCTOR = 'instructor'
+    ACCOUNT_TYPE_CHOICES = [
+        (ACCOUNT_TYPE_STUDENT, 'Student'),
+        (ACCOUNT_TYPE_INSTRUCTOR, 'Instructor'),
+    ]
+
     email = serializers.EmailField(
         required=True,
         validators=[UniqueValidator(queryset=User.objects.all())]
     )
     password = serializers.CharField(write_only=True, required=True)
     password_confirm = serializers.CharField(write_only=True, required=True)
+    is_staff = serializers.BooleanField(write_only=True, required=False, default=False)
+    staff_role = serializers.ChoiceField(choices=STAFF_ROLE_CHOICES, write_only=True, required=False, allow_null=True)
+    account_type = serializers.ChoiceField(choices=ACCOUNT_TYPE_CHOICES, write_only=True, required=False, default=ACCOUNT_TYPE_STUDENT)
+    phone = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    company = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    position = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    instructor_title = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    instructor_bio = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    instructor_cv = serializers.FileField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ('username', 'email', 'password', 'password_confirm', 'first_name', 'last_name')
-        extra_kwargs = {
-            'first_name': {'required': True},
-            'last_name': {'required': True}
-        }
+        fields = (
+            'username', 'email', 'password', 'password_confirm', 'first_name', 'last_name',
+            'is_staff', 'staff_role', 'account_type', 'phone', 'company', 'position',
+            'instructor_title', 'instructor_bio', 'instructor_cv'
+        )
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
+
+        if attrs.get('account_type') == self.ACCOUNT_TYPE_INSTRUCTOR:
+            if not (attrs.get('first_name') or '').strip():
+                raise serializers.ValidationError({"first_name": "Nama depan wajib diisi untuk pendaftaran instruktur."})
+            if not (attrs.get('instructor_title') or '').strip():
+                raise serializers.ValidationError({"instructor_title": "Keahlian atau jabatan instruktur wajib diisi."})
+            if not (attrs.get('instructor_bio') or '').strip():
+                raise serializers.ValidationError({"instructor_bio": "Ringkasan pengalaman instruktur wajib diisi."})
+            if not attrs.get('instructor_cv'):
+                raise serializers.ValidationError({"instructor_cv": "CV wajib diunggah untuk pendaftaran instruktur."})
+
+        cv_file = attrs.get('instructor_cv')
+        if cv_file:
+            ext = Path(cv_file.name).suffix.lower()
+            if ext not in {'.pdf', '.doc', '.docx'}:
+                raise serializers.ValidationError({"instructor_cv": "CV harus berupa file PDF, DOC, atau DOCX."})
+            if cv_file.size > 5 * 1024 * 1024:
+                raise serializers.ValidationError({"instructor_cv": "Ukuran CV maksimal 5MB."})
+
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
+        requested_is_staff = validated_data.pop('is_staff', False)
+        requested_staff_role = validated_data.pop('staff_role', None)
+        account_type = validated_data.pop('account_type', self.ACCOUNT_TYPE_STUDENT)
+        phone = validated_data.pop('phone', '')
+        company = validated_data.pop('company', '')
+        position = validated_data.pop('position', '')
+        instructor_title = validated_data.pop('instructor_title', '')
+        instructor_bio = validated_data.pop('instructor_bio', '')
+        instructor_cv = validated_data.pop('instructor_cv', None)
+        validated_data.pop('password_confirm', None)
+
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name']
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', '')
         )
+
+        request = self.context.get('request')
+        can_create_staff = bool(request and request.user.is_authenticated and get_user_role(request.user) == STAFF_ROLE_ADMIN)
+        if can_create_staff and (requested_is_staff or requested_staff_role):
+            user.is_staff = True
+            user.save(update_fields=['is_staff'])
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.staff_role = requested_staff_role or STAFF_ROLE_ADMIN
+            profile.save(update_fields=['staff_role'])
+
+        if phone or company or position:
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.phone = phone or profile.phone
+            profile.company = company or profile.company
+            profile.position = position or profile.position
+            profile.save(update_fields=['phone', 'company', 'position'])
+
+        if account_type == self.ACCOUNT_TYPE_INSTRUCTOR:
+            full_name = f"{user.first_name} {user.last_name}".strip() or user.username
+            Instructor.objects.create(
+                user=user,
+                name=full_name,
+                title=instructor_title.strip(),
+                bio=instructor_bio.strip(),
+                cv=instructor_cv,
+                approval_status=Instructor.APPROVAL_PENDING,
+            )
+
         return user
 
 class UserSerializer(serializers.ModelSerializer):
+    role = serializers.SerializerMethodField()
+    staff_role = serializers.SerializerMethodField()
+    is_instructor = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined', 'role', 'staff_role', 'is_instructor']
         extra_kwargs = {'password': {'write_only': True}}
+
+    def get_role(self, obj):
+        return get_user_role(obj)
+
+    def get_staff_role(self, obj):
+        return get_staff_role(obj)
+
+    def get_is_instructor(self, obj):
+        return get_user_role(obj) == 'instructor'
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
@@ -74,6 +178,16 @@ class UserSerializer(serializers.ModelSerializer):
         if password:
             instance.set_password(password)
         instance.save()
+
+        profile, _ = UserProfile.objects.get_or_create(user=instance)
+        if instance.is_staff:
+            if not profile.staff_role:
+                profile.staff_role = STAFF_ROLE_ADMIN
+                profile.save(update_fields=['staff_role'])
+        elif profile.staff_role:
+            profile.staff_role = None
+            profile.save(update_fields=['staff_role'])
+
         return instance
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -82,9 +196,20 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class InstructorSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    approved_by_name = serializers.SerializerMethodField()
+
+    def get_approved_by_name(self, obj):
+        if not obj.approved_by:
+            return None
+        full_name = f"{obj.approved_by.first_name} {obj.approved_by.last_name}".strip()
+        return full_name or obj.approved_by.username
+
     class Meta:
         model = Instructor
         fields = '__all__'
+        read_only_fields = ('approved_by', 'approved_at')
 
 class AlternativeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -92,11 +217,11 @@ class AlternativeSerializer(serializers.ModelSerializer):
         fields = ['id', 'text', 'is_correct', 'order']
 
 class QuestionSerializer(serializers.ModelSerializer):
-    alternatives = AlternativeSerializer(many=True)
+    alternatives = AlternativeSerializer(many=True, required=False)
 
     class Meta:
         model = Question
-        fields = ['id', 'text', 'order', 'alternatives']
+        fields = ['id', 'question_type', 'text', 'correct_answer', 'order', 'alternatives']
 
 class QuizSerializer(serializers.ModelSerializer):
     questions = QuestionSerializer(many=True)
@@ -139,7 +264,7 @@ class LessonSerializer(serializers.ModelSerializer):
         # Check enrollment
         is_enrolled = False
         if user and user.is_authenticated:
-            if user.is_staff:
+            if get_user_role(user) in {STAFF_ROLE_ADMIN, 'instructor'}:
                 is_enrolled = True
             else:
                 is_enrolled = Order.objects.filter(user=user, course=instance.course, status='Completed').exists()
@@ -154,6 +279,11 @@ class LessonSerializer(serializers.ModelSerializer):
                 data['quiz_data'] = None
         else:
             data['is_locked'] = False
+            if data.get('quiz_data') and get_user_role(user) not in {STAFF_ROLE_ADMIN, 'instructor'}:
+                for question in data['quiz_data'].get('questions', []):
+                    question.pop('correct_answer', None)
+                    for alternative in question.get('alternatives', []):
+                        alternative.pop('is_correct', None)
             
         return data
 
@@ -167,8 +297,9 @@ class LessonSerializer(serializers.ModelSerializer):
             for question_data in questions_data:
                 alternatives_data = question_data.pop('alternatives', [])
                 question = Question.objects.create(quiz=quiz, **question_data)
-                for alternative_data in alternatives_data:
-                    Alternative.objects.create(question=question, **alternative_data)
+                if question.question_type == Question.QUESTION_TYPE_MULTIPLE_CHOICE:
+                    for alternative_data in alternatives_data:
+                        Alternative.objects.create(question=question, **alternative_data)
         
         return lesson
 
@@ -195,8 +326,9 @@ class LessonSerializer(serializers.ModelSerializer):
             for question_data in questions_data:
                 alternatives_data = question_data.pop('alternatives', [])
                 question = Question.objects.create(quiz=quiz, **question_data)
-                for alternative_data in alternatives_data:
-                    Alternative.objects.create(question=question, **alternative_data)
+                if question.question_type == Question.QUESTION_TYPE_MULTIPLE_CHOICE:
+                    for alternative_data in alternatives_data:
+                        Alternative.objects.create(question=question, **alternative_data)
                     
         return instance
 
@@ -223,6 +355,24 @@ class CourseSerializer(serializers.ModelSerializer):
     certification_exams = serializers.SerializerMethodField()
     webinar_attendance = serializers.SerializerMethodField()
 
+    def to_internal_value(self, data):
+        mutable_data = data.copy()
+        request = self.context.get('request')
+        user = request.user if request else None
+
+        if get_user_role(user) != STAFF_ROLE_ADMIN:
+            mutable_data.pop('is_featured', None)
+
+        for field_name in ['detail_sections', 'public_sessions', 'inhouse_training_benefits']:
+            value = mutable_data.get(field_name)
+            if isinstance(value, str):
+                try:
+                    mutable_data[field_name] = json.loads(value)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    pass
+
+        return super().to_internal_value(mutable_data)
+
     def get_certification_exams(self, obj):
         exams = obj.certification_exams.filter(is_active=True)
         return CertificationExamSerializer(exams, many=True).data
@@ -232,7 +382,7 @@ class CourseSerializer(serializers.ModelSerializer):
         if obj.type != 'webinar' or not user or not user.is_authenticated:
             return None
 
-        if user.is_staff:
+        if get_user_role(user) in {STAFF_ROLE_ADMIN, 'instructor'}:
             return None
 
         attendance = WebinarAttendance.objects.filter(course=obj, user=user).select_related('marked_by').first()
@@ -263,7 +413,7 @@ class CourseSerializer(serializers.ModelSerializer):
         user = self.context.get('request').user if self.context.get('request') else None
         if not user or not user.is_authenticated:
             return False
-        if user.is_staff:
+        if get_user_role(user) in {STAFF_ROLE_ADMIN, 'instructor'}:
             return True
         return Order.objects.filter(user=user, course=obj, status='Completed').exists()
     
@@ -298,6 +448,78 @@ class CourseSerializer(serializers.ModelSerializer):
         ).count()
         
         return round((completed_lessons / total_lessons) * 100)
+
+    def validate_detail_sections(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Bagian detail pelatihan harus berupa array.')
+
+        normalized_sections = []
+        for index, section in enumerate(value):
+            if not isinstance(section, dict):
+                raise serializers.ValidationError(f'Bagian detail ke-{index + 1} harus berupa object.')
+
+            items = section.get('items') or []
+            if not isinstance(items, list):
+                raise serializers.ValidationError(f'Daftar poin pada bagian detail ke-{index + 1} harus berupa array.')
+
+            normalized_sections.append({
+                'id': str(section.get('id') or f'section-{index + 1}'),
+                'title': str(section.get('title') or '').strip(),
+                'body': str(section.get('body') or '').strip(),
+                'items': [str(item).strip() for item in items if str(item).strip()],
+            })
+
+        return normalized_sections
+
+    def validate_public_sessions(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Jadwal public training harus berupa array.')
+
+        normalized_sessions = []
+        for index, session in enumerate(value):
+            if not isinstance(session, dict):
+                raise serializers.ValidationError(f'Jadwal public training ke-{index + 1} harus berupa object.')
+
+            delivery_mode = str(session.get('delivery_mode') or 'online').lower()
+            if delivery_mode not in ['online', 'offline']:
+                raise serializers.ValidationError(f'Mode public training ke-{index + 1} harus online atau offline.')
+
+            raw_price = session.get('price')
+            if raw_price in [None, '', 'null']:
+                normalized_price = ''
+            else:
+                try:
+                    normalized_price = str(Decimal(str(raw_price)))
+                except Exception as exc:
+                    raise serializers.ValidationError(
+                        f'Harga public training ke-{index + 1} tidak valid.'
+                    ) from exc
+
+            normalized_sessions.append({
+                'id': str(session.get('id') or f'public-session-{index + 1}'),
+                'title': str(session.get('title') or '').strip(),
+                'delivery_mode': delivery_mode,
+                'schedule': str(session.get('schedule') or '').strip(),
+                'location': str(session.get('location') or '').strip(),
+                'duration': str(session.get('duration') or '').strip(),
+                'price': normalized_price,
+                'badge': str(session.get('badge') or '').strip(),
+                'cta_label': str(session.get('cta_label') or '').strip(),
+                'cta_url': str(session.get('cta_url') or '').strip(),
+            })
+
+        return normalized_sessions
+
+    def validate_inhouse_training_benefits(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Benefit inhouse harus berupa array.')
+        return [str(item).strip() for item in value if str(item).strip()]
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -341,24 +563,53 @@ class CourseSerializer(serializers.ModelSerializer):
                 'scheduled_end_at': 'Tanggal selesai harus sama dengan atau setelah tanggal mulai.'
             })
 
+        if attrs.get('public_training_enabled', getattr(self.instance, 'public_training_enabled', False)):
+            public_sessions = attrs.get('public_sessions', getattr(self.instance, 'public_sessions', []))
+            if not public_sessions:
+                raise serializers.ValidationError({
+                    'public_sessions': 'Tambahkan minimal satu opsi public training ketika public training diaktifkan.'
+                })
+
         return attrs
 
     class Meta:
         model = Course
         fields = [
-            'id', 'title', 'slug', 'type', 'description', 'price', 'discount_price', 
-            'instructor', 'instructor_id', 'category', 'category_id', 'level', 
-            'duration', 'delivery_mode', 'scheduled_at', 'scheduled_end_at', 'location', 'zoom_link', 'is_free', 'thumbnail', 'is_active', 'is_featured', 'has_certification_exam', 
+            'id', 'title', 'slug', 'type', 'description', 'detail_sections',
+            'public_training_enabled', 'public_training_intro', 'public_sessions',
+            'inhouse_training_enabled', 'inhouse_training_intro', 'inhouse_training_benefits',
+            'elearning_enabled', 'elearning_intro', 'price', 'discount_price',
+            'instructor', 'instructor_id', 'category', 'category_id', 'level',
+            'duration', 'delivery_mode', 'scheduled_at', 'scheduled_end_at', 'location', 'zoom_link', 'is_free', 'thumbnail', 'is_active', 'is_featured', 'has_certification_exam',
             'created_at', 'rating', 'enrolled_count', 'sections', 'is_enrolled', 'progress_percentage', 'last_accessed_lesson_id', 'certification_exams', 'webinar_attendance'
         ]
         read_only_fields = ['is_active']
 
 class OrderSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
+    course_title = serializers.ReadOnlyField(source='course.title')
+    total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    platform_fee_rate = serializers.DecimalField(max_digits=5, decimal_places=4, read_only=True)
+    platform_fee_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    instructor_earning_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        if self.instance is None:
+            course = attrs.get('course')
+            if course:
+                attrs['total_amount'] = Decimal('0') if course.is_free else (course.discount_price or course.price)
+
+        return attrs
     
     class Meta:
         model = Order
-        fields = ['id', 'user', 'course', 'total_amount', 'status', 'snap_token', 'midtrans_id', 'created_at']
+        fields = [
+            'id', 'user', 'course', 'course_title', 'total_amount', 'platform_fee_rate',
+            'platform_fee_amount', 'instructor_earning_amount', 'status', 'snap_token',
+            'midtrans_id', 'created_at'
+        ]
 
 class MyCourseSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
@@ -426,19 +677,44 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(required=False)
     is_instructor = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
+    staff_role = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile', 'is_staff', 'is_instructor')
-        read_only_fields = ('id', 'username', 'email', 'is_staff', 'is_instructor')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile', 'is_staff', 'is_instructor', 'role', 'staff_role')
+        read_only_fields = ('id', 'username', 'is_staff', 'is_instructor', 'role', 'staff_role')
 
     def get_is_instructor(self, obj):
-        return hasattr(obj, 'instructor_profile')
+        return get_user_role(obj) == 'instructor'
+
+    def get_role(self, obj):
+        return get_user_role(obj)
+
+    def get_staff_role(self, obj):
+        return get_staff_role(obj)
+
+    def validate_email(self, value):
+        normalized_email = (value or '').strip().lower()
+        if not normalized_email:
+            return ''
+
+        user = getattr(self, 'instance', None)
+        if user and user.email and user.email.strip() and user.email.strip().lower() != normalized_email:
+            raise serializers.ValidationError('Email hanya bisa diisi saat akun Anda belum memiliki email.')
+
+        if User.objects.exclude(pk=user.pk if user else None).filter(email__iexact=normalized_email).exists():
+            raise serializers.ValidationError('Email ini sudah digunakan akun lain.')
+
+        return normalized_email
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
         
         # Update User fields
+        incoming_email = validated_data.get('email')
+        if incoming_email:
+            instance.email = incoming_email
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
         instance.save()
@@ -661,6 +937,24 @@ class WebinarAttendanceSerializer(serializers.ModelSerializer):
             'attendee_name', 'attendee_email', 'attendee_phone', 'attendee_company', 'attendee_position',
             'is_present', 'attended_at', 'marked_by', 'marked_by_name', 'notes'
         ]
+
+
+class InhouseTrainingRequestSerializer(serializers.ModelSerializer):
+    course_title = serializers.ReadOnlyField(source='course.title')
+
+    class Meta:
+        model = InhouseTrainingRequest
+        fields = [
+            'id', 'course', 'course_title', 'company_name', 'contact_name', 'email', 'phone',
+            'position', 'participants_count', 'preferred_mode', 'target_date',
+            'training_goals', 'notes', 'status', 'sales_notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_participants_count(self, value):
+        if value < 1:
+            raise serializers.ValidationError('Jumlah peserta minimal 1 orang.')
+        return value
 
 class CertificateTemplateSerializer(serializers.ModelSerializer):
     course = serializers.PrimaryKeyRelatedField(read_only=True)

@@ -1,7 +1,64 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+
+STAFF_ROLE_ADMIN = 'admin'
+STAFF_ROLE_ACCOUNTANT = 'akuntan'
+STAFF_ROLE_CHOICES = [
+    (STAFF_ROLE_ADMIN, 'Admin'),
+    (STAFF_ROLE_ACCOUNTANT, 'Akuntan'),
+]
+
+PLATFORM_FEE_RATE = Decimal('0.10')
+MONEY_QUANTIZER = Decimal('0.01')
+
+
+def calculate_platform_fee(amount, rate=PLATFORM_FEE_RATE):
+    gross_amount = Decimal(amount or 0)
+    fee_rate = Decimal(rate if rate is not None else PLATFORM_FEE_RATE)
+    return (gross_amount * fee_rate).quantize(MONEY_QUANTIZER, rounding=ROUND_HALF_UP)
+
+
+def calculate_instructor_earning(amount, rate=PLATFORM_FEE_RATE):
+    gross_amount = Decimal(amount or 0)
+    fee_amount = calculate_platform_fee(gross_amount, rate)
+    return (gross_amount - fee_amount).quantize(MONEY_QUANTIZER, rounding=ROUND_HALF_UP)
+
+
+def get_staff_role(user):
+    if not getattr(user, 'is_authenticated', False):
+        return None
+
+    if getattr(user, 'is_superuser', False):
+        return STAFF_ROLE_ADMIN
+
+    if not getattr(user, 'is_staff', False):
+        return None
+
+    profile = getattr(user, 'profile', None)
+    if profile and profile.staff_role == STAFF_ROLE_ACCOUNTANT:
+        return STAFF_ROLE_ACCOUNTANT
+
+    return STAFF_ROLE_ADMIN
+
+
+def get_user_role(user):
+    if not getattr(user, 'is_authenticated', False):
+        return 'guest'
+
+    staff_role = get_staff_role(user)
+    if staff_role == STAFF_ROLE_ACCOUNTANT:
+        return STAFF_ROLE_ACCOUNTANT
+    if staff_role == STAFF_ROLE_ADMIN:
+        return STAFF_ROLE_ADMIN
+    instructor_profile = getattr(user, 'instructor_profile', None)
+    if instructor_profile and instructor_profile.is_approved:
+        return 'instructor'
+    return 'student'
+
 
 def default_certificate_layout():
     return {
@@ -21,6 +78,7 @@ class UserProfile(models.Model):
     company = models.CharField(max_length=100, blank=True, null=True)
     position = models.CharField(max_length=100, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
+    staff_role = models.CharField(max_length=20, choices=STAFF_ROLE_CHOICES, blank=True, null=True)
 
     def __str__(self):
         return f"Profile for {self.user.username}"
@@ -37,11 +95,29 @@ class Category(models.Model):
         return self.name
 
 class Instructor(models.Model):
+    APPROVAL_PENDING = 'PENDING'
+    APPROVAL_APPROVED = 'APPROVED'
+    APPROVAL_REJECTED = 'REJECTED'
+    APPROVAL_STATUS_CHOICES = [
+        (APPROVAL_PENDING, 'Menunggu Approval'),
+        (APPROVAL_APPROVED, 'Disetujui'),
+        (APPROVAL_REJECTED, 'Ditolak'),
+    ]
+
     user = models.OneToOneField(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='instructor_profile')
     name = models.CharField(max_length=100)
     title = models.CharField(max_length=100)
     bio = models.TextField()
     photo = models.ImageField(upload_to='instructors/', blank=True, null=True)
+    cv = models.FileField(upload_to='instructor_cvs/', blank=True, null=True)
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default=APPROVAL_APPROVED)
+    rejection_reason = models.TextField(blank=True, null=True)
+    approved_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='approved_instructors')
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def is_approved(self):
+        return self.approval_status == self.APPROVAL_APPROVED
 
     def __str__(self):
         return self.name
@@ -68,6 +144,15 @@ class Course(models.Model):
     slug = models.SlugField(unique=True)
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='course')
     description = models.TextField()
+    detail_sections = models.JSONField(default=list, blank=True)
+    public_training_enabled = models.BooleanField(default=False)
+    public_training_intro = models.TextField(blank=True, default='')
+    public_sessions = models.JSONField(default=list, blank=True)
+    inhouse_training_enabled = models.BooleanField(default=False)
+    inhouse_training_intro = models.TextField(blank=True, default='')
+    inhouse_training_benefits = models.JSONField(default=list, blank=True)
+    elearning_enabled = models.BooleanField(default=True)
+    elearning_intro = models.TextField(blank=True, default='')
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE, related_name='courses')
@@ -175,12 +260,23 @@ class Order(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    platform_fee_rate = models.DecimalField(max_digits=5, decimal_places=4, default=PLATFORM_FEE_RATE)
+    platform_fee_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    instructor_earning_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     snap_token = models.CharField(max_length=255, blank=True, null=True)
     midtrans_id = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Order #{self.id} - {self.user.username}"
+
+    def refresh_revenue_split(self):
+        self.platform_fee_amount = calculate_platform_fee(self.total_amount, self.platform_fee_rate)
+        self.instructor_earning_amount = calculate_instructor_earning(self.total_amount, self.platform_fee_rate)
+
+    def save(self, *args, **kwargs):
+        self.refresh_revenue_split()
+        super().save(*args, **kwargs)
 
 
 class WebinarAttendance(models.Model):
@@ -206,6 +302,43 @@ class WebinarAttendance(models.Model):
     def __str__(self):
         return f"Presensi Webinar: {self.user.username} - {self.course.title}"
 
+
+class InhouseTrainingRequest(models.Model):
+    STATUS_CHOICES = [
+        ('new', 'Baru'),
+        ('contacted', 'Sudah Dihubungi'),
+        ('quoted', 'Penawaran Dikirim'),
+        ('closed', 'Selesai'),
+    ]
+
+    PREFERRED_MODE_CHOICES = [
+        ('offline', 'Offline'),
+        ('online', 'Online'),
+        ('hybrid', 'Hybrid'),
+    ]
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='inhouse_requests')
+    company_name = models.CharField(max_length=150)
+    contact_name = models.CharField(max_length=120)
+    email = models.EmailField()
+    phone = models.CharField(max_length=30)
+    position = models.CharField(max_length=120, blank=True, null=True)
+    participants_count = models.PositiveIntegerField(default=1)
+    preferred_mode = models.CharField(max_length=20, choices=PREFERRED_MODE_CHOICES, default='offline')
+    target_date = models.DateField(blank=True, null=True)
+    training_goals = models.TextField()
+    notes = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    sales_notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"Inhouse {self.course.title} - {self.company_name}"
+
 class Quiz(models.Model):
     lesson = models.OneToOneField('Lesson', on_delete=models.CASCADE, related_name='quiz_data')
     pass_score = models.IntegerField(default=70)
@@ -216,8 +349,17 @@ class Quiz(models.Model):
         return f"Quiz for: {self.lesson.title}"
 
 class Question(models.Model):
+    QUESTION_TYPE_MULTIPLE_CHOICE = 'MC'
+    QUESTION_TYPE_SHORT_ANSWER = 'SHORT_ANSWER'
+    QUESTION_TYPES = [
+        (QUESTION_TYPE_MULTIPLE_CHOICE, 'Pilihan Ganda'),
+        (QUESTION_TYPE_SHORT_ANSWER, 'Isian Singkat'),
+    ]
+
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
+    question_type = models.CharField(max_length=20, choices=QUESTION_TYPES, default=QUESTION_TYPE_MULTIPLE_CHOICE)
     text = models.TextField()
+    correct_answer = models.TextField(blank=True, default='')
     order = models.PositiveIntegerField(default=0)
 
     class Meta:
