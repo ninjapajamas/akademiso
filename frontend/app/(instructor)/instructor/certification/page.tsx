@@ -85,12 +85,12 @@ export default function InstructorCertificationPage() {
         }
     };
 
-    if (loading) return <div>Memuat data sertifikasi...</div>;
+    if (loading) return <div>Memuat data ujian akhir...</div>;
 
     return (
         <div className="max-w-6xl mx-auto space-y-8">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900">Ujian & Sertifikasi</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Ujian Akhir</h1>
                 <p className="text-gray-500">Kelola permintaan ujian dan atur slot sesi yang diawasi instruktur untuk siswa.</p>
             </div>
 
@@ -158,7 +158,7 @@ export default function InstructorCertificationPage() {
                                 required
                                 value={newSlot.exam}
                                 onChange={e => setNewSlot({ ...newSlot, exam: e.target.value })}
-                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                             >
                                 <option value="">Pilih Ujian</option>
                                 {exams.map(e => (
@@ -172,7 +172,7 @@ export default function InstructorCertificationPage() {
                                 required
                                 value={newSlot.date}
                                 onChange={e => setNewSlot({ ...newSlot, date: e.target.value })}
-                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
@@ -181,14 +181,14 @@ export default function InstructorCertificationPage() {
                                 required
                                 value={newSlot.start_time}
                                 onChange={e => setNewSlot({ ...newSlot, start_time: e.target.value })}
-                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
                             <input
                                 type="time"
                                 required
                                 value={newSlot.end_time}
                                 onChange={e => setNewSlot({ ...newSlot, end_time: e.target.value })}
-                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
                         </div>
                         <button

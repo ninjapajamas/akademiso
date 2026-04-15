@@ -7,6 +7,8 @@ import { formatApiDateTimeRangeForDisplay } from '@/types/datetime';
 
 interface ExamManagerProps {
     courseId: number;
+    managedBy?: 'admin' | 'instructor';
+    onExamChange?: () => void;
 }
 
 type ApiErrorPayload = Record<string, string[] | string | undefined>;
@@ -72,7 +74,7 @@ function getApiErrorMessage(payload: ApiErrorPayload | null, fallback: string) {
     return fallback;
 }
 
-export default function ExamManager({ courseId }: ExamManagerProps) {
+export default function ExamManager({ courseId, managedBy = 'admin', onExamChange }: ExamManagerProps) {
     const [exam, setExam] = useState<CertificationExam | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -88,7 +90,7 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
             });
             const data = await readJsonSafely<CertificationExam[]>(res);
             if (!res.ok) {
-                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data ujian sertifikasi belum bisa dimuat.'));
+                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data ujian akhir belum bisa dimuat.'));
             }
 
             const examList = data || [];
@@ -99,13 +101,13 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                 });
                 const fullData = await readJsonSafely<CertificationExam>(fullRes);
                 if (!fullRes.ok || !fullData) {
-                    throw new Error('Detail ujian sertifikasi belum bisa dimuat.');
+                    throw new Error('Detail ujian akhir belum bisa dimuat.');
                 }
                 setExam(fullData);
             }
         } catch (error) {
             console.error('Error fetching exam:', error);
-            alert(error instanceof Error ? error.message : 'Data ujian sertifikasi belum bisa dimuat.');
+            alert(error instanceof Error ? error.message : 'Data ujian akhir belum bisa dimuat.');
         } finally {
             setLoading(false);
         }
@@ -128,8 +130,8 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                 },
                 body: JSON.stringify({
                     course: courseId,
-                    title: `Sertifikasi - ${courseId}`,
-                    description: 'Ujian untuk mendapatkan sertifikat kelulusan.',
+                    title: `Ujian Akhir - ${courseId}`,
+                    description: 'Ujian akhir untuk mengukur pemahaman siswa setelah menyelesaikan pelatihan.',
                     exam_mode: 'QUESTIONS_ONLY',
                     tested_materials: '',
                     passing_percentage: 70,
@@ -137,14 +139,15 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                 })
             });
             if (res.ok) {
-                fetchExam();
+                await fetchExam();
+                onExamChange?.();
             } else {
                 const errorData = await readJsonSafely<ApiErrorPayload>(res);
-                alert(getApiErrorMessage(errorData, 'Ujian sertifikasi belum bisa dibuat.'));
+                alert(getApiErrorMessage(errorData, 'Ujian akhir belum bisa dibuat.'));
             }
         } catch (error) {
             console.error('Error creating exam:', error);
-            alert(error instanceof Error ? error.message : 'Ujian sertifikasi belum bisa dibuat.');
+            alert(error instanceof Error ? error.message : 'Ujian akhir belum bisa dibuat.');
         } finally {
             setSaving(false);
         }
@@ -411,8 +414,8 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
         return (
             <div className="bg-white p-8 rounded-xl border-2 border-dashed border-gray-200 text-center">
                 <HelpCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-gray-900">Belum Ada Ujian Sertifikasi</h3>
-                <p className="text-gray-500 mb-6">Buat ujian untuk memungkinkan siswa mendapatkan sertifikat setelah menyelesaikan kursus ini.</p>
+                <h3 className="text-lg font-bold text-gray-900">Belum Ada Ujian Akhir</h3>
+                <p className="text-gray-500 mb-6">Buat ujian akhir untuk mengukur pemahaman siswa setelah menyelesaikan kursus ini.</p>
                 <button
                     onClick={handleCreateExam}
                     disabled={saving}
@@ -439,12 +442,12 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex items-start justify-between">
                 <div className="flex-1 space-y-4">
                     <div className="group relative">
-                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Judul Sertifikasi</label>
+                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Judul Ujian Akhir</label>
                         <div className="flex items-center gap-2">
                             <input
                                 className="text-2xl font-bold text-gray-900 w-full bg-gray-50/50 hover:bg-gray-100 px-4 py-2 rounded-xl transition border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none"
                                 value={exam.title}
-                                placeholder="Contoh: Sertifikasi Keahlian ISO 9001"
+                                placeholder="Contoh: Ujian Akhir ISO 9001"
                                 onChange={(e) => setExam({ ...exam, title: e.target.value })}
                                 onBlur={() => handleUpdateExam({ title: exam.title })}
                             />
@@ -452,12 +455,12 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                         </div>
                     </div>
                     <div className="group relative">
-                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Deskripsi Sertifikasi</label>
+                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Deskripsi Ujian Akhir</label>
                         <div className="flex items-start gap-2">
                             <textarea
                                 className="text-sm text-gray-600 w-full bg-gray-50/50 hover:bg-gray-100 px-4 py-3 rounded-xl transition border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none min-h-[80px]"
                                 value={exam.description}
-                                placeholder="Berikan penjelasan singkat mengenai manfaat sertifikasi ini..."
+                                placeholder="Berikan penjelasan singkat mengenai cakupan dan aturan ujian akhir ini..."
                                 onChange={(e) => setExam({ ...exam, description: e.target.value })}
                                 onBlur={() => handleUpdateExam({ description: exam.description })}
                             />
@@ -482,7 +485,7 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
                     <div>
                         <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2">Mode Ujian</p>
-                        <h4 className="font-bold text-gray-900">Tentukan cara siswa mengikuti sertifikasi</h4>
+                        <h4 className="font-bold text-gray-900">Tentukan cara siswa mengikuti ujian akhir</h4>
                         <p className="text-sm text-gray-500 mt-1">{modeMeta.description}</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -554,14 +557,14 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                             <span className="text-sm font-semibold text-emerald-900">% jawaban benar minimal</span>
                         </div>
                         <p className="mt-2 text-xs text-emerald-800">
-                            Sertifikat hanya akan diproses jika skor otomatis peserta mencapai minimal {exam.passing_percentage ?? 70}%.
+                            Ujian dinyatakan lulus jika skor otomatis peserta mencapai minimal {exam.passing_percentage ?? 70}%.
                         </p>
                     </div>
                 </div>
             </div>
 
             {/* Instructor Confirmation Section */}
-            <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-xl flex items-center justify-between">
+            {managedBy === 'admin' && <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-xl flex items-center justify-between">
                 <div className="flex items-start gap-4">
                     <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm">
                         <Users className="w-6 h-6" />
@@ -590,7 +593,7 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                     {exam.instructor_confirmed ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
                     {exam.instructor_confirmed ? 'Sudah Dikonfirmasi' : (requesting ? 'Mengirim...' : 'Minta Jadwal')}
                 </button>
-            </div>
+            </div>}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
@@ -609,7 +612,7 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                     <p className="text-xs text-gray-500 mt-2">
                         {exam.exam_mode === 'QUESTIONS_ONLY'
                             ? 'Siswa hanya bisa mulai mengerjakan soal pada rentang waktu ini.'
-                            : 'Rentang ini menjadi jadwal umum sertifikasi. Slot sesi detail diatur terpisah oleh instruktur.'}
+                            : 'Rentang ini menjadi jadwal umum ujian akhir. Slot sesi detail diatur terpisah oleh instruktur.'}
                     </p>
                 </div>
 
@@ -667,7 +670,7 @@ export default function ExamManager({ courseId }: ExamManagerProps) {
                 <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
                     {exam.exam_mode === 'QUESTIONS_ONLY' && 'Tambahkan soal yang akan dikerjakan siswa. Jika ujian diawasi, instruktur juga bisa menyiapkan slot sesi.'}
                     {exam.exam_mode === 'INTERVIEW_ONLY' && 'Tambahkan komponen wawancara untuk menjelaskan alur sesi. Jadwal dipilih siswa dari slot yang disediakan instruktur.'}
-                    {exam.exam_mode === 'HYBRID' && 'Anda bisa menggabungkan soal tertulis dan komponen wawancara dalam satu sertifikasi, dengan slot sesi dari instruktur.'}
+                    {exam.exam_mode === 'HYBRID' && 'Anda bisa menggabungkan soal tertulis dan komponen wawancara dalam satu ujian akhir, dengan slot sesi dari instruktur.'}
                 </div>
 
                 {sortedQuestions.map((q, idx) => (

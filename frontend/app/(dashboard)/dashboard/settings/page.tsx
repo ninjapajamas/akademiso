@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, Mail, Lock, Bell, Shield, Save, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { User, Mail, Lock, Shield, Save, Eye, EyeOff, CheckCircle, TriangleAlert } from 'lucide-react';
+import { getProfileDisplayName, getRequiredProfileMissingFields, splitFullName } from '@/utils/profile';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
@@ -22,13 +24,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function SettingsPage() {
+    const searchParams = useSearchParams();
     const [saved, setSaved] = useState(false);
     const [loading, setLoading] = useState(true);
     const [showOldPw, setShowOldPw] = useState(false);
     const [showNewPw, setShowNewPw] = useState(false);
     const [profile, setProfile] = useState({
-        first_name: '',
-        last_name: '',
+        full_name: '',
         email: '',
         phone: '',
         company: '',
@@ -40,6 +42,23 @@ export default function SettingsPage() {
     const [notifs, setNotifs] = useState({ email_schedule: true, email_cert: true, email_promo: false, sms: false });
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
     const [pwError, setPwError] = useState('');
+    const welcomeMode = searchParams.get('welcome') === '1';
+    const canEditEmail = !profile.email.trim();
+    const parsedName = splitFullName(profile.full_name);
+    const missingFields = getRequiredProfileMissingFields({
+        first_name: parsedName.firstName,
+        last_name: parsedName.lastName,
+        email: profile.email,
+        profile: {
+            phone: profile.phone,
+            company: profile.company,
+            position: profile.position,
+            bio: profile.bio,
+            avatar: profile.avatar
+        }
+    });
+    const profileIncomplete = !loading && missingFields.length > 0;
+    const showProfileBanner = !loading && (welcomeMode || profileIncomplete);
 
     const fetchProfile = async () => {
         try {
@@ -51,8 +70,7 @@ export default function SettingsPage() {
             if (res.ok) {
                 const data = await res.json();
                 setProfile({
-                    first_name: data.first_name || '',
-                    last_name: data.last_name || '',
+                    full_name: getProfileDisplayName(data),
                     email: data.email,
                     phone: data.profile?.phone || '',
                     company: data.profile?.company || '',
@@ -77,10 +95,15 @@ export default function SettingsPage() {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const { firstName, lastName } = splitFullName(profile.full_name);
+            const normalizedEmail = profile.email.trim();
 
             const formData = new FormData();
-            formData.append('first_name', profile.first_name);
-            formData.append('last_name', profile.last_name);
+            if (normalizedEmail) {
+                formData.append('email', normalizedEmail);
+            }
+            formData.append('first_name', firstName);
+            formData.append('last_name', lastName);
             formData.append('phone', profile.phone);
             formData.append('company', profile.company);
             formData.append('position', profile.position);
@@ -146,12 +169,12 @@ export default function SettingsPage() {
             } else {
                 setPwError('Gagal memperbarui password');
             }
-        } catch (e) {
+        } catch {
             setPwError('Kesalahan sistem');
         }
     };
 
-    const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all';
+    const inputClass = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all';
 
     return (
         <div className="max-w-3xl mx-auto space-y-6">
@@ -167,6 +190,29 @@ export default function SettingsPage() {
                 )}
             </div>
 
+            {showProfileBanner && (
+                <div className={`rounded-2xl border px-5 py-4 ${profileIncomplete ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-blue-200 bg-blue-50 text-blue-900'}`}>
+                    <div className="flex items-start gap-3">
+                        <TriangleAlert className="w-5 h-5 mt-0.5 shrink-0" />
+                        <div className="space-y-1 text-sm">
+                            <p className="font-bold">
+                                {profileIncomplete ? 'Lengkapi informasi diri sebelum checkout.' : 'Profil Anda siap digunakan untuk checkout.'}
+                            </p>
+                            <p>
+                                {profileIncomplete
+                                    ? `Data yang masih perlu diisi: ${missingFields.join(', ')}.`
+                                    : 'Nama, telepon, dan perusahaan Anda sudah bisa dipakai sebagai preview identitas saat checkout.'}
+                            </p>
+                            {welcomeMode && (
+                                <p>
+                                    Informasi di halaman ini akan dipakai sebagai preview identitas saat checkout, jadi pastikan datanya sudah benar.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Profile */}
             <Section title="Profil Saya">
                 <form onSubmit={handleSaveProfile} className="space-y-4">
@@ -177,7 +223,7 @@ export default function SettingsPage() {
                                 {profile.avatar ? (
                                     <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
                                 ) : (
-                                    (profile.first_name?.charAt(0) || 'U').toUpperCase()
+                                    (profile.full_name?.trim().charAt(0) || 'U').toUpperCase()
                                 )}
                             </div>
                             <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full text-xs font-bold">
@@ -197,7 +243,7 @@ export default function SettingsPage() {
                             </label>
                         </div>
                         <div className="text-center sm:text-left">
-                            <h3 className="font-bold text-gray-900 text-lg">{profile.first_name} {profile.last_name}</h3>
+                            <h3 className="font-bold text-gray-900 text-lg">{profile.full_name || 'Lengkapi nama Anda'}</h3>
                             <p className="text-sm text-gray-500 mb-2">{profile.email}</p>
                             <label className="text-xs font-bold text-blue-600 hover:text-blue-700 cursor-pointer bg-blue-50 px-3 py-1 rounded-full">
                                 Upload Foto Baru
@@ -218,25 +264,14 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                        <Field label="Nama Depan">
+                        <Field label="Nama Lengkap">
                             <div className="relative">
                                 <User className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                                 <input
                                     className={`${inputClass} pl-9`}
-                                    value={profile.first_name}
-                                    onChange={e => setProfile(p => ({ ...p, first_name: e.target.value }))}
-                                    placeholder="Nama depan"
-                                />
-                            </div>
-                        </Field>
-                        <Field label="Nama Belakang">
-                            <div className="relative">
-                                <User className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                                <input
-                                    className={`${inputClass} pl-9`}
-                                    value={profile.last_name}
-                                    onChange={e => setProfile(p => ({ ...p, last_name: e.target.value }))}
-                                    placeholder="Nama belakang"
+                                    value={profile.full_name}
+                                    onChange={e => setProfile(p => ({ ...p, full_name: e.target.value }))}
+                                    placeholder="Nama lengkap sesuai identitas"
                                 />
                             </div>
                         </Field>
@@ -244,12 +279,18 @@ export default function SettingsPage() {
                             <div className="relative">
                                 <Mail className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                                 <input
-                                    className={`${inputClass} pl-9 bg-gray-50 text-gray-500 cursor-not-allowed`}
+                                    type="email"
+                                    className={`${inputClass} pl-9 ${canEditEmail ? '' : 'bg-gray-50 text-gray-900 cursor-not-allowed'}`}
                                     value={profile.email}
-                                    readOnly
-                                    title="Email tidak dapat diubah"
+                                    onChange={e => setProfile(p => ({ ...p, email: e.target.value }))}
+                                    readOnly={!canEditEmail}
+                                    placeholder="nama@email.com"
+                                    title={canEditEmail ? 'Isi email akun Anda' : 'Email akun sudah terdaftar'}
                                 />
                             </div>
+                            <p className="mt-1 text-xs text-gray-500">
+                                {canEditEmail ? 'Akun lama yang belum punya email bisa mengisinya di sini.' : 'Email ini sudah terhubung dengan akun Anda.'}
+                            </p>
                         </Field>
                         <Field label="Nomor Telepon">
                             <input
@@ -259,7 +300,7 @@ export default function SettingsPage() {
                                 placeholder="08xx-xxxx-xxxx"
                             />
                         </Field>
-                        <Field label="Perusahaan">
+                        <Field label="Perusahaan / Instansi">
                             <input
                                 className={inputClass}
                                 value={profile.company}

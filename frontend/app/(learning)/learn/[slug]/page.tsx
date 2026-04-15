@@ -24,6 +24,16 @@ import {
     Video
 } from 'lucide-react';
 
+const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
+const QUESTION_TYPE_SHORT_ANSWER = 'SHORT_ANSWER';
+const isAssessmentLesson = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '');
+const getLessonTypeLabel = (type?: string) => {
+    if (isAssessmentLesson(type)) return 'Quiz / Tes';
+    if (type === 'video') return 'Video';
+    if (type === 'article') return 'Artikel';
+    return type || 'Materi';
+};
+
 const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => void }) => {
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
     const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -35,19 +45,23 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         return (
             <div className="bg-white rounded-[2rem] p-10 text-center border border-gray-100 shadow-sm">
                 <HelpCircle className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Quiz Kosong</h3>
-                <p className="text-gray-500">Instruktur belum menambahkan pertanyaan untuk kuis ini.</p>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Quiz / Tes Kosong</h3>
+                <p className="text-gray-500">Instruktur belum menambahkan pertanyaan untuk materi ini.</p>
             </div>
         );
     }
 
     const currentQuestion = quiz.questions[currentQuestionIdx];
     const progress = ((currentQuestionIdx + 1) / quiz.questions.length) * 100;
+    const currentQuestionId = currentQuestion.id.toString();
+    const currentAnswer = answers[currentQuestionId] || '';
+    const hasCurrentAnswer = currentAnswer.trim().length > 0;
+    const isShortAnswerQuestion = currentQuestion.question_type === QUESTION_TYPE_SHORT_ANSWER;
 
-    const handleAnswerSelect = (alternativeId: string) => {
+    const handleAnswerSelect = (answer: string) => {
         setAnswers({
             ...answers,
-            [currentQuestion.id.toString()]: alternativeId
+            [currentQuestionId]: answer
         });
     };
 
@@ -114,7 +128,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                             onClick={resetQuiz}
                             className="flex items-center justify-center gap-2 px-8 py-4 bg-gray-100 text-gray-700 rounded-2xl font-bold hover:bg-gray-200 transition-all uppercase tracking-widest text-[10px]"
                         >
-                            <RotateCcw className="w-4 h-4" /> Ulangi Kuis
+                            <RotateCcw className="w-4 h-4" /> Ulangi Quiz / Tes
                         </button>
                         {result.is_passed && (
                             <button
@@ -137,7 +151,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                 <div className="flex-1">
                     <div className="flex items-center gap-3 text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">
                         <div className="p-2 bg-blue-100 rounded-lg"><HelpCircle className="w-4 h-4" /></div>
-                        {lesson.type.toUpperCase().replace('_', ' ')}
+                        {getLessonTypeLabel(lesson.type)}
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-6 leading-tight">{lesson.title}</h3>
 
@@ -182,28 +196,41 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                     </div>
 
                     <div className="space-y-3">
-                        {currentQuestion.alternatives.map((alt: any) => (
-                            <button
-                                key={alt.id}
-                                onClick={() => handleAnswerSelect(alt.id)}
-                                className={`w-full text-left p-5 rounded-2xl border-2 transition-all flex items-center justify-between group
-                                    ${answers[currentQuestion.id.toString()] === alt.id
-                                        ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-md'
-                                        : 'border-gray-50 hover:border-gray-200 text-gray-600 hover:bg-gray-50'
-                                    }
-                                `}
-                            >
-                                <span className="font-bold text-sm">{alt.text}</span>
-                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
-                                    ${answers[currentQuestion.id.toString()] === alt.id
-                                        ? 'border-blue-600 bg-blue-600 text-white'
-                                        : 'border-gray-200 group-hover:border-gray-300'
-                                    }
-                                `}>
-                                    {answers[currentQuestion.id.toString()] === alt.id && <CheckCircle2 className="w-4 h-4" />}
-                                </div>
-                            </button>
-                        ))}
+                        {isShortAnswerQuestion ? (
+                            <div className="rounded-3xl border-2 border-gray-100 bg-gray-50 p-5">
+                                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-gray-400">Jawaban Anda</label>
+                                <input
+                                    type="text"
+                                    value={currentAnswer}
+                                    onChange={(e) => handleAnswerSelect(e.target.value)}
+                                    placeholder="Ketik jawaban singkat..."
+                                    className="w-full rounded-2xl border-none bg-white px-5 py-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        ) : (
+                            (currentQuestion.alternatives || []).map((alt: any) => (
+                                <button
+                                    key={alt.id}
+                                    onClick={() => handleAnswerSelect(alt.id)}
+                                    className={`w-full text-left p-5 rounded-2xl border-2 transition-all flex items-center justify-between group
+                                        ${currentAnswer === alt.id
+                                            ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-md'
+                                            : 'border-gray-50 hover:border-gray-200 text-gray-600 hover:bg-gray-50'
+                                        }
+                                    `}
+                                >
+                                    <span className="font-bold text-sm">{alt.text}</span>
+                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
+                                        ${currentAnswer === alt.id
+                                            ? 'border-blue-600 bg-blue-600 text-white'
+                                            : 'border-gray-200 group-hover:border-gray-300'
+                                        }
+                                    `}>
+                                        {currentAnswer === alt.id && <CheckCircle2 className="w-4 h-4" />}
+                                    </div>
+                                </button>
+                            ))
+                        )}
                     </div>
                 </div>
 
@@ -218,7 +245,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
 
                     {currentQuestionIdx < quiz.questions.length - 1 ? (
                         <button
-                            disabled={!answers[currentQuestion.id.toString()]}
+                            disabled={!hasCurrentAnswer}
                             onClick={() => setCurrentQuestionIdx(currentQuestionIdx + 1)}
                             className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:grayscale"
                         >
@@ -226,11 +253,11 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                         </button>
                     ) : (
                         <button
-                            disabled={!answers[currentQuestion.id.toString()] || submitting}
+                            disabled={!hasCurrentAnswer || submitting}
                             onClick={handleSubmit}
                             className="bg-green-600 text-white px-10 py-3 rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 disabled:opacity-50 disabled:grayscale flex items-center gap-2"
                         >
-                            {submitting ? 'Mengirim...' : 'Selesaikan Ujian'}
+                            {submitting ? 'Mengirim...' : 'Kirim Jawaban'}
                         </button>
                     )}
                 </div>
@@ -533,7 +560,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                 </div>
                             )}
 
-                            {['quiz', 'mid_test', 'final_test', 'exam'].includes(activeLesson.type) && (
+                            {isAssessmentLesson(activeLesson.type) && (
                                 <QuizPlayer
                                     lesson={activeLesson}
                                     onComplete={() => {
@@ -704,7 +731,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                                         {lesson.title}
                                                     </p>
                                                     <div className={`flex items-center gap-3 mt-1.5 text-[10px] font-bold uppercase tracking-widest ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>
-                                                        <span>{lesson.type}</span>
+                                                        <span>{getLessonTypeLabel(lesson.type)}</span>
                                                         <div className={`w-1 h-1 rounded-full ${isActive ? 'bg-white/40' : 'bg-gray-200'}`} />
                                                         <span>{lesson.duration || '0 Min'}</span>
                                                         {lesson.is_locked && (

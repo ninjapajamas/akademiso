@@ -2,27 +2,39 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Save, BookOpen, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Save, BookOpen, AlertCircle, Percent, WalletCards } from 'lucide-react';
 import Link from 'next/link';
 import { Category } from '@/types';
-import { formatNumberInput, normalizePriceForApi } from '@/types/currency';
-import { formatApiDateTimeForInput, formatInputDateTimeForApi } from '@/types/datetime';
+import { calculateInstructorPayout, calculatePlatformFee, formatNumberInput, formatRupiah, normalizePriceForApi, parseCurrencyValue } from '@/types/currency';
+import { createTodayDateTimeInputAtStartOfDay, formatApiDateTimeForInput, formatInputDateTimeForApi, normalizeDateTimeInputToStartOfDay } from '@/types/datetime';
 
 type CourseType = 'course' | 'webinar' | 'workshop';
 type DeliveryMode = 'online' | 'offline';
 
-export default function InstructorCourseFormPage({ params }: { params: Promise<{ id: string }> }) {
-    const router = useRouter();
-    const { id } = use(params);
-    const isNew = id === 'new';
-    const [loading, setLoading] = useState(!isNew);
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+interface InstructorCourseFormState {
+    title: string;
+    slug: string;
+    description: string;
+    price: string;
+    level: string;
+    duration: string;
+    category_id: string;
+    is_featured: boolean;
+    discount_price: string;
+    type: CourseType;
+    delivery_mode: DeliveryMode;
+    scheduled_at: string;
+    scheduled_end_at: string;
+    location: string;
+    zoom_link: string;
+    is_free: boolean;
+    has_certification_exam: boolean;
+    thumbnail: File | null;
+    thumbnail_preview: string;
+}
 
-    // Dropdown data
-    const [categories, setCategories] = useState<Category[]>([]);
-
-    const [formData, setFormData] = useState({
+function createInitialFormData(): InstructorCourseFormState {
+    return {
         title: '',
         slug: '',
         description: '',
@@ -33,14 +45,32 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
         is_featured: false,
         discount_price: '',
         type: 'course',
-        delivery_mode: 'online' as DeliveryMode,
+        delivery_mode: 'online',
         scheduled_at: '',
         scheduled_end_at: '',
         location: '',
         zoom_link: '',
         is_free: false,
-        has_certification_exam: false
-    });
+        has_certification_exam: false,
+        thumbnail: null,
+        thumbnail_preview: ''
+    };
+}
+
+export default function InstructorCourseFormPage({ params }: { params: Promise<{ id: string }> }) {
+    const router = useRouter();
+    const { id } = use(params);
+    const isNew = id === 'new';
+    const [loading, setLoading] = useState(!isNew);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [seededDateTimeFields, setSeededDateTimeFields] = useState<Partial<Record<'scheduled_at' | 'scheduled_end_at', string>>>({});
+    const [examRefreshKey, setExamRefreshKey] = useState(0);
+
+    // Dropdown data
+    const [categories, setCategories] = useState<Category[]>([]);
+
+    const [formData, setFormData] = useState<InstructorCourseFormState>(createInitialFormData);
 
     useEffect(() => {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -79,7 +109,9 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                             location: data.location || '',
                             zoom_link: data.zoom_link || '',
                             is_free: data.is_free || false,
-                            has_certification_exam: data.has_certification_exam || false
+                            has_certification_exam: data.has_certification_exam || false,
+                            thumbnail: null,
+                            thumbnail_preview: data.thumbnail || ''
                         });
                     } else if (res.status === 403) {
                         setError('Anda tidak memiliki izin untuk mengedit kursus ini.');
@@ -102,7 +134,17 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
         const name = target.name;
         const normalizedValue = !isCheckbox && (name === 'price' || name === 'discount_price')
             ? formatNumberInput(String(value))
+            : !isCheckbox && (name === 'scheduled_at' || name === 'scheduled_end_at')
+                ? normalizeDateTimeInputToStartOfDay(String(value))
             : value;
+
+        if (!isCheckbox && (name === 'scheduled_at' || name === 'scheduled_end_at')) {
+            setSeededDateTimeFields(prev => {
+                const next = { ...prev };
+                delete next[name as 'scheduled_at' | 'scheduled_end_at'];
+                return next;
+            });
+        }
 
         if (name === 'type') {
             const nextType = normalizedValue as CourseType;
@@ -151,6 +193,62 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
         }
     };
 
+    const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+
+        if (!file) {
+            return;
+        }
+
+        setFormData(prev => {
+            if (prev.thumbnail_preview.startsWith('blob:')) {
+                URL.revokeObjectURL(prev.thumbnail_preview);
+            }
+
+            return {
+                ...prev,
+                thumbnail: file,
+                thumbnail_preview: URL.createObjectURL(file)
+            };
+        });
+    };
+
+    const seedDateTimeField = (field: 'scheduled_at' | 'scheduled_end_at') => {
+        if (formData[field]) {
+            return;
+        }
+
+        const seededValue = createTodayDateTimeInputAtStartOfDay();
+        if (!seededValue) {
+            return;
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            [field]: seededValue
+        }));
+        setSeededDateTimeFields(prev => ({
+            ...prev,
+            [field]: seededValue
+        }));
+    };
+
+    const handleDateTimeFieldBlur = (field: 'scheduled_at' | 'scheduled_end_at') => {
+        const seededValue = seededDateTimeFields[field];
+        if (seededValue && formData[field] === seededValue) {
+            setFormData(prev => ({
+                ...prev,
+                [field]: ''
+            }));
+        }
+
+        setSeededDateTimeFields(prev => {
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
@@ -164,22 +262,35 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                 : `${apiUrl}/api/courses/${id}/`;
 
             const method = isNew ? 'POST' : 'PATCH';
-            const payload = {
-                ...formData,
-                price: normalizePriceForApi(formData.price),
-                discount_price: normalizePriceForApi(formData.discount_price) || null,
-                scheduled_at: formatInputDateTimeForApi(formData.scheduled_at),
-                scheduled_end_at: formatInputDateTimeForApi(formData.scheduled_end_at),
-                delivery_mode: formData.type === 'webinar' ? 'online' : formData.delivery_mode
-            };
+            const payload = new FormData();
+
+            payload.append('title', formData.title);
+            payload.append('slug', formData.slug);
+            payload.append('description', formData.description);
+            payload.append('price', normalizePriceForApi(formData.price));
+            payload.append('level', formData.level);
+            payload.append('duration', formData.duration);
+            payload.append('category_id', formData.category_id);
+            payload.append('discount_price', normalizePriceForApi(formData.discount_price));
+            payload.append('type', formData.type);
+            payload.append('delivery_mode', formData.type === 'webinar' ? 'online' : formData.delivery_mode);
+            payload.append('scheduled_at', formatInputDateTimeForApi(formData.scheduled_at) || '');
+            payload.append('scheduled_end_at', formatInputDateTimeForApi(formData.scheduled_end_at) || '');
+            payload.append('location', formData.location);
+            payload.append('zoom_link', formData.zoom_link);
+            payload.append('is_free', String(formData.is_free));
+            payload.append('has_certification_exam', String(formData.has_certification_exam));
+
+            if (formData.thumbnail) {
+                payload.append('thumbnail', formData.thumbnail);
+            }
 
             const res = await fetch(url, {
                 method: method,
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(payload)
+                body: payload
             });
 
             if (res.ok) {
@@ -212,6 +323,12 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
             </Link>
         </div>
     );
+
+    const effectivePriceInput = formData.discount_price || formData.price;
+    const effectiveCoursePrice = formData.is_free ? 0 : parseCurrencyValue(effectivePriceInput);
+    const platformFeeAmount = calculatePlatformFee(effectiveCoursePrice);
+    const instructorPayoutAmount = calculateInstructorPayout(effectiveCoursePrice);
+    const hasPricePreview = effectiveCoursePrice > 0;
 
     return (
         <div className="max-w-4xl mx-auto space-y-8 pb-20">
@@ -274,6 +391,37 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                             value={formData.description}
                             onChange={handleChange}
                         />
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Gambar Course</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4">
+                            <div className="overflow-hidden rounded-[1.5rem] bg-gray-100 border border-gray-200 aspect-[4/3]">
+                                {formData.thumbnail_preview ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={formData.thumbnail_preview}
+                                        alt={formData.title || 'Preview course'}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center px-4 text-center text-sm text-gray-400">
+                                        Belum ada gambar course
+                                    </div>
+                                )}
+                            </div>
+                            <div className="space-y-3">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleThumbnailChange}
+                                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-indigo-700"
+                                />
+                                <p className="text-[11px] text-gray-500 font-medium">
+                                    Gambar ini akan dipakai pada katalog dan halaman detail course di sisi depan.
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <div>
@@ -369,10 +517,13 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                                 <input
                                     name="scheduled_at"
                                     type="datetime-local"
+                                    step={60}
                                     required={formData.type === 'course'}
                                     className="w-full px-5 py-3 bg-white border border-indigo-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700 font-bold"
                                     value={formData.scheduled_at}
                                     onChange={handleChange}
+                                    onFocus={() => seedDateTimeField('scheduled_at')}
+                                    onBlur={() => handleDateTimeFieldBlur('scheduled_at')}
                                 />
                             </div>
                             <div>
@@ -380,10 +531,13 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                                 <input
                                     name="scheduled_end_at"
                                     type="datetime-local"
+                                    step={60}
                                     required={formData.type === 'course'}
                                     className="w-full px-5 py-3 bg-white border border-indigo-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700 font-bold"
                                     value={formData.scheduled_end_at}
                                     onChange={handleChange}
+                                    onFocus={() => seedDateTimeField('scheduled_end_at')}
+                                    onBlur={() => handleDateTimeFieldBlur('scheduled_end_at')}
                                 />
                             </div>
                         </div>
@@ -451,6 +605,45 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                         />
                     </div>
 
+                    <div className="md:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-5">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Pembagian transaksi</p>
+                                <p className="mt-1 text-xs font-medium text-emerald-700">
+                                    Akademiso mengambil 10% dari setiap transaksi course. Estimasi di bawah mengikuti harga aktif yang dibayar peserta.
+                                </p>
+                            </div>
+                            <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm">
+                                <Percent className="w-3.5 h-3.5" />
+                                Fee 10%
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="rounded-xl bg-white px-4 py-3 border border-emerald-100">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Harga Aktif</p>
+                                <p className="mt-1 text-lg font-black text-gray-900">
+                                    {hasPricePreview ? formatRupiah(effectiveCoursePrice) : '-'}
+                                </p>
+                            </div>
+                            <div className="rounded-xl bg-white px-4 py-3 border border-emerald-100">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Komisi Akademiso</p>
+                                <p className="mt-1 text-lg font-black text-emerald-700">
+                                    {hasPricePreview ? formatRupiah(platformFeeAmount) : '-'}
+                                </p>
+                            </div>
+                            <div className="rounded-xl bg-white px-4 py-3 border border-emerald-100">
+                                <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                                    <WalletCards className="w-3.5 h-3.5" />
+                                    Diterima Instruktur
+                                </p>
+                                <p className="mt-1 text-lg font-black text-indigo-700">
+                                    {hasPricePreview ? formatRupiah(instructorPayoutAmount) : '-'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Estimasi Durasi</label>
                         <input
@@ -462,22 +655,6 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                             value={formData.duration}
                             onChange={handleChange}
                         />
-                    </div>
-
-                    <div className="flex items-center pt-2">
-                        <label className="flex items-center gap-3 cursor-pointer group">
-                            <div className={`relative w-6 h-6 rounded-lg border-2 transition-all flex items-center justify-center ${formData.is_featured ? 'bg-indigo-600 border-indigo-600' : 'border-gray-200 group-hover:border-indigo-400'}`}>
-                                <input
-                                    name="is_featured"
-                                    type="checkbox"
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                    checked={formData.is_featured}
-                                    onChange={handleChange}
-                                />
-                                {formData.is_featured && <div className="w-1.5 h-3 border-r-2 border-b-2 border-white rotate-45 mb-0.5" />}
-                            </div>
-                            <span className="text-gray-700 font-bold text-xs uppercase tracking-widest">Kursus Unggulan</span>
-                        </label>
                     </div>
 
                     {formData.type === 'course' && (
@@ -493,7 +670,7 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
                                     />
                                     {formData.has_certification_exam && <div className="w-1.5 h-3 border-r-2 border-b-2 border-white rotate-45 mb-0.5" />}
                                 </div>
-                                <span className="text-indigo-600 font-bold text-xs uppercase tracking-widest">Sediakan Ujian Sertifikasi</span>
+                                <span className="text-indigo-600 font-bold text-xs uppercase tracking-widest">Sediakan Ujian Akhir</span>
                             </label>
                         </div>
                     )}
@@ -513,10 +690,18 @@ export default function InstructorCourseFormPage({ params }: { params: Promise<{
             </form>
 
             {!isNew && formData.type === 'course' && formData.has_certification_exam && (
-                <InstructorExamManager courseId={parseInt(id)} />
+                <div className="space-y-8">
+                    <ExamManager
+                        courseId={parseInt(id)}
+                        managedBy="instructor"
+                        onExamChange={() => setExamRefreshKey((value) => value + 1)}
+                    />
+                    <InstructorExamManager courseId={parseInt(id)} refreshKey={examRefreshKey} />
+                </div>
             )}
         </div>
     );
 }
 
 import InstructorExamManager from '@/components/exam/InstructorExamManager';
+import ExamManager from '@/components/exam/ExamManager';

@@ -5,11 +5,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ShieldCheck, Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
 import { Suspense } from 'react';
+import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
 
 function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const redirect = searchParams.get('redirect');
+    const registered = searchParams.get('registered') === 'true';
+    const instructorPending = searchParams.get('instructor_pending') === 'true';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -37,11 +40,13 @@ function LoginForm() {
                 localStorage.setItem('refresh_token', data.refresh);
 
                 // Redirect to requested page or dashboard
-                router.push(redirect || '/dashboard');
+                const payload = decodeJwtPayload(data.access);
+                const role = getRoleFromPayload(payload);
+                router.push(redirect || getPortalPathForRole(role));
             } else {
                 setError(data.detail || 'Login gagal. Periksa kembali email dan password Anda.');
             }
-        } catch (err) {
+        } catch {
             setError('Terjadi kesalahan jaringan. Silakan coba lagi.');
         } finally {
             setIsLoading(false);
@@ -64,6 +69,14 @@ function LoginForm() {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {registered && (
+                            <div className="p-4 bg-blue-50 text-blue-700 text-sm rounded-lg border border-blue-100">
+                                {instructorPending
+                                    ? 'Akun berhasil dibuat. Pengajuan instruktur Anda menunggu approval admin; sementara itu akun dapat digunakan sebagai peserta.'
+                                    : 'Akun berhasil dibuat. Setelah masuk, lengkapi informasi diri Anda di halaman pengaturan sebelum checkout.'}
+                            </div>
+                        )}
+
                         {error && (
                             <div className="p-4 bg-red-50 text-red-600 text-sm rounded-lg flex items-start gap-2">
                                 <div className="w-1 h-1 bg-red-500 rounded-full mt-2 shrink-0"></div>

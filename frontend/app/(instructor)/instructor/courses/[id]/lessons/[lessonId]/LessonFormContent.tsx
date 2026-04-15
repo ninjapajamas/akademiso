@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Upload, Image as ImageIcon, Video, FileText, ChevronRight, HelpCircle, Plus, Trash2, CheckCircle2, Trophy } from 'lucide-react';
+import { ArrowLeft, Upload, Video, FileText, HelpCircle, Plus, Trash2, CheckCircle2, Library, Search, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
@@ -19,6 +19,86 @@ type LessonFormContentProps = {
     courseBasePath?: string;
 };
 
+const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
+const normalizeLessonType = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '') ? 'quiz' : (type || 'video');
+const QUESTION_TYPE_MULTIPLE_CHOICE = 'MC';
+const QUESTION_TYPE_SHORT_ANSWER = 'SHORT_ANSWER';
+
+type QuizAlternative = {
+    id?: number;
+    text: string;
+    is_correct: boolean;
+    order: number;
+};
+
+type QuizQuestion = {
+    id?: number;
+    text: string;
+    question_type: string;
+    correct_answer: string;
+    order: number;
+    alternatives: QuizAlternative[];
+};
+
+type QuizData = {
+    pass_score: number;
+    time_limit: number | null;
+    questions: QuizQuestion[];
+};
+
+type LessonFormData = {
+    title: string;
+    type: string;
+    section_id: string | number;
+    video_url: string;
+    content: string;
+    duration: string;
+    order: number;
+    image: File | null;
+    quiz_data: QuizData;
+};
+
+type RawQuizQuestion = Partial<QuizQuestion> & {
+    alternatives?: QuizAlternative[];
+};
+
+type RawQuizData = Partial<QuizData> & {
+    questions?: RawQuizQuestion[];
+};
+
+const defaultAlternatives = (): QuizAlternative[] => [
+    { text: '', is_correct: true, order: 1 },
+    { text: '', is_correct: false, order: 2 }
+];
+const normalizeQuizData = (quizData?: RawQuizData | null): QuizData => ({
+    pass_score: quizData?.pass_score ?? 70,
+    time_limit: quizData?.time_limit ?? null,
+    questions: (quizData?.questions || []).map((question: RawQuizQuestion, index: number) => ({
+        ...question,
+        text: question.text || '',
+        question_type: question.question_type || QUESTION_TYPE_MULTIPLE_CHOICE,
+        correct_answer: question.correct_answer || '',
+        order: question.order || index + 1,
+        alternatives: question.alternatives?.length ? question.alternatives : defaultAlternatives()
+    }))
+});
+
+type QuestionBankItem = {
+    id: number;
+    question_type: string;
+    text: string;
+    correct_answer?: string;
+    order: number;
+    alternatives?: QuizAlternative[];
+    source_lesson_title: string;
+    source_course_title: string;
+};
+
+type SectionOption = {
+    id: number;
+    title: string;
+};
+
 export default function LessonFormContent({
     courseId,
     lessonId,
@@ -29,7 +109,7 @@ export default function LessonFormContent({
     const searchParams = useSearchParams();
     const initialSectionId = searchParams.get('section_id') || '';
 
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<LessonFormData>({
         title: '',
         type: 'video',
         section_id: initialSectionId,
@@ -37,17 +117,22 @@ export default function LessonFormContent({
         content: '',
         duration: '',
         order: 1,
-        image: null as File | null,
+        image: null,
         quiz_data: {
             pass_score: 70,
             time_limit: null as number | null,
-            questions: [] as any[]
+            questions: []
         }
     });
-    const [sections, setSections] = useState<any[]>([]);
+    const [sections, setSections] = useState<SectionOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+    const [questionBankOpen, setQuestionBankOpen] = useState(false);
+    const [questionBankLoading, setQuestionBankLoading] = useState(false);
+    const [questionBankItems, setQuestionBankItems] = useState<QuestionBankItem[]>([]);
+    const [questionBankSearch, setQuestionBankSearch] = useState('');
+    const [selectedQuestionIds, setSelectedQuestionIds] = useState<number[]>([]);
 
     // Quill Configuration
     const quillModules = useMemo(() => ({
@@ -92,18 +177,14 @@ export default function LessonFormContent({
                         const data = await res.json();
                         setFormData({
                             title: data.title,
-                            type: data.type,
+                            type: normalizeLessonType(data.type),
                             section_id: data.section || '',
                             video_url: data.video_url || '',
                             content: data.content || '',
                             duration: data.duration || '',
                             order: data.order,
                             image: null,
-                            quiz_data: data.quiz_data || {
-                                pass_score: 70,
-                                time_limit: null,
-                                questions: []
-                            }
+                            quiz_data: normalizeQuizData(data.quiz_data)
                         });
                         setCurrentImageUrl(data.image);
                     }
@@ -120,16 +201,19 @@ export default function LessonFormContent({
         fetchData();
     }, [courseId, lessonId, isNew, initialSectionId]);
 
-    const handleChange = (e: any) => {
+    const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData({ ...formData, [name]: value });
+        setFormData((current) => ({
+            ...current,
+            [name]: name === 'order' ? Number(value) : value
+        }));
     };
 
     const handleQuillChange = (content: string) => {
         setFormData({ ...formData, content });
     };
 
-    const handleFileChange = (e: any) => {
+    const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setFormData({ ...formData, image: e.target.files[0] });
         }
@@ -144,16 +228,93 @@ export default function LessonFormContent({
                     ...formData.quiz_data.questions,
                     {
                         text: '',
+                        question_type: QUESTION_TYPE_MULTIPLE_CHOICE,
+                        correct_answer: '',
                         order: formData.quiz_data.questions.length + 1,
-                        alternatives: [
-                            { text: '', is_correct: true, order: 1 },
-                            { text: '', is_correct: false, order: 2 }
-                        ]
+                        alternatives: defaultAlternatives()
                     }
                 ]
             }
         });
     };
+
+    const openQuestionBank = async () => {
+        setQuestionBankOpen(true);
+        if (questionBankItems.length > 0) return;
+
+        try {
+            setQuestionBankLoading(true);
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/lessons/bank/?content_type=questions`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                const data: QuestionBankItem[] = await res.json();
+                setQuestionBankItems(data);
+            } else {
+                alert('Gagal memuat bank soal.');
+            }
+        } catch (error) {
+            console.error('Failed to fetch question bank:', error);
+            alert('Gagal memuat bank soal. Cek koneksi.');
+        } finally {
+            setQuestionBankLoading(false);
+        }
+    };
+
+    const toggleQuestionSelection = (questionId: number) => {
+        setSelectedQuestionIds((current) => (
+            current.includes(questionId)
+                ? current.filter((id) => id !== questionId)
+                : [...current, questionId]
+        ));
+    };
+
+    const importQuestionsFromBank = (questions: QuestionBankItem[]) => {
+        if (questions.length === 0) return;
+
+        setFormData((current) => {
+            const startOrder = current.quiz_data.questions.length;
+            const copiedQuestions = questions.map((question, index) => ({
+                text: question.text,
+                question_type: question.question_type || QUESTION_TYPE_MULTIPLE_CHOICE,
+                correct_answer: question.correct_answer || '',
+                order: startOrder + index + 1,
+                alternatives: question.question_type === QUESTION_TYPE_MULTIPLE_CHOICE
+                    ? (question.alternatives || []).map((alternative, alternativeIndex) => ({
+                        text: alternative.text,
+                        is_correct: alternative.is_correct,
+                        order: alternativeIndex + 1
+                    }))
+                    : []
+            }));
+
+            return {
+                ...current,
+                type: ASSESSMENT_LESSON_TYPES.includes(current.type) ? current.type : 'quiz',
+                quiz_data: {
+                    ...current.quiz_data,
+                    questions: [...current.quiz_data.questions, ...copiedQuestions]
+                }
+            };
+        });
+
+        setSelectedQuestionIds([]);
+        setQuestionBankOpen(false);
+    };
+
+    const filteredQuestionBankItems = questionBankItems.filter((question) => {
+        const keyword = questionBankSearch.trim().toLowerCase();
+        if (!keyword) return true;
+        return [
+            question.text,
+            question.source_lesson_title,
+            question.source_course_title,
+            question.correct_answer || ''
+        ].some((value) => value.toLowerCase().includes(keyword));
+    });
 
     const removeQuestion = (index: number) => {
         const newQuestions = [...formData.quiz_data.questions];
@@ -167,6 +328,30 @@ export default function LessonFormContent({
     const updateQuestion = (index: number, text: string) => {
         const newQuestions = [...formData.quiz_data.questions];
         newQuestions[index].text = text;
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const updateQuestionType = (index: number, questionType: string) => {
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions[index] = {
+            ...newQuestions[index],
+            question_type: questionType,
+            alternatives: questionType === QUESTION_TYPE_MULTIPLE_CHOICE
+                ? (newQuestions[index].alternatives?.length ? newQuestions[index].alternatives : defaultAlternatives())
+                : []
+        };
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const updateCorrectAnswer = (index: number, correctAnswer: string) => {
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions[index].correct_answer = correctAnswer;
         setFormData({
             ...formData,
             quiz_data: { ...formData.quiz_data, questions: newQuestions }
@@ -195,11 +380,11 @@ export default function LessonFormContent({
         });
     };
 
-    const updateAlternative = (qIndex: number, aIndex: number, updates: any) => {
+    const updateAlternative = (qIndex: number, aIndex: number, updates: Partial<QuizAlternative>) => {
         const newQuestions = [...formData.quiz_data.questions];
-        if (updates.hasOwnProperty('is_correct') && updates.is_correct) {
+        if ('is_correct' in updates && updates.is_correct) {
             // Uncheck others in the SAME question
-            newQuestions[qIndex].alternatives = newQuestions[qIndex].alternatives.map((a: any, i: number) => ({
+            newQuestions[qIndex].alternatives = newQuestions[qIndex].alternatives.map((a, i) => ({
                 ...a,
                 is_correct: i === aIndex
             }));
@@ -215,7 +400,7 @@ export default function LessonFormContent({
         });
     };
 
-    const handleSubmit = async (e: any) => {
+    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setSaving(true);
 
@@ -225,7 +410,7 @@ export default function LessonFormContent({
 
             const data = new FormData();
             data.append('course', courseId);
-            if (formData.section_id) data.append('section', formData.section_id);
+            if (formData.section_id) data.append('section', formData.section_id.toString());
             data.append('title', formData.title);
             data.append('type', formData.type);
             data.append('order', formData.order.toString());
@@ -240,12 +425,12 @@ export default function LessonFormContent({
             }
 
             // Append Quiz data if applicable
-            if (['quiz', 'mid_test', 'final_test', 'exam'].includes(formData.type)) {
+            if (ASSESSMENT_LESSON_TYPES.includes(formData.type)) {
                 data.append('quiz_data', JSON.stringify(formData.quiz_data));
             }
 
             // Only append image if it's not an article (per user request)
-            if (['video', 'quiz', 'mid_test', 'final_test', 'exam'].includes(formData.type) && formData.image) {
+            if ((formData.type === 'video' || ASSESSMENT_LESSON_TYPES.includes(formData.type)) && formData.image) {
                 data.append('image', formData.image);
             }
 
@@ -369,14 +554,11 @@ export default function LessonFormContent({
 
                     <div>
                         <label className="block font-bold text-gray-700 mb-4 uppercase tracking-widest text-[10px]">Tipe Materi</label>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {[
                                 { id: 'video', label: 'Video', icon: Video },
                                 { id: 'article', label: 'Artikel', icon: FileText },
-                                { id: 'quiz', label: 'Quiz', icon: HelpCircle },
-                                { id: 'mid_test', label: 'Mid Test', icon: HelpCircle },
-                                { id: 'final_test', label: 'Final Test', icon: HelpCircle },
-                                { id: 'exam', label: 'Ujian', icon: Trophy },
+                                { id: 'quiz', label: 'Quiz / Tes', icon: HelpCircle },
                             ].map((type) => (
                                 <button
                                     key={type.id}
@@ -421,12 +603,12 @@ export default function LessonFormContent({
                                     />
                                 </div>
                             </div>
-                        ) : ['quiz', 'mid_test', 'final_test', 'exam'].includes(formData.type) ? (
+                        ) : ASSESSMENT_LESSON_TYPES.includes(formData.type) ? (
                             <div className="space-y-8">
                                 <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100/50">
                                     <h3 className="text-sm font-bold text-indigo-900 mb-4 flex items-center gap-2">
-                                        <Trophy className="w-4 h-4" />
-                                        Konfigurasi Ujian
+                                        <HelpCircle className="w-4 h-4" />
+                                        Konfigurasi Quiz / Tes
                                     </h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
@@ -460,16 +642,26 @@ export default function LessonFormContent({
                                 </div>
 
                                 <div className="space-y-6">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <label className="block font-bold text-gray-700 uppercase tracking-widest text-[10px]">Daftar Pertanyaan ({formData.quiz_data.questions.length})</label>
-                                        <button
-                                            type="button"
-                                            onClick={addQuestion}
-                                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all"
-                                        >
-                                            <Plus className="w-3 h-3" />
-                                            Tambah Pertanyaan
-                                        </button>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={openQuestionBank}
+                                                className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 border border-indigo-100 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-indigo-50 transition-all"
+                                            >
+                                                <Library className="w-3 h-3" />
+                                                Bank Soal
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={addQuestion}
+                                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all"
+                                            >
+                                                <Plus className="w-3 h-3" />
+                                                Tambah Pertanyaan
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {formData.quiz_data.questions.map((q, qIndex) => (
@@ -496,43 +688,76 @@ export default function LessonFormContent({
                                                         </button>
                                                     </div>
 
-                                                    <div className="space-y-3 pl-2">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pilihan Jawaban</span>
+                                                    <div className="flex flex-wrap gap-2 pl-2">
+                                                        {[
+                                                            { id: QUESTION_TYPE_MULTIPLE_CHOICE, label: 'Pilihan Ganda' },
+                                                            { id: QUESTION_TYPE_SHORT_ANSWER, label: 'Isian Singkat' },
+                                                        ].map((option) => (
                                                             <button
+                                                                key={option.id}
                                                                 type="button"
-                                                                onClick={() => addAlternative(qIndex)}
-                                                                className="text-indigo-600 hover:text-indigo-700 font-bold text-[10px] uppercase tracking-widest"
+                                                                onClick={() => updateQuestionType(qIndex, option.id)}
+                                                                className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest transition ${q.question_type === option.id
+                                                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                                                    : 'bg-white text-gray-400 hover:text-indigo-600 border border-gray-100'
+                                                                    }`}
                                                             >
-                                                                + Opsi Baru
+                                                                {option.label}
                                                             </button>
-                                                        </div>
-                                                        {q.alternatives.map((a: any, aIndex: number) => (
-                                                            <div key={aIndex} className="flex items-center gap-3 group">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => updateAlternative(qIndex, aIndex, { is_correct: true })}
-                                                                    className={`p-2 rounded-lg transition-all ${a.is_correct ? 'bg-green-100 text-green-600' : 'bg-white text-gray-200 hover:text-gray-400 border border-gray-100'}`}
-                                                                >
-                                                                    <CheckCircle2 className="w-4 h-4" />
-                                                                </button>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={`Pilihan ${aIndex + 1}...`}
-                                                                    className={`flex-1 px-4 py-2 bg-white border-none rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-medium ${a.is_correct ? 'ring-1 ring-green-200' : ''}`}
-                                                                    value={a.text}
-                                                                    onChange={(e) => updateAlternative(qIndex, aIndex, { text: e.target.value })}
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => removeAlternative(qIndex, aIndex)}
-                                                                    className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 transition-all"
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
                                                         ))}
                                                     </div>
+
+                                                    {q.question_type === QUESTION_TYPE_SHORT_ANSWER ? (
+                                                        <div className="space-y-2 pl-2">
+                                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Kunci Jawaban Isian</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Contoh: ISO 9001"
+                                                                className="w-full px-4 py-3 bg-white border-none rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-900"
+                                                                value={q.correct_answer || ''}
+                                                                onChange={(e) => updateCorrectAnswer(qIndex, e.target.value)}
+                                                            />
+                                                            <p className="text-[10px] text-gray-400 font-medium">Jawaban dinilai otomatis tanpa membedakan huruf besar/kecil dan spasi berlebih.</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-3 pl-2">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pilihan Jawaban</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => addAlternative(qIndex)}
+                                                                    className="text-indigo-600 hover:text-indigo-700 font-bold text-[10px] uppercase tracking-widest"
+                                                                >
+                                                                    + Opsi Baru
+                                                                </button>
+                                                            </div>
+                                                            {(q.alternatives || []).map((a, aIndex) => (
+                                                                <div key={aIndex} className="flex items-center gap-3 group">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => updateAlternative(qIndex, aIndex, { is_correct: true })}
+                                                                        className={`p-2 rounded-lg transition-all ${a.is_correct ? 'bg-green-100 text-green-600' : 'bg-white text-gray-200 hover:text-gray-400 border border-gray-100'}`}
+                                                                    >
+                                                                        <CheckCircle2 className="w-4 h-4" />
+                                                                    </button>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder={`Pilihan ${aIndex + 1}...`}
+                                                                        className={`flex-1 px-4 py-2 bg-white border-none rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-medium text-gray-900 ${a.is_correct ? 'ring-1 ring-green-200' : ''}`}
+                                                                        value={a.text}
+                                                                        onChange={(e) => updateAlternative(qIndex, aIndex, { text: e.target.value })}
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeAlternative(qIndex, aIndex)}
+                                                                        className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 transition-all"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -617,6 +842,92 @@ export default function LessonFormContent({
                     </button>
                 </div>
             </form>
+
+            {questionBankOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/40 px-4 py-6">
+                    <div className="w-full max-w-3xl max-h-[86vh] overflow-hidden rounded-3xl bg-white shadow-2xl border border-gray-100">
+                        <div className="flex items-center justify-between gap-4 border-b border-gray-100 p-5">
+                            <div>
+                                <h2 className="text-lg font-black text-gray-900">Bank Soal</h2>
+                                <p className="text-xs font-medium text-gray-500 mt-1">{selectedQuestionIds.length} soal dipilih</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setQuestionBankOpen(false)}
+                                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-xl transition-all"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 border-b border-gray-100">
+                            <div className="flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                                <Search className="w-4 h-4 text-gray-400" />
+                                <input
+                                    type="search"
+                                    value={questionBankSearch}
+                                    onChange={(e) => setQuestionBankSearch(e.target.value)}
+                                    placeholder="Cari soal, materi, atau course"
+                                    className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="max-h-[52vh] overflow-y-auto p-5 space-y-3">
+                            {questionBankLoading ? (
+                                <div className="py-12 text-center text-sm font-bold text-gray-400">Memuat bank soal...</div>
+                            ) : filteredQuestionBankItems.length > 0 ? (
+                                filteredQuestionBankItems.map((question) => {
+                                    const selected = selectedQuestionIds.includes(question.id);
+                                    return (
+                                        <label
+                                            key={question.id}
+                                            className={`block rounded-2xl border p-4 transition-all cursor-pointer ${selected ? 'border-indigo-300 bg-indigo-50/70' : 'border-gray-100 hover:border-indigo-100 hover:bg-gray-50'}`}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selected}
+                                                    onChange={() => toggleQuestionSelection(question.id)}
+                                                    className="mt-1 h-4 w-4 accent-indigo-600"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-sm font-bold text-gray-900 leading-relaxed">{question.text}</p>
+                                                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
+                                                        <span className="rounded-lg bg-white px-2 py-1 text-indigo-600 border border-indigo-100">{question.question_type === QUESTION_TYPE_SHORT_ANSWER ? 'Isian' : 'Pilihan Ganda'}</span>
+                                                        <span className="rounded-lg bg-white px-2 py-1 text-gray-500 border border-gray-100">{question.source_lesson_title}</span>
+                                                        <span className="rounded-lg bg-white px-2 py-1 text-gray-500 border border-gray-100">{question.source_course_title}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    );
+                                })
+                            ) : (
+                                <div className="py-12 text-center text-sm font-bold text-gray-400">Belum ada soal yang cocok.</div>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col-reverse gap-3 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setQuestionBankOpen(false)}
+                                className="px-5 py-3 text-sm font-bold text-gray-500 hover:text-gray-800"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                disabled={selectedQuestionIds.length === 0}
+                                onClick={() => importQuestionsFromBank(questionBankItems.filter((question) => selectedQuestionIds.includes(question.id)))}
+                                className="rounded-2xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 disabled:opacity-40"
+                            >
+                                Impor Soal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

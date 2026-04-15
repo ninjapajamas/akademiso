@@ -18,7 +18,7 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'slate',
             label: 'Belum Diaktifkan',
-            message: 'Admin belum mengaktifkan ujian sertifikasi ini.',
+            message: 'Ujian akhir ini belum diaktifkan.',
         };
     }
 
@@ -26,7 +26,7 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'amber',
             label: 'Menunggu Jadwal',
-            message: 'Instruktur belum mengonfirmasi jadwal pelaksanaan sertifikasi.',
+            message: 'Instruktur belum mengonfirmasi jadwal pelaksanaan ujian akhir.',
         };
     }
 
@@ -34,7 +34,7 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'rose',
             label: 'Jadwal Berakhir',
-            message: 'Rentang waktu ujian sertifikasi ini sudah selesai.',
+            message: 'Rentang waktu ujian akhir ini sudah selesai.',
         };
     }
 
@@ -42,34 +42,34 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'emerald',
             label: 'Sedang Dibuka',
-            message: 'Sesi sertifikasi sedang berada pada periode aktif.',
+            message: 'Ujian akhir sedang berada pada periode aktif.',
         };
     }
 
     return {
         tone: 'blue',
         label: 'Akan Dibuka',
-        message: 'Periode sertifikasi sudah dijadwalkan, tetapi belum mulai.',
+        message: 'Periode ujian akhir sudah dijadwalkan, tetapi belum mulai.',
     };
 }
 
 function getExamModeCopy(exam: CertificationExam) {
     if (exam.exam_mode === 'INTERVIEW_ONLY') {
         return {
-            title: 'Wawancara Sertifikasi',
+            title: 'Wawancara Ujian Akhir',
             description: 'Pilih salah satu slot sesi yang tersedia, lalu ikuti wawancara sesuai jadwal yang Anda konfirmasi.',
         };
     }
 
     if (exam.exam_mode === 'HYBRID') {
         return {
-            title: 'Ujian & Wawancara Sertifikasi',
-            description: 'Kerjakan soal sertifikasi pada sesi yang diawasi instruktur, lalu lanjutkan dengan wawancara bila diperlukan.',
+            title: 'Ujian Akhir & Wawancara',
+            description: 'Kerjakan soal ujian akhir pada sesi yang diawasi instruktur, lalu lanjutkan dengan wawancara bila diperlukan.',
         };
     }
 
     return {
-        title: 'Ujian Sertifikasi',
+        title: 'Ujian Akhir',
         description: 'Pilih slot sesi yang tersedia bila ujian diawasi instruktur, atau mulai ujian saat periode dibuka.',
     };
 }
@@ -276,7 +276,7 @@ export default function StudentExamSection({
             );
         } catch (error) {
             console.error('Error starting exam:', error);
-            setErrorMessage('Terjadi kendala saat menyimpan jadwal ujian sertifikasi.');
+            setErrorMessage('Terjadi kendala saat menyimpan jadwal ujian akhir.');
         } finally {
             setSubmittingExamId(null);
         }
@@ -305,7 +305,7 @@ export default function StudentExamSection({
                         <div>
                             <h4 className="font-bold text-amber-900">Ujian Terkunci</h4>
                             <p className="text-sm text-amber-700 mt-1">
-                                Anda baru menyelesaikan {progress}% materi. Selesaikan hingga 100% untuk dapat mengikuti ujian sertifikasi.
+                                Anda baru menyelesaikan {progress}% materi. Selesaikan hingga 100% untuk dapat mengikuti ujian akhir.
                             </p>
                         </div>
                     </div>
@@ -315,7 +315,7 @@ export default function StudentExamSection({
                         <div>
                             <h4 className="font-bold text-green-900">Syarat Materi Sudah Lengkap</h4>
                             <p className="text-sm text-green-700 mt-1">
-                                Anda sudah menyelesaikan seluruh materi. Langkah berikutnya adalah mengikuti mekanisme sertifikasi sesuai mode ujian yang ditetapkan.
+                                Anda sudah menyelesaikan seluruh materi. Langkah berikutnya adalah mengikuti ujian akhir sesuai mode yang ditetapkan.
                             </p>
                         </div>
                     </div>
@@ -419,7 +419,7 @@ export default function StudentExamSection({
                                                 <div className="flex items-start gap-3 bg-gray-50 rounded-xl px-4 py-3">
                                                     <CalendarRange className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" />
                                                     <div>
-                                                        <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Periode Sertifikasi</p>
+                                                        <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Periode Ujian Akhir</p>
                                                         <p className="text-sm font-semibold text-gray-800 mt-1">
                                                             {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
                                                         </p>

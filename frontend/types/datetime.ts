@@ -19,6 +19,31 @@ export function formatApiDateTimeForInput(value?: string | null) {
     ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+export function normalizeDateTimeInputToStartOfDay(value?: string | null) {
+    if (!value) {
+        return '';
+    }
+
+    const [datePart] = value.split('T');
+    if (!datePart) {
+        return '';
+    }
+
+    return `${datePart}T00:00`;
+}
+
+export function createTodayDateTimeInputAtStartOfDay(referenceDate = new Date()) {
+    if (Number.isNaN(referenceDate.getTime())) {
+        return '';
+    }
+
+    return [
+        referenceDate.getFullYear(),
+        pad(referenceDate.getMonth() + 1),
+        pad(referenceDate.getDate())
+    ].join('-') + 'T00:00';
+}
+
 export function formatInputDateTimeForApi(value?: string | null) {
     if (!value) {
         return null;

@@ -185,7 +185,7 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
         selectedExamIds.add(attempt.exam);
         items.push({
             id: `attempt-selected-${attempt.id}-${selectedSlot.id}`,
-            title: attempt.exam_title || 'Ujian Sertifikasi',
+            title: attempt.exam_title || 'Ujian Akhir',
             typeLabel: 'Slot Ujian Terpilih',
             kind: 'exam',
             startAt: slotWindow.start,
@@ -260,7 +260,7 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
                 items.push({
                     id: `exam-selected-${exam.id}-${selectedSlot.id}`,
                     title: course.title,
-                    typeLabel: exam.exam_mode === 'INTERVIEW_ONLY' ? 'Sesi Wawancara' : 'Sesi Ujian Sertifikasi',
+                    typeLabel: exam.exam_mode === 'INTERVIEW_ONLY' ? 'Sesi Wawancara' : 'Sesi Ujian Akhir',
                     kind: 'exam',
                     startAt: slotWindow.start,
                     endAt: slotWindow.end,
@@ -327,7 +327,7 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
                 items.push({
                     id: `exam-window-${exam.id}`,
                     title: course.title,
-                    typeLabel: 'Periode Ujian Sertifikasi',
+                    typeLabel: 'Periode Ujian Akhir',
                     kind: 'exam',
                     startAt: examStart,
                     endAt: examEnd,
@@ -420,7 +420,7 @@ export default function SchedulePage() {
         <div className="max-w-5xl mx-auto space-y-6">
             <div>
                 <h1 className="text-2xl font-bold text-gray-900">Jadwal Pelatihan & Ujian</h1>
-                <p className="text-gray-500 mt-1">Pantau jadwal pelatihan, pilihan slot ujian, dan sesi sertifikasi Anda.</p>
+                <p className="text-gray-500 mt-1">Pantau jadwal pelatihan, pilihan slot ujian, dan sesi ujian akhir Anda.</p>
             </div>
 
             {errorMessage && (

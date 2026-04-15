@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, Mail, Lock, Bell, Shield, Save, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { User, Mail, Lock, Shield, Save, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { getProfileDisplayName, splitFullName } from '@/utils/profile';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
@@ -27,8 +28,7 @@ export default function AdminSettingsPage() {
     const [showOldPw, setShowOldPw] = useState(false);
     const [showNewPw, setShowNewPw] = useState(false);
     const [profile, setProfile] = useState({
-        first_name: '',
-        last_name: '',
+        full_name: '',
         email: '',
         phone: '',
         company: '',
@@ -39,6 +39,7 @@ export default function AdminSettingsPage() {
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
     const [pwError, setPwError] = useState('');
+    const canEditEmail = !profile.email.trim();
 
     const fetchProfile = async () => {
         try {
@@ -50,8 +51,7 @@ export default function AdminSettingsPage() {
             if (res.ok) {
                 const data = await res.json();
                 setProfile({
-                    first_name: data.first_name || '',
-                    last_name: data.last_name || '',
+                    full_name: getProfileDisplayName(data),
                     email: data.email,
                     phone: data.profile?.phone || '',
                     company: data.profile?.company || '',
@@ -76,10 +76,15 @@ export default function AdminSettingsPage() {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const { firstName, lastName } = splitFullName(profile.full_name);
+            const normalizedEmail = profile.email.trim();
 
             const formData = new FormData();
-            formData.append('first_name', profile.first_name);
-            formData.append('last_name', profile.last_name);
+            if (normalizedEmail) {
+                formData.append('email', normalizedEmail);
+            }
+            formData.append('first_name', firstName);
+            formData.append('last_name', lastName);
             formData.append('phone', profile.phone);
             formData.append('company', profile.company);
             formData.append('position', profile.position);
@@ -148,7 +153,7 @@ export default function AdminSettingsPage() {
         }
     };
 
-    const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all';
+    const inputClass = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all';
 
     return (
         <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
@@ -174,7 +179,7 @@ export default function AdminSettingsPage() {
                                 {profile.avatar ? (
                                     <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
                                 ) : (
-                                    (profile.first_name?.charAt(0) || 'A').toUpperCase()
+                                    (profile.full_name?.trim().charAt(0) || 'A').toUpperCase()
                                 )}
                             </div>
                             <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full text-xs font-bold">
@@ -194,7 +199,7 @@ export default function AdminSettingsPage() {
                             </label>
                         </div>
                         <div className="text-center sm:text-left">
-                            <h3 className="font-bold text-gray-900 text-lg">{profile.first_name} {profile.last_name}</h3>
+                            <h3 className="font-bold text-gray-900 text-lg">{profile.full_name || 'Lengkapi nama Anda'}</h3>
                             <p className="text-sm text-gray-500 mb-2">{profile.email}</p>
                             <label className="text-xs font-bold text-blue-600 hover:text-blue-700 cursor-pointer bg-blue-50 px-3 py-1 rounded-full">
                                 Upload Foto Baru
@@ -215,25 +220,14 @@ export default function AdminSettingsPage() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                        <Field label="Nama Depan">
+                        <Field label="Nama Lengkap">
                             <div className="relative">
                                 <User className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                                 <input
                                     className={`${inputClass} pl-9`}
-                                    value={profile.first_name}
-                                    onChange={e => setProfile(p => ({ ...p, first_name: e.target.value }))}
-                                    placeholder="Nama depan"
-                                />
-                            </div>
-                        </Field>
-                        <Field label="Nama Belakang">
-                            <div className="relative">
-                                <User className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                                <input
-                                    className={`${inputClass} pl-9`}
-                                    value={profile.last_name}
-                                    onChange={e => setProfile(p => ({ ...p, last_name: e.target.value }))}
-                                    placeholder="Nama belakang"
+                                    value={profile.full_name}
+                                    onChange={e => setProfile(p => ({ ...p, full_name: e.target.value }))}
+                                    placeholder="Nama lengkap"
                                 />
                             </div>
                         </Field>
@@ -241,12 +235,18 @@ export default function AdminSettingsPage() {
                             <div className="relative">
                                 <Mail className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                                 <input
-                                    className={`${inputClass} pl-9 bg-gray-50 text-gray-500 cursor-not-allowed`}
+                                    type="email"
+                                    className={`${inputClass} pl-9 ${canEditEmail ? '' : 'bg-gray-50 text-gray-900 cursor-not-allowed'}`}
                                     value={profile.email}
-                                    readOnly
-                                    title="Email tidak dapat diubah"
+                                    onChange={e => setProfile(p => ({ ...p, email: e.target.value }))}
+                                    readOnly={!canEditEmail}
+                                    placeholder="nama@email.com"
+                                    title={canEditEmail ? 'Isi email akun Anda' : 'Email akun sudah terdaftar'}
                                 />
                             </div>
+                            <p className="mt-1 text-xs text-gray-500">
+                                {canEditEmail ? 'Jika akun ini belum punya email, Anda bisa menambahkannya di sini.' : 'Email ini sudah terhubung dengan akun Anda.'}
+                            </p>
                         </Field>
                         <Field label="Nomor Telepon">
                             <input

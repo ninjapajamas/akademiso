@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, Calendar, Clock, Video, CheckCircle2, AlertCircle, Send, Edit2, CalendarRange } from 'lucide-react';
 import { CertificationExam, CertificationInstructorSlot } from '@/types';
-import { formatApiDateTimeForDisplay, formatApiDateTimeForInput, formatApiDateTimeRangeForDisplay, formatInputDateTimeForApi } from '@/types/datetime';
+import { formatApiDateTimeForDisplay, formatApiDateTimeForInput, formatApiDateTimeRangeForDisplay, formatInputDateTimeForApi, normalizeDateTimeInputToStartOfDay } from '@/types/datetime';
 
 interface InstructorExamManagerProps {
     courseId: number;
+    refreshKey?: number;
 }
 
 type ApiErrorPayload = Record<string, string[] | string | undefined>;
@@ -67,7 +68,7 @@ function getApiErrorMessage(payload: ApiErrorPayload | null, fallback: string) {
     return fallback;
 }
 
-export default function InstructorExamManager({ courseId }: InstructorExamManagerProps) {
+export default function InstructorExamManager({ courseId, refreshKey = 0 }: InstructorExamManagerProps) {
     const [exam, setExam] = useState<CertificationExam | null>(null);
     const [loading, setLoading] = useState(true);
     const [confirming, setConfirming] = useState(false);
@@ -81,7 +82,7 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
             });
             const data = await readJsonSafely<CertificationExam[]>(res);
             if (!res.ok) {
-                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data sertifikasi belum bisa dimuat.'));
+                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data ujian akhir belum bisa dimuat.'));
             }
 
             const examList = data || [];
@@ -92,13 +93,13 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
                 });
                 const fullData = await readJsonSafely<CertificationExam>(fullRes);
                 if (!fullRes.ok || !fullData) {
-                    throw new Error('Detail sertifikasi belum bisa dimuat.');
+                    throw new Error('Detail ujian akhir belum bisa dimuat.');
                 }
                 setExam(fullData);
             }
         } catch (error) {
             console.error('Error fetching exam:', error);
-            alert(error instanceof Error ? error.message : 'Data sertifikasi belum bisa dimuat.');
+            alert(error instanceof Error ? error.message : 'Data ujian akhir belum bisa dimuat.');
         } finally {
             setLoading(false);
         }
@@ -106,7 +107,7 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
 
     useEffect(() => {
         void fetchExam();
-    }, [fetchExam]);
+    }, [fetchExam, refreshKey]);
 
     const handleUpdateExam = async (updates: Partial<CertificationExam>) => {
         if (!exam) return;
@@ -226,7 +227,7 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
         }
     };
 
-    if (loading) return <div>Memuat data sertifikasi...</div>;
+    if (loading) return <div>Memuat data ujian akhir...</div>;
 
     if (!exam) return null;
 
@@ -245,9 +246,9 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
                 <div>
                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <CheckCircle2 className="w-6 h-6 text-indigo-600" />
-                        Manajemen Sertifikasi
+                        Jadwal Ujian Akhir
                     </h3>
-                    <p className="text-sm text-gray-500 mt-1">Kelola detail ujian sertifikasi dan slot sesi yang diawasi instruktur.</p>
+                    <p className="text-sm text-gray-500 mt-1">Atur periode dan slot sesi ujian akhir yang diawasi instruktur.</p>
                 </div>
                 <div className={`px-4 py-1.5 rounded-xl text-[10px] font-black tracking-widest ${exam.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
                     {exam.is_active ? 'STATUS: AKTIF' : 'STATUS: DRAFT'}
@@ -257,7 +258,7 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
             {/* Exam Details for Instructor */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="group relative">
-                    <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1.5 ml-1">Nama Sertifikasi</label>
+                    <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1.5 ml-1">Nama Ujian Akhir</label>
                     <div className="flex items-center gap-2">
                         <input
                             className="w-full bg-gray-50/50 hover:bg-gray-100 px-4 py-2.5 rounded-xl transition border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none font-bold text-gray-900"
@@ -334,10 +335,10 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
                         <CalendarRange className="w-6 h-6" />
                     </div>
                     <div>
-                        <h4 className="font-bold text-indigo-950">Jadwal Sertifikasi untuk Siswa</h4>
+                        <h4 className="font-bold text-indigo-950">Jadwal Ujian Akhir untuk Siswa</h4>
                         <p className="text-sm text-indigo-700 mt-1">
                             {requiresInterview
-                                ? 'Tentukan periode umum sertifikasi, lalu sediakan beberapa slot sesi untuk soal dan/atau wawancara sesuai kebutuhan.'
+                                ? 'Tentukan periode umum ujian akhir, lalu sediakan beberapa slot sesi untuk soal dan/atau wawancara sesuai kebutuhan.'
                                 : 'Tentukan kapan ujian soal dibuka. Bila perlu pengawasan, Anda juga bisa menambahkan beberapa slot sesi.'}
                         </p>
                     </div>
@@ -350,10 +351,10 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
                             type="datetime-local"
                             value={formatApiDateTimeForInput(exam.confirmed_start_at)}
                             onChange={(e) => {
-                                const value = formatInputDateTimeForApi(e.target.value);
+                                const value = formatInputDateTimeForApi(normalizeDateTimeInputToStartOfDay(e.target.value));
                                 setExam({ ...exam, confirmed_start_at: value });
                             }}
-                            onBlur={(e) => handleUpdateExam({ confirmed_start_at: formatInputDateTimeForApi(e.target.value) })}
+                            onBlur={(e) => handleUpdateExam({ confirmed_start_at: formatInputDateTimeForApi(normalizeDateTimeInputToStartOfDay(e.target.value)) })}
                             className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-bold text-gray-800"
                         />
                         <p className="text-xs text-gray-500">Mulai dari waktu ini siswa boleh membuka attempt ujian.</p>
@@ -365,10 +366,10 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
                             type="datetime-local"
                             value={formatApiDateTimeForInput(exam.confirmed_end_at)}
                             onChange={(e) => {
-                                const value = formatInputDateTimeForApi(e.target.value);
+                                const value = formatInputDateTimeForApi(normalizeDateTimeInputToStartOfDay(e.target.value));
                                 setExam({ ...exam, confirmed_end_at: value });
                             }}
-                            onBlur={(e) => handleUpdateExam({ confirmed_end_at: formatInputDateTimeForApi(e.target.value) })}
+                            onBlur={(e) => handleUpdateExam({ confirmed_end_at: formatInputDateTimeForApi(normalizeDateTimeInputToStartOfDay(e.target.value)) })}
                             className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-bold text-gray-800"
                         />
                         <p className="text-xs text-gray-500">Kosongkan bila ujian cukup punya satu waktu mulai tanpa batas akhir.</p>
@@ -480,10 +481,10 @@ export default function InstructorExamManager({ courseId }: InstructorExamManage
                         <p className="text-xs opacity-80 mt-1">
                             {exam.instructor_confirmed
                                 ? (requiresInterview
-                                    ? 'Admin dan siswa sekarang akan mengikuti periode sertifikasi yang Anda konfirmasi beserta slot sesi yang tersedia.'
+                                    ? 'Admin dan siswa sekarang akan mengikuti periode ujian akhir yang Anda konfirmasi beserta slot sesi yang tersedia.'
                                     : 'Admin dan siswa sekarang akan mengikuti rentang tanggal ujian yang sudah Anda konfirmasi.')
                                 : (requiresInterview
-                                    ? 'Isi tanggal umum sertifikasi, tambahkan beberapa slot sesi, lalu konfirmasikan agar siswa bisa memilih jadwal.'
+                                    ? 'Isi tanggal umum ujian akhir, tambahkan beberapa slot sesi, lalu konfirmasikan agar siswa bisa memilih jadwal.'
                                     : 'Isi tanggal mulai dan selesai ujian, lalu tambahkan slot sesi jika pengawasan instruktur dibutuhkan.')}
                         </p>
                     </div>

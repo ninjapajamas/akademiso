@@ -157,7 +157,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                     )}
 
                     <div className="rounded-2xl bg-gray-50 border border-gray-100 p-5 text-sm text-gray-600">
-                        Periode sertifikasi umum: {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
+                        Periode ujian akhir umum: {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -214,7 +214,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                         </div>
                         <div>
                             <h1 className="font-bold text-gray-900 leading-tight">{exam.title}</h1>
-                            <p className="text-xs text-gray-500">Percobaan Ujian Sertifikasi</p>
+                            <p className="text-xs text-gray-500">Percobaan Ujian Akhir</p>
                             <p className="text-[11px] text-indigo-600 mt-1">
                                 Periode: {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
                             </p>
@@ -435,7 +435,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                             <div>
                                 <p className="text-[11px] font-black uppercase tracking-widest text-indigo-500">Mode Ujian</p>
                                 <h2 className="text-2xl font-bold text-gray-900 mt-2">
-                                    {exam.exam_mode === 'INTERVIEW_ONLY' ? 'Wawancara Sertifikasi' : 'Sertifikasi Tanpa Soal Tertulis'}
+                                    {exam.exam_mode === 'INTERVIEW_ONLY' ? 'Wawancara Ujian Akhir' : 'Ujian Akhir Tanpa Soal Tertulis'}
                                 </h2>
                             </div>
                             <p className="text-sm text-gray-600">

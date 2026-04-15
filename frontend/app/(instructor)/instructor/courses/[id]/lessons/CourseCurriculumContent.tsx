@@ -12,17 +12,59 @@ import {
     ChevronDown,
     ChevronRight,
     Edit2,
-    GripVertical,
-    Layout
+    HelpCircle,
+    Layout,
+    Library,
+    Search,
+    X
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+
+const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
+const isAssessmentLesson = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '');
+const getLessonTypeLabel = (type?: string) => {
+    if (isAssessmentLesson(type)) return 'Quiz / Tes';
+    if (type === 'video') return 'Video';
+    if (type === 'article') return 'Artikel';
+    return type || 'Materi';
+};
+
+type LessonItem = {
+    id: number;
+    title: string;
+    type: string;
+    duration?: string;
+    order: number;
+};
+
+type SectionItem = {
+    id: number;
+    title: string;
+    order: number;
+    lessons?: LessonItem[];
+};
+
+type LessonBankItem = {
+    id: number;
+    title: string;
+    type: string;
+    duration?: string;
+    course_title: string;
+    section_title?: string | null;
+    question_count?: number;
+};
 
 export default function CourseCurriculumContent({ courseId }: { courseId: string }) {
-    const [sections, setSections] = useState<any[]>([]);
+    const [sections, setSections] = useState<SectionItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAddingSection, setIsAddingSection] = useState(false);
     const [newSectionTitle, setNewSectionTitle] = useState('');
     const [expandedSections, setExpandedSections] = useState<{ [key: number]: boolean }>({});
+    const [materialBankOpen, setMaterialBankOpen] = useState(false);
+    const [materialBankLoading, setMaterialBankLoading] = useState(false);
+    const [materialBankItems, setMaterialBankItems] = useState<LessonBankItem[]>([]);
+    const [materialBankSearch, setMaterialBankSearch] = useState('');
+    const [targetSectionId, setTargetSectionId] = useState<number | null>(null);
+    const [copyingLessonId, setCopyingLessonId] = useState<number | null>(null);
 
     const fetchCurriculum = async () => {
         try {
@@ -34,12 +76,12 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
             });
 
             if (res.ok) {
-                const data = await res.json();
-                const sortedSections = data.sort((a: any, b: any) => a.order - b.order);
+                const data: SectionItem[] = await res.json();
+                const sortedSections = [...data].sort((a, b) => a.order - b.order);
                 setSections(sortedSections);
 
                 const initialExpanded: { [key: number]: boolean } = {};
-                sortedSections.forEach((s: any) => initialExpanded[s.id] = true);
+                sortedSections.forEach((section) => initialExpanded[section.id] = true);
                 setExpandedSections(initialExpanded);
             }
         } catch (error) {
@@ -99,12 +141,83 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
         }
     };
 
+    const openMaterialBank = async (sectionId: number) => {
+        setTargetSectionId(sectionId);
+        setMaterialBankOpen(true);
+        if (materialBankItems.length > 0) return;
+
+        try {
+            setMaterialBankLoading(true);
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/lessons/bank/?content_type=lessons`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                const data: LessonBankItem[] = await res.json();
+                setMaterialBankItems(data);
+            } else {
+                alert('Gagal memuat bank materi.');
+            }
+        } catch (error) {
+            console.error('Failed to fetch material bank:', error);
+            alert('Gagal memuat bank materi. Cek koneksi.');
+        } finally {
+            setMaterialBankLoading(false);
+        }
+    };
+
+    const copyLessonFromBank = async (lessonId: number) => {
+        if (!targetSectionId) return;
+
+        try {
+            setCopyingLessonId(lessonId);
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/lessons/${lessonId}/copy-to-course/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    course: courseId,
+                    section: targetSectionId
+                })
+            });
+
+            if (res.ok) {
+                await fetchCurriculum();
+                setMaterialBankOpen(false);
+            } else {
+                alert('Gagal menyalin materi.');
+            }
+        } catch (error) {
+            console.error('Failed to copy material:', error);
+            alert('Gagal menyalin materi. Cek koneksi.');
+        } finally {
+            setCopyingLessonId(null);
+        }
+    };
+
     const toggleSection = (sectionId: number) => {
         setExpandedSections(prev => ({
             ...prev,
             [sectionId]: !prev[sectionId]
         }));
     };
+
+    const filteredMaterialBankItems = materialBankItems.filter((lesson) => {
+        const keyword = materialBankSearch.trim().toLowerCase();
+        if (!keyword) return true;
+        return [
+            lesson.title,
+            lesson.course_title,
+            lesson.section_title || '',
+            getLessonTypeLabel(lesson.type)
+        ].some((value) => value.toLowerCase().includes(keyword));
+    });
 
     useEffect(() => {
         fetchCurriculum();
@@ -148,12 +261,19 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
                                         {section.lessons?.length || 0} Materi Tersedia
                                     </span>
                                 </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Link
-                                    href={`/instructor/courses/${courseId}/lessons/new?section_id=${section.id}`}
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
-                                >
+                             </div>
+                             <div className="flex items-center gap-2">
+                                 <button
+                                     type="button"
+                                     onClick={() => openMaterialBank(section.id)}
+                                     className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 border border-indigo-100 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all"
+                                 >
+                                     <Library className="w-4 h-4" /> Bank Materi
+                                 </button>
+                                 <Link
+                                     href={`/instructor/courses/${courseId}/lessons/new?section_id=${section.id}`}
+                                     className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                                 >
                                     <Plus className="w-4 h-4" /> Tambah Materi
                                 </Link>
                                 <button
@@ -168,19 +288,22 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
                         {expandedSections[section.id] && (
                             <div className="divide-y divide-gray-50 bg-white">
                                 {section.lessons && section.lessons.length > 0 ? (
-                                    section.lessons.sort((a: any, b: any) => a.order - b.order).map((lesson: any) => (
+                                    [...section.lessons].sort((a, b) => a.order - b.order).map((lesson) => (
                                         <div key={lesson.id} className="p-5 pl-12 flex items-center justify-between hover:bg-indigo-50/30 transition-colors group">
                                             <div className="flex items-center gap-4">
                                                 <div className="p-2 rounded-xl bg-gray-50 group-hover:bg-white transition-colors">
-                                                    {lesson.type === 'video' ?
-                                                        <PlayCircle className="w-4 h-4 text-indigo-500" /> :
+                                                    {lesson.type === 'video' ? (
+                                                        <PlayCircle className="w-4 h-4 text-indigo-500" />
+                                                    ) : isAssessmentLesson(lesson.type) ? (
+                                                        <HelpCircle className="w-4 h-4 text-indigo-500" />
+                                                    ) : (
                                                         <FileText className="w-4 h-4 text-emerald-500" />
-                                                    }
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <span className="text-gray-700 font-bold text-sm block">{lesson.title}</span>
                                                     <div className="flex items-center gap-3 mt-1">
-                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{lesson.type}</span>
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{getLessonTypeLabel(lesson.type)}</span>
                                                         <div className="w-1 h-1 bg-gray-300 rounded-full" />
                                                         <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">{lesson.duration || '0 Min'}</span>
                                                     </div>
@@ -245,6 +368,75 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
                     </button>
                 )}
             </div>
+
+            {materialBankOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/40 px-4 py-6">
+                    <div className="w-full max-w-3xl max-h-[86vh] overflow-hidden rounded-3xl bg-white shadow-2xl border border-gray-100">
+                        <div className="flex items-center justify-between gap-4 border-b border-gray-100 p-5">
+                            <div>
+                                <h2 className="text-lg font-black text-gray-900">Bank Materi</h2>
+                                <p className="text-xs font-medium text-gray-500 mt-1">{filteredMaterialBankItems.length} materi tersedia</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setMaterialBankOpen(false)}
+                                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-xl transition-all"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 border-b border-gray-100">
+                            <div className="flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                                <Search className="w-4 h-4 text-gray-400" />
+                                <input
+                                    type="search"
+                                    value={materialBankSearch}
+                                    onChange={(e) => setMaterialBankSearch(e.target.value)}
+                                    placeholder="Cari materi, modul, atau course"
+                                    className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="max-h-[56vh] overflow-y-auto p-5 space-y-3">
+                            {materialBankLoading ? (
+                                <div className="py-12 text-center text-sm font-bold text-gray-400">Memuat bank materi...</div>
+                            ) : filteredMaterialBankItems.length > 0 ? (
+                                filteredMaterialBankItems.map((lesson) => (
+                                    <div key={lesson.id} className="rounded-2xl border border-gray-100 p-4 hover:border-indigo-100 hover:bg-gray-50 transition-all">
+                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-bold text-gray-900 leading-relaxed">{lesson.title}</p>
+                                                <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
+                                                    <span className="rounded-lg bg-indigo-50 px-2 py-1 text-indigo-600">{getLessonTypeLabel(lesson.type)}</span>
+                                                    <span className="rounded-lg bg-white px-2 py-1 text-gray-500 border border-gray-100">{lesson.course_title}</span>
+                                                    {lesson.section_title && (
+                                                        <span className="rounded-lg bg-white px-2 py-1 text-gray-500 border border-gray-100">{lesson.section_title}</span>
+                                                    )}
+                                                    {lesson.question_count ? (
+                                                        <span className="rounded-lg bg-white px-2 py-1 text-gray-500 border border-gray-100">{lesson.question_count} Soal</span>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                disabled={copyingLessonId === lesson.id}
+                                                onClick={() => copyLessonFromBank(lesson.id)}
+                                                className="rounded-2xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 disabled:opacity-40"
+                                            >
+                                                {copyingLessonId === lesson.id ? 'Menyalin...' : 'Salin'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="py-12 text-center text-sm font-bold text-gray-400">Belum ada materi yang cocok.</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

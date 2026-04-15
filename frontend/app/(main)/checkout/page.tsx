@@ -1,21 +1,28 @@
-"use client"
+"use client";
+
 import Link from 'next/link';
-import { Calendar, Lock } from 'lucide-react';
+import { Calendar, Lock, CircleAlert, CheckCircle2, Building2, Mail, Phone, User } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { Course } from '@/types';
+import { getProfileDisplayName, getRequiredProfileMissingFields, isRequiredProfileComplete, type UserProfilePayload } from '@/utils/profile';
 
 function CheckoutContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const slug = searchParams.get('slug');
+    const checkoutQuery = searchParams.toString();
 
-    const [course, setCourse] = useState<any>(null);
+    const [course, setCourse] = useState<Course | null>(null);
+    const [profile, setProfile] = useState<UserProfilePayload | null>(null);
     const [loading, setLoading] = useState(true);
+    const [agreed, setAgreed] = useState(false);
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
         if (!token) {
-            router.push(`/login?redirect=/checkout${slug ? `?slug=${slug}` : ''}`);
+            const redirectPath = `/checkout${checkoutQuery ? `?${checkoutQuery}` : ''}`;
+            router.push(`/login?redirect=${encodeURIComponent(redirectPath)}`);
             return;
         }
 
@@ -24,119 +31,193 @@ function CheckoutContent() {
             return;
         }
 
-        const fetchCourse = async () => {
+        const fetchCheckoutData = async () => {
             try {
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-                const res = await fetch(`${apiUrl}/api/courses/${slug}/`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setCourse(data);
+                const [courseRes, profileRes] = await Promise.all([
+                    fetch(`${apiUrl}/api/courses/${slug}/`),
+                    fetch(`${apiUrl}/api/profile/`, {
+                        headers: {
+                            Authorization: `Bearer ${token}`
+                        }
+                    })
+                ]);
+
+                if (courseRes.ok) {
+                    const courseData = await courseRes.json();
+                    setCourse(courseData);
                 } else {
                     router.push('/courses');
+                    return;
+                }
+
+                if (profileRes.ok) {
+                    const profileData = await profileRes.json();
+                    setProfile(profileData);
                 }
             } catch (error) {
-                console.error('Error fetching course:', error);
+                console.error('Error fetching checkout data:', error);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchCourse();
-    }, [router, slug]);
+        fetchCheckoutData();
+    }, [checkoutQuery, router, slug]);
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        </div>;
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
     }
 
     if (!course) return null;
 
     const price = parseInt(course.discount_price || course.price);
     const isFreeWebinar = course.type === 'webinar' && course.is_free;
+    const displayName = getProfileDisplayName(profile) || '-';
+    const phone = profile?.profile?.phone?.trim() || '-';
+    const company = profile?.profile?.company?.trim() || '-';
+    const position = profile?.profile?.position?.trim() || '-';
+    const missingFields = getRequiredProfileMissingFields(profile);
+    const canProceed = isRequiredProfileComplete(profile);
 
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200 py-6">
+            <div className="bg-white border-b border-gray-200 py-5 sm:py-6">
                 <div className="max-w-5xl mx-auto px-4">
-                    <div className="flex justify-between items-center mb-8 relative">
-                        {/* Progress Bar */}
+                    <div className="relative mb-6 flex items-center justify-between sm:mb-8">
                         <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -z-10"></div>
                         <div className="absolute top-1/2 left-0 w-1/2 h-1 bg-blue-600 -z-10"></div>
 
                         <div className="flex flex-col items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
-                            <span className="text-xs font-bold text-blue-600">Data Peserta</span>
+                            <span className="text-[11px] font-bold text-blue-600 sm:text-xs">Identitas</span>
                         </div>
                         <div className="flex flex-col items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center font-bold text-sm">2</div>
-                            <span className="text-xs font-medium text-gray-500">Pembayaran</span>
+                            <span className="text-[11px] font-medium text-gray-500 sm:text-xs">Pembayaran</span>
                         </div>
                         <div className="flex flex-col items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center font-bold text-sm">3</div>
-                            <span className="text-xs font-medium text-gray-400">Selesai</span>
+                            <span className="text-[11px] font-medium text-gray-400 sm:text-xs">Selesai</span>
                         </div>
                     </div>
 
-                    <h1 className="text-2xl font-bold text-gray-900">Pendaftaran Sertifikasi</h1>
-                    <p className="text-gray-500">Silakan lengkapi data diri Anda untuk pendaftaran sertifikasi ISO.</p>
+                    <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Konfirmasi Identitas</h1>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-500 sm:text-base">Checkout menggunakan preview identitas dari halaman pengaturan akun Anda.</p>
                 </div>
             </div>
 
-            <div className="max-w-5xl mx-auto px-4 py-8">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-                    {/* Form */}
+            <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
                     <div className="lg:col-span-2">
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                            <form className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-900 mb-2">Nama Lengkap (Sesuai KTP) <span className="text-red-500">*</span></label>
-                                    <input type="text" placeholder="Contoh: Budi Santoso, S.T." className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
-                                    <p className="text-xs text-gray-500 mt-1">Nama ini akan dicetak pada sertifikat resmi Anda.</p>
+                        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
+                            <div className="space-y-6">
+                                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <h2 className="text-lg font-bold text-gray-900">Preview Identitas Peserta</h2>
+                                            <p className="mt-1 text-sm text-gray-500">
+                                                Data ini tidak diisi ulang di checkout. Jika ada yang perlu diperbaiki, ubah dulu di pengaturan akun.
+                                            </p>
+                                        </div>
+                                        {canProceed ? (
+                                                <div className="inline-flex shrink-0 self-start whitespace-nowrap items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                Profil Siap
+                                            </div>
+                                        ) : (
+                                                <div className="inline-flex shrink-0 self-start whitespace-nowrap items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
+                                                <CircleAlert className="w-4 h-4" />
+                                                Profil Belum Lengkap
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-900 mb-2">Alamat Email Aktif <span className="text-red-500">*</span></label>
-                                        <input type="email" placeholder="nama@email.com" className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-900 mb-2">Nomor WhatsApp <span className="text-red-500">*</span></label>
-                                        <div className="flex">
-                                            <span className="inline-flex items-center px-4 rounded-l-lg border border-r-0 border-gray-200 bg-gray-100 text-gray-500 text-sm font-bold">+62</span>
-                                            <input type="tel" placeholder="812-3456-7890" className="flex-1 px-4 py-3 rounded-r-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
+                                {!canProceed && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
+                                        <div className="flex items-start gap-3">
+                                            <CircleAlert className="w-5 h-5 mt-0.5 shrink-0" />
+                                            <div className="space-y-2 text-sm">
+                                                <p className="font-bold">Lengkapi profil Anda terlebih dahulu di pengaturan.</p>
+                                                <p>Data yang masih kurang: {missingFields.join(', ')}.</p>
+                                                <Link href="/dashboard/settings?welcome=1" className="inline-flex items-center rounded-full bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700 transition">
+                                                    Buka Pengaturan
+                                                </Link>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-900 mb-2">Asal Perusahaan / Instansi</label>
-                                    <input type="text" placeholder="Nama Perusahaan atau Universitas" className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none text-black" />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-400">
+                                            <User className="w-4 h-4" />
+                                            Nama Lengkap
+                                        </div>
+                                        <div className="mt-2 text-base font-bold text-gray-900">{displayName}</div>
+                                        <p className="mt-1 text-xs text-gray-500">Nama peserta diambil dari pengaturan akun.</p>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-400">
+                                            <Mail className="w-4 h-4" />
+                                            Email
+                                        </div>
+                                        <div className="mt-2 text-base font-bold text-gray-900">{profile?.email || '-'}</div>
+                                        <p className="mt-1 text-xs text-gray-500">Email akun akan dipakai untuk komunikasi pelatihan.</p>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-400">
+                                            <Phone className="w-4 h-4" />
+                                            Nomor Telepon
+                                        </div>
+                                        <div className="mt-2 text-base font-bold text-gray-900">{phone}</div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-400">
+                                            <Building2 className="w-4 h-4" />
+                                            Perusahaan / Instansi
+                                        </div>
+                                        <div className="mt-2 text-base font-bold text-gray-900">{company}</div>
+                                        {position !== '-' && (
+                                            <p className="mt-1 text-xs text-gray-500">{position}</p>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <label className="flex items-start gap-3 cursor-pointer pt-4 border-t border-gray-100">
-                                    <input type="checkbox" className="w-5 h-5 mt-0.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                                    <input
+                                        type="checkbox"
+                                        checked={agreed}
+                                        onChange={(event) => setAgreed(event.target.checked)}
+                                        disabled={!canProceed}
+                                        className="w-5 h-5 mt-0.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
+                                    />
                                     <span className="text-sm text-gray-600">
                                         <span className="font-bold text-gray-900">Setuju dengan Syarat & Ketentuan</span>
                                         <br />
-                                        Saya menyatakan data yang diisi adalah benar dan menyetujui kebijakan privasi Akademiso.
+                                        Saya menyatakan preview identitas di atas sudah benar dan menyetujui kebijakan privasi Akademiso.
                                     </span>
                                 </label>
-                            </form>
+                            </div>
                         </div>
 
-                        <div className="mt-6 flex justify-end">
+                        <div className="mt-5 flex justify-start sm:mt-6 sm:justify-end">
                             <p className="flex items-center gap-2 text-sm text-gray-500">
                                 <Lock className="w-4 h-4" /> Pembayaran aman diproses oleh Midtrans
                             </p>
                         </div>
                     </div>
 
-                    {/* Booking Summary */}
                     <div className="lg:col-span-1">
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-24">
+                            <div className="sticky top-20 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:top-24">
                             <div className="h-32 bg-gray-800 relative">
                                 {course.thumbnail ? (
                                     <img src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover opacity-50" />
@@ -186,13 +267,23 @@ function CheckoutContent() {
                                     <span className="font-bold text-xl text-blue-600">{isFreeWebinar ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                 </div>
 
-                                <Link href={`/payment?slug=${slug}`} className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">
-                                    Lanjut ke Pembayaran →
-                                </Link>
+                                {canProceed ? (
+                                    <button
+                                        type="button"
+                                        disabled={!agreed}
+                                        onClick={() => router.push(`/payment?slug=${encodeURIComponent(slug || '')}`)}
+                                        className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Lanjut ke Pembayaran
+                                    </button>
+                                ) : (
+                                    <Link href="/dashboard/settings?welcome=1" className="block w-full text-center bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-colors shadow-lg shadow-amber-600/20">
+                                        Lengkapi Profil Dulu
+                                    </Link>
+                                )}
                             </div>
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>

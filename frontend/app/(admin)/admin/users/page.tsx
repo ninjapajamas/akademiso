@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { getProfileDisplayName, splitFullName } from '@/utils/profile';
 import {
-    Search, Filter, UserPlus, Trash2, Shield, ShieldOff,
+    Search, Filter, UserPlus, Trash2,
     X, CheckCircle, XCircle, KeyRound, Edit3, LogIn, AlertTriangle
 } from 'lucide-react';
+
+type StaffRole = 'admin' | 'akuntan' | 'regular';
 
 interface UserData {
     id: number;
@@ -16,6 +19,9 @@ interface UserData {
     is_staff: boolean;
     is_active: boolean;
     date_joined: string;
+    role: 'admin' | 'akuntan' | 'instructor' | 'student';
+    staff_role?: 'admin' | 'akuntan' | null;
+    is_instructor?: boolean;
 }
 
 type Modal =
@@ -30,15 +36,14 @@ export default function UsersPage() {
     const [users, setUsers] = useState<UserData[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [roleFilter, setRoleFilter] = useState<'all' | 'staff' | 'regular'>('all');
+    const [roleFilter, setRoleFilter] = useState<'all' | StaffRole>('all');
     const [modal, setModal] = useState<Modal>(null);
     const [saving, setSaving] = useState(false);
-    const [toggling, setToggling] = useState<number | null>(null);
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
     // Form states
-    const [newUser, setNewUser] = useState({ username: '', email: '', first_name: '', last_name: '', password: '', is_staff: false });
-    const [editForm, setEditForm] = useState({ first_name: '', last_name: '', email: '', is_staff: false, is_active: true });
+    const [newUser, setNewUser] = useState({ username: '', email: '', full_name: '', password: '', role: 'regular' as StaffRole });
+    const [editForm, setEditForm] = useState({ full_name: '', email: '', role: 'regular' as StaffRole, is_active: true });
     const [newPassword, setNewPassword] = useState('');
     const [showPw, setShowPw] = useState(false);
 
@@ -50,7 +55,7 @@ export default function UsersPage() {
         setTimeout(() => setToast(null), 3500);
     };
 
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch(`${apiUrl}/api/users/`, {
@@ -62,7 +67,7 @@ export default function UsersPage() {
             }
         } catch (e) { console.error(e); }
         finally { setLoading(false); }
-    };
+    }, [apiUrl]);
 
     const handleDelete = async (u: UserData) => {
         if (!confirm(`Hapus user "${u.username}"? Tindakan tidak bisa dibatalkan.`)) return;
@@ -74,30 +79,28 @@ export default function UsersPage() {
         else showToast('Gagal menghapus user.', 'error');
     };
 
-    const toggleStaff = async (u: UserData) => {
-        setToggling(u.id);
-        const res = await fetch(`${apiUrl}/api/users/${u.id}/`, {
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_staff: !u.is_staff }),
-        });
-        if (res.ok) fetchUsers();
-        else showToast('Gagal mengubah role.', 'error');
-        setToggling(null);
-    };
-
     const handleAddUser = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
+        const { firstName, lastName } = splitFullName(newUser.full_name);
         const res = await fetch(`${apiUrl}/api/register/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-            body: JSON.stringify({ ...newUser, password_confirm: newUser.password }),
+            body: JSON.stringify({
+                username: newUser.username,
+                email: newUser.email,
+                first_name: firstName,
+                last_name: lastName,
+                password: newUser.password,
+                password_confirm: newUser.password,
+                is_staff: newUser.role !== 'regular',
+                staff_role: newUser.role === 'regular' ? null : newUser.role,
+            }),
         });
         setSaving(false);
         if (res.ok) {
             setModal(null);
-            setNewUser({ username: '', email: '', first_name: '', last_name: '', password: '', is_staff: false });
+            setNewUser({ username: '', email: '', full_name: '', password: '', role: 'regular' });
             showToast(`User ${newUser.username} berhasil dibuat.`);
             fetchUsers();
         } else {
@@ -110,10 +113,18 @@ export default function UsersPage() {
         e.preventDefault();
         if (modal?.type !== 'edit') return;
         setSaving(true);
+        const { firstName, lastName } = splitFullName(editForm.full_name);
         const res = await fetch(`${apiUrl}/api/users/${modal.user.id}/edit/`, {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(editForm),
+            body: JSON.stringify({
+                first_name: firstName,
+                last_name: lastName,
+                email: editForm.email,
+                is_staff: editForm.role !== 'regular',
+                staff_role: editForm.role === 'regular' ? null : editForm.role,
+                is_active: editForm.is_active,
+            }),
         });
         setSaving(false);
         if (res.ok) {
@@ -175,21 +186,29 @@ export default function UsersPage() {
     };
 
     const openEdit = (u: UserData) => {
-        setEditForm({ first_name: u.first_name, last_name: u.last_name, email: u.email, is_staff: u.is_staff, is_active: u.is_active });
+        const role: StaffRole = u.role === 'admin' || u.role === 'akuntan' ? u.role : 'regular';
+        setEditForm({ full_name: getProfileDisplayName(u), email: u.email, role, is_active: u.is_active });
         setModal({ type: 'edit', user: u });
     };
 
-    useEffect(() => { fetchUsers(); }, []);
+    useEffect(() => { void fetchUsers(); }, [fetchUsers]);
 
     const filtered = users.filter(u => {
         const matchSearch = u.username.toLowerCase().includes(search.toLowerCase()) ||
             u.email.toLowerCase().includes(search.toLowerCase()) ||
-            `${u.first_name} ${u.last_name}`.toLowerCase().includes(search.toLowerCase());
-        const matchRole = roleFilter === 'all' || (roleFilter === 'staff' && u.is_staff) || (roleFilter === 'regular' && !u.is_staff);
+            getProfileDisplayName(u).toLowerCase().includes(search.toLowerCase());
+        const matchRole = roleFilter === 'all' || u.role === roleFilter || (roleFilter === 'regular' && !u.is_staff);
         return matchSearch && matchRole;
     });
 
-    const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none';
+    const getRoleLabel = (user: UserData) => {
+        if (user.role === 'admin') return { label: 'Admin', cls: 'bg-violet-100 text-violet-700 border-violet-200' };
+        if (user.role === 'akuntan') return { label: 'Akuntan', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+        if (user.role === 'instructor') return { label: 'Instruktur', cls: 'bg-sky-100 text-sky-700 border-sky-200' };
+        return { label: 'Regular', cls: 'bg-gray-100 text-gray-600 border-gray-200' };
+    };
+
+    const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none';
 
     return (
         <div className="space-y-6">
@@ -218,14 +237,15 @@ export default function UsersPage() {
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                     <input value={search} onChange={e => setSearch(e.target.value)}
                         placeholder="Cari username, email, atau nama..."
-                        className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-100 outline-none" />
+                        className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-100 outline-none" />
                 </div>
                 <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm">
                     <Filter className="w-4 h-4 text-gray-400" />
-                    <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as any)}
-                        className="border-none outline-none bg-transparent font-medium text-gray-700 cursor-pointer">
+                    <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as 'all' | StaffRole)}
+                        className="border-none outline-none bg-transparent font-medium text-gray-900 cursor-pointer">
                         <option value="all">Semua Role</option>
-                        <option value="staff">Staff/Admin</option>
+                        <option value="admin">Admin</option>
+                        <option value="akuntan">Akuntan</option>
                         <option value="regular">Regular</option>
                     </select>
                 </div>
@@ -258,7 +278,7 @@ export default function UsersPage() {
                                             </div>
                                             <div>
                                                 <p className="text-sm font-bold text-gray-900">{u.username}</p>
-                                                <p className="text-xs text-gray-500">{u.first_name} {u.last_name}</p>
+                                                <p className="text-xs text-gray-500">{getProfileDisplayName(u) || '-'}</p>
                                             </div>
                                         </div>
                                     </td>
@@ -270,12 +290,9 @@ export default function UsersPage() {
                                         }
                                     </td>
                                     <td className="px-5 py-3 text-center">
-                                        <button onClick={() => toggleStaff(u)} disabled={toggling === u.id}
-                                            title={u.is_staff ? 'Revoke Staff' : 'Jadikan Staff'}
-                                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors disabled:opacity-50 cursor-pointer ${u.is_staff ? 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'}`}>
-                                            {u.is_staff ? <ShieldOff className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                                            {u.is_staff ? 'Staff' : 'Regular'}
-                                        </button>
+                                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${getRoleLabel(u).cls}`}>
+                                            {getRoleLabel(u).label}
+                                        </span>
                                     </td>
                                     <td className="px-5 py-3">
                                         <div className="flex items-center justify-center gap-1">
@@ -320,22 +337,22 @@ export default function UsersPage() {
                                     <h2 className="font-bold text-lg text-gray-900">Tambah User Baru</h2>
                                     <button type="button" onClick={() => setModal(null)}><X className="w-5 h-5 text-gray-400" /></button>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Nama Depan</label>
-                                        <input required className={inputCls} value={newUser.first_name} onChange={e => setNewUser(u => ({ ...u, first_name: e.target.value }))} /></div>
-                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Nama Belakang</label>
-                                        <input required className={inputCls} value={newUser.last_name} onChange={e => setNewUser(u => ({ ...u, last_name: e.target.value }))} /></div>
-                                </div>
+                                <div><label className="block text-xs font-semibold text-gray-700 mb-1">Nama Lengkap</label>
+                                    <input required className={inputCls} value={newUser.full_name} onChange={e => setNewUser(u => ({ ...u, full_name: e.target.value }))} placeholder="Nama lengkap" /></div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Username</label>
                                     <input required className={inputCls} value={newUser.username} onChange={e => setNewUser(u => ({ ...u, username: e.target.value }))} /></div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Email</label>
                                     <input required type="email" className={inputCls} value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))} /></div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Password</label>
                                     <input required type="password" className={inputCls} value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} /></div>
-                                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
-                                    <input type="checkbox" checked={newUser.is_staff} onChange={e => setNewUser(u => ({ ...u, is_staff: e.target.checked }))} className="rounded" />
-                                    Jadikan Staff/Admin
-                                </label>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-700 mb-1">Role</label>
+                                    <select className={inputCls} value={newUser.role} onChange={e => setNewUser(u => ({ ...u, role: e.target.value as StaffRole }))}>
+                                        <option value="regular">Regular</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="akuntan">Akuntan</option>
+                                    </select>
+                                </div>
                                 <div className="flex gap-3 pt-1">
                                     <button type="button" onClick={() => setModal(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50">Batal</button>
                                     <button type="submit" disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50">{saving ? 'Menyimpan...' : 'Simpan'}</button>
@@ -353,19 +370,19 @@ export default function UsersPage() {
                                     </div>
                                     <button type="button" onClick={() => setModal(null)}><X className="w-5 h-5 text-gray-400" /></button>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Nama Depan</label>
-                                        <input className={inputCls} value={editForm.first_name} onChange={e => setEditForm(f => ({ ...f, first_name: e.target.value }))} /></div>
-                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Nama Belakang</label>
-                                        <input className={inputCls} value={editForm.last_name} onChange={e => setEditForm(f => ({ ...f, last_name: e.target.value }))} /></div>
-                                </div>
+                                <div><label className="block text-xs font-semibold text-gray-700 mb-1">Nama Lengkap</label>
+                                    <input className={inputCls} value={editForm.full_name} onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Nama lengkap" /></div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Email</label>
                                     <input type="email" className={inputCls} value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} /></div>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
-                                        <input type="checkbox" checked={editForm.is_staff} onChange={e => setEditForm(f => ({ ...f, is_staff: e.target.checked }))} className="rounded" />
-                                        Staff/Admin
-                                    </label>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-700 mb-1">Role</label>
+                                        <select className={inputCls} value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value as StaffRole }))}>
+                                            <option value="regular">Regular</option>
+                                            <option value="admin">Admin</option>
+                                            <option value="akuntan">Akuntan</option>
+                                        </select>
+                                    </div>
                                     <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
                                         <input type="checkbox" checked={editForm.is_active} onChange={e => setEditForm(f => ({ ...f, is_active: e.target.checked }))} className="rounded" />
                                         Aktif

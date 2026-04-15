@@ -7,10 +7,18 @@ export interface Category {
 
 export interface Instructor {
     id: number;
+    user?: number | null;
+    user_email?: string | null;
+    user_username?: string | null;
     name: string;
     title: string;
     bio: string;
     photo: string | null;
+    cv?: string | null;
+    approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+    rejection_reason?: string | null;
+    approved_at?: string | null;
+    approved_by_name?: string | null;
 }
 
 export interface Lesson {
@@ -21,11 +29,48 @@ export interface Lesson {
     video_url?: string;
 }
 
+export interface CourseSection {
+    id: number;
+    course?: number;
+    title: string;
+    order: number;
+    lessons?: Lesson[];
+}
+
+export interface TrainingDetailSection {
+    id: string;
+    title: string;
+    body: string;
+    items: string[];
+}
+
+export interface PublicTrainingSession {
+    id: string;
+    title: string;
+    delivery_mode: 'online' | 'offline';
+    schedule: string;
+    location: string;
+    duration: string;
+    price: string;
+    badge?: string;
+    cta_label?: string;
+    cta_url?: string;
+}
+
 export interface Course {
     id: number;
     title: string;
     slug: string;
     description: string;
+    detail_sections?: TrainingDetailSection[];
+    public_training_enabled?: boolean;
+    public_training_intro?: string;
+    public_sessions?: PublicTrainingSession[];
+    inhouse_training_enabled?: boolean;
+    inhouse_training_intro?: string;
+    inhouse_training_benefits?: string[];
+    elearning_enabled?: boolean;
+    elearning_intro?: string;
     price: string;
     discount_price?: string;
     level: 'Beginner' | 'Intermediate' | 'Advanced';
@@ -36,6 +81,7 @@ export interface Course {
     instructor: Instructor;
     category: Category;
     lessons?: Lesson[];
+    sections?: CourseSection[];
     type: 'course' | 'webinar' | 'workshop';
     delivery_mode?: 'online' | 'offline' | null;
     scheduled_at?: string;
@@ -167,6 +213,26 @@ export interface WebinarAttendance {
     marked_by_name?: string | null;
     notes?: string | null;
     certificate_status?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+}
+
+export interface InhouseTrainingRequest {
+    id: number;
+    course: number;
+    course_title?: string;
+    company_name: string;
+    contact_name: string;
+    email: string;
+    phone: string;
+    position?: string | null;
+    participants_count: number;
+    preferred_mode: 'online' | 'offline' | 'hybrid';
+    target_date?: string | null;
+    training_goals: string;
+    notes?: string | null;
+    status: 'new' | 'contacted' | 'quoted' | 'closed';
+    sales_notes?: string | null;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface CertificateLayoutTextElement {
