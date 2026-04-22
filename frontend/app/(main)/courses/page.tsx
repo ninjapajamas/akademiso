@@ -1,9 +1,10 @@
 import { Course } from '@/types';
+import { getServerApiBaseUrl } from '@/utils/api';
 import CatalogContent from './CatalogContent';
 
 async function getCourses() {
     try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const apiUrl = getServerApiBaseUrl();
         const res = await fetch(`${apiUrl}/api/courses/`, { cache: 'no-store' });
         if (!res.ok) {
             throw new Error('Failed to fetch data');

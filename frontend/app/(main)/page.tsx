@@ -13,10 +13,11 @@ import {
 } from 'lucide-react';
 import CourseCard from '@/components/CourseCard';
 import { Course } from '@/types';
+import { getServerApiBaseUrl } from '@/utils/api';
 
 async function getHomeCourses() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getServerApiBaseUrl();
     const res = await fetch(`${apiUrl}/api/courses/`, { cache: 'no-store' });
     if (!res.ok) throw new Error('Failed to fetch data');
 

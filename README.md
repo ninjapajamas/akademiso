@@ -91,6 +91,37 @@ npm run dev
 ```
 *Frontend akan berjalan di `http://localhost:3000`*
 
+## Docker
+
+Project ini sekarang sudah punya konfigurasi Docker untuk menjalankan backend Django dan frontend Next.js secara bersamaan dalam mode development.
+
+### File yang ditambahkan
+- `docker-compose.yml`
+- `backend/Dockerfile`
+- `frontend/Dockerfile`
+- `.dockerignore`
+- `frontend/.dockerignore`
+
+### Cara menjalankan dengan Docker
+
+```bash
+docker compose up --build
+```
+
+Setelah container berjalan:
+
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8000`
+- Django Admin: `http://localhost:8000/admin`
+
+### Catatan konfigurasi
+
+- Request dari browser/client menggunakan backend lokal di `http://localhost:8000`.
+- Request server-side dari Next.js container menggunakan alamat internal Docker `http://backend:8000`.
+- Rewrite di Next.js tetap tersedia untuk `/api` dan `/media` bila ada request relatif yang perlu diteruskan ke backend.
+- Backend tetap memakai `SQLite` development yang tersimpan di folder `backend`.
+- Saat startup, container backend akan otomatis menjalankan `python manage.py migrate`.
+
 ## 📚 Dokumentasi API
 
 Backend menyediakan API lengkap yang dapat diakses melalui endpoint berikut (jika server berjalan):
