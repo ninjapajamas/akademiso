@@ -30,6 +30,9 @@ def get_certificate_media_url(certificate: Certificate) -> str:
 
 
 def resolve_certificate_template(certificate: Certificate) -> CertificateTemplate | None:
+    if certificate.template_id:
+        return certificate.template
+
     course_template = CertificateTemplate.objects.filter(
         is_active=True,
         course=certificate.course,
@@ -122,9 +125,10 @@ def _base_canvas(template: CertificateTemplate | None) -> Image.Image:
 
 def _certificate_payload(certificate: Certificate, template: CertificateTemplate | None) -> dict[str, str]:
     user = certificate.user
+    instructor = certificate.course.instructor
     recipient_name = f"{user.first_name} {user.last_name}".strip() or user.username
-    signer_name = (template.signer_name if template else None) or 'Akademiso'
-    signer_title = (template.signer_title if template else None) or 'Penyelenggara Sertifikasi'
+    signer_name = (template.signer_name if template else None) or instructor.name or 'Akademiso'
+    signer_title = (template.signer_title if template else None) or instructor.title or 'Penyelenggara Sertifikasi'
 
     issued = timezone.localtime(certificate.issue_date).strftime('%d %B %Y')
 
@@ -165,6 +169,9 @@ def generate_certificate_pdf(certificate: Certificate, force: bool = False) -> s
         return media_url
 
     template = resolve_certificate_template(certificate)
+    if template and certificate.template_id != template.id:
+        certificate.template = template
+
     canvas = _base_canvas(template)
     draw = ImageDraw.Draw(canvas)
     payload = _certificate_payload(certificate, template)
@@ -177,8 +184,21 @@ def generate_certificate_pdf(certificate: Certificate, force: bool = False) -> s
     else:
         _draw_default_layout(draw, canvas, payload)
 
-    signature_path = template.signature_image.path if template and template.signature_image else None
+    signature_path = None
+    if template and template.signature_image:
+        signature_path = template.signature_image.path
+    elif certificate.course.instructor.signature_image:
+        signature_path = certificate.course.instructor.signature_image.path
+
     signature_config = template.layout_config.get('signature_image') if template and template.layout_config else None
+    if not signature_config:
+        signature_config = {
+            'x': 72,
+            'y': 63,
+            'width': 18,
+            'height': 10,
+            'align': 'center',
+        }
     if signature_config:
         _draw_signature(canvas, signature_path, canvas.size, signature_config)
 
@@ -191,5 +211,5 @@ def generate_certificate_pdf(certificate: Certificate, force: bool = False) -> s
     default_storage.save(file_name, ContentFile(buffer.read()))
 
     certificate.certificate_url = media_url
-    certificate.save(update_fields=['certificate_url'])
+    certificate.save(update_fields=['certificate_url', 'template'])
     return media_url

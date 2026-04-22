@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
-import { Award, Eye, Expand, FileImage, ImagePlus, Plus, Save, Signature, Trash2, X } from 'lucide-react';
+import { Award, Copy, Eye, Expand, FileImage, ImagePlus, Plus, Save, Signature, Trash2, X } from 'lucide-react';
 import { CertificateTemplate, CertificateTemplateLayout, Course } from '@/types';
 
 type Align = 'left' | 'center' | 'right';
@@ -24,6 +24,13 @@ interface TemplateFormState {
     signature_image: string | null;
     signature_file: File | null;
     layout_config: CertificateTemplateLayout;
+}
+
+type PersistedTemplateFormState = Omit<TemplateFormState, 'background_file' | 'signature_file'>;
+
+interface PersistedTemplateEditorState {
+    isCreatingNewTemplate: boolean;
+    form: PersistedTemplateFormState;
 }
 
 const DEFAULT_LAYOUT: CertificateTemplateLayout = {
@@ -91,6 +98,16 @@ function normalizeCoursesResponse(payload: unknown): Course[] {
     return [];
 }
 
+function normalizeTemplatesResponse(payload: unknown): CertificateTemplate[] {
+    if (Array.isArray(payload)) return payload as CertificateTemplate[];
+    if (payload && typeof payload === 'object') {
+        const candidate = (payload as { results?: unknown; templates?: unknown }).results
+            ?? (payload as { results?: unknown; templates?: unknown }).templates;
+        if (Array.isArray(candidate)) return candidate as CertificateTemplate[];
+    }
+    return [];
+}
+
 function getAlignStyle(align: Align) {
     if (align === 'center') return { transform: 'translateX(-50%)', textAlign: 'center' as const };
     if (align === 'right') return { transform: 'translateX(-100%)', textAlign: 'right' as const };
@@ -107,19 +124,87 @@ const FORM_SELECT_CLASSNAME = 'w-full rounded-xl border border-gray-200 px-4 py-
 const FORM_COMPACT_SELECT_CLASSNAME = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100';
 const FORM_TEXTAREA_CLASSNAME = 'h-24 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 placeholder:text-gray-400';
 const FORM_FILE_INPUT_CLASSNAME = 'mt-4 block w-full text-sm text-gray-900 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-medium file:text-slate-700 hover:file:bg-slate-200';
+const TEMPLATE_EDITOR_STORAGE_KEY = 'admin-certificate-template-editor';
+
+function cloneLayout(layout: CertificateTemplateLayout): CertificateTemplateLayout {
+    return JSON.parse(JSON.stringify(layout)) as CertificateTemplateLayout;
+}
+
+function restoreFormState(saved?: Partial<PersistedTemplateFormState> | null): TemplateFormState {
+    const empty = createEmptyForm();
+
+    return {
+        ...empty,
+        ...saved,
+        id: typeof saved?.id === 'number' ? saved.id : null,
+        course_id: typeof saved?.course_id === 'string' ? saved.course_id : '',
+        orientation: saved?.orientation === 'portrait' ? 'portrait' : 'landscape',
+        page_width: typeof saved?.page_width === 'number' ? saved.page_width : empty.page_width,
+        page_height: typeof saved?.page_height === 'number' ? saved.page_height : empty.page_height,
+        signer_name: typeof saved?.signer_name === 'string' ? saved.signer_name : '',
+        signer_title: typeof saved?.signer_title === 'string' ? saved.signer_title : '',
+        notes: typeof saved?.notes === 'string' ? saved.notes : '',
+        is_active: typeof saved?.is_active === 'boolean' ? saved.is_active : empty.is_active,
+        background_image: saved?.background_image ?? null,
+        background_file: null,
+        signature_image: saved?.signature_image ?? null,
+        signature_file: null,
+        layout_config: mergeLayout(saved?.layout_config),
+    };
+}
+
+function persistableForm(form: TemplateFormState): PersistedTemplateFormState {
+    return {
+        id: form.id,
+        name: form.name,
+        course_id: form.course_id,
+        orientation: form.orientation,
+        page_width: form.page_width,
+        page_height: form.page_height,
+        signer_name: form.signer_name,
+        signer_title: form.signer_title,
+        notes: form.notes,
+        is_active: form.is_active,
+        background_image: form.background_image,
+        signature_image: form.signature_image,
+        layout_config: cloneLayout(form.layout_config),
+    };
+}
+
+function upsertTemplateList(templates: CertificateTemplate[], template: CertificateTemplate): CertificateTemplate[] {
+    const next = templates.filter(item => item.id !== template.id);
+    return [template, ...next];
+}
+
+function mergeTemplateLists(current: CertificateTemplate[], incoming: CertificateTemplate[]): CertificateTemplate[] {
+    if (incoming.length === 0) return current;
+
+    const merged = [...incoming];
+
+    current.forEach(template => {
+        if (!merged.some(item => item.id === template.id)) {
+            merged.push(template);
+        }
+    });
+
+    return merged;
+}
 
 export default function AdminCertificateTemplatesPage() {
     const [templates, setTemplates] = useState<CertificateTemplate[]>([]);
     const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [isCreatingNewTemplate, setIsCreatingNewTemplate] = useState(false);
     const [form, setForm] = useState<TemplateFormState>(createEmptyForm);
     const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null);
     const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
     const [draggingElement, setDraggingElement] = useState<DraggingElement>(null);
+    const [editorReady, setEditorReady] = useState(false);
     const previewCanvasRef = useRef<HTMLDivElement | null>(null);
+    const templatesRef = useRef<CertificateTemplate[]>([]);
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const token = () => localStorage.getItem('access_token');
@@ -139,7 +224,29 @@ export default function AdminCertificateTemplatesPage() {
         window.setTimeout(() => setToast(null), 3200);
     };
 
+    useEffect(() => {
+        templatesRef.current = templates;
+    }, [templates]);
+
+    const readPersistedEditorState = (): PersistedTemplateEditorState | null => {
+        try {
+            const raw = window.localStorage.getItem(TEMPLATE_EDITOR_STORAGE_KEY);
+            if (!raw) return null;
+
+            const parsed = JSON.parse(raw) as PersistedTemplateEditorState;
+            if (!parsed || typeof parsed !== 'object' || !parsed.form) return null;
+
+            return {
+                isCreatingNewTemplate: Boolean(parsed.isCreatingNewTemplate),
+                form: parsed.form,
+            };
+        } catch {
+            return null;
+        }
+    };
+
     const selectTemplate = (template: CertificateTemplate) => {
+        setIsCreatingNewTemplate(false);
         setForm({
             id: template.id,
             name: template.name,
@@ -160,7 +267,26 @@ export default function AdminCertificateTemplatesPage() {
     };
 
     const handleCreateNew = () => {
+        setIsCreatingNewTemplate(true);
         setForm(createEmptyForm());
+        setDraggingElement(null);
+        setIsPreviewFullscreen(false);
+        showToast('Editor siap untuk template baru.');
+    };
+
+    const handleDuplicateTemplate = () => {
+        setIsCreatingNewTemplate(true);
+        setForm(prev => ({
+            ...prev,
+            id: null,
+            name: prev.name ? `${prev.name} Copy` : 'Template Copy',
+            background_file: null,
+            signature_file: null,
+            layout_config: JSON.parse(JSON.stringify(prev.layout_config)),
+        }));
+        setDraggingElement(null);
+        setIsPreviewFullscreen(false);
+        showToast('Template berhasil diduplikat. Simpan untuk membuat template baru.');
     };
 
     useEffect(() => {
@@ -169,29 +295,51 @@ export default function AdminCertificateTemplatesPage() {
                 const authToken = token();
                 const [templatesRes, coursesRes] = await Promise.all([
                     fetch(`${apiUrl}/api/certificate-templates/`, {
-                        headers: { Authorization: `Bearer ${authToken}` }
+                        headers: { Authorization: `Bearer ${authToken}` },
+                        cache: 'no-store',
                     }),
                     fetch(`${apiUrl}/api/courses/`, {
-                        headers: { Authorization: `Bearer ${authToken}` }
+                        headers: { Authorization: `Bearer ${authToken}` },
+                        cache: 'no-store',
                     })
                 ]);
 
+                let templateData: CertificateTemplate[] = [];
+                let courseData: Course[] = [];
+
                 if (templatesRes.ok) {
-                    const templateData = await templatesRes.json();
-                    setTemplates(templateData);
-                    if (Array.isArray(templateData) && templateData.length > 0) {
-                        selectTemplate(templateData[0]);
-                    }
+                    const templatePayload = await templatesRes.json();
+                    templateData = normalizeTemplatesResponse(templatePayload);
                 }
 
                 if (coursesRes.ok) {
-                    const coursesData = await coursesRes.json();
-                    setCourses(normalizeCoursesResponse(coursesData));
+                    const coursesPayload = await coursesRes.json();
+                    courseData = normalizeCoursesResponse(coursesPayload);
+                }
+
+                const persistedState = readPersistedEditorState();
+                const nextTemplates = templateData;
+
+                if (persistedState?.form) {
+                    const restoredForm = restoreFormState(persistedState.form);
+
+                    setTemplates(nextTemplates);
+                    setCourses(courseData);
+                    setIsCreatingNewTemplate(Boolean(persistedState.isCreatingNewTemplate || !restoredForm.id));
+                    setForm(restoredForm);
+                } else {
+                    setTemplates(nextTemplates);
+                    setCourses(courseData);
+
+                    if (nextTemplates.length > 0) {
+                        selectTemplate(nextTemplates[0]);
+                    }
                 }
             } catch (error) {
                 console.error('Failed to fetch certificate template data:', error);
                 showToast('Gagal memuat data template sertifikat.', 'error');
             } finally {
+                setEditorReady(true);
                 setLoading(false);
             }
         };
@@ -222,6 +370,20 @@ export default function AdminCertificateTemplatesPage() {
             if (signatureUrl) URL.revokeObjectURL(signatureUrl);
         };
     }, [form.background_file, form.background_image, form.signature_file, form.signature_image]);
+
+    useEffect(() => {
+        if (!editorReady) return;
+
+        try {
+            const payload: PersistedTemplateEditorState = {
+                isCreatingNewTemplate,
+                form: persistableForm(form),
+            };
+            window.localStorage.setItem(TEMPLATE_EDITOR_STORAGE_KEY, JSON.stringify(payload));
+        } catch (error) {
+            console.error('Failed to persist certificate template editor state:', error);
+        }
+    }, [editorReady, form, isCreatingNewTemplate]);
 
     useEffect(() => {
         if (!draggingElement) return;
@@ -264,22 +426,53 @@ export default function AdminCertificateTemplatesPage() {
         };
     }, [draggingElement]);
 
-    const fetchTemplates = async (templateIdToOpen?: number | null) => {
+    const fetchTemplates = async ({
+        templateIdToOpen,
+        fallbackTemplate,
+        mergeWithExisting = false,
+        preserveCurrentOnEmpty = false,
+    }: {
+        templateIdToOpen?: number | string | null;
+        fallbackTemplate?: CertificateTemplate | null;
+        mergeWithExisting?: boolean;
+        preserveCurrentOnEmpty?: boolean;
+    } = {}) => {
         const res = await fetch(`${apiUrl}/api/certificate-templates/`, {
-            headers: { Authorization: `Bearer ${token()}` }
+            headers: { Authorization: `Bearer ${token()}` },
+            cache: 'no-store',
         });
         if (!res.ok) throw new Error('Gagal mengambil daftar template.');
-        const data = await res.json();
-        setTemplates(data);
+        const payload = await res.json();
+        const data = normalizeTemplatesResponse(payload);
+        const currentTemplates = templatesRef.current;
+        let nextTemplates = mergeWithExisting ? mergeTemplateLists(currentTemplates, data) : data;
 
-        if (templateIdToOpen) {
-            const found = data.find((item: CertificateTemplate) => item.id === templateIdToOpen);
-            if (found) selectTemplate(found);
+        if (preserveCurrentOnEmpty && nextTemplates.length === 0) {
+            nextTemplates = currentTemplates;
+        }
+
+        if (fallbackTemplate) {
+            const baseTemplates = nextTemplates.length > 0 ? nextTemplates : currentTemplates;
+            nextTemplates = upsertTemplateList(baseTemplates, fallbackTemplate);
+        }
+
+        setTemplates(nextTemplates);
+
+        if (templateIdToOpen !== undefined && templateIdToOpen !== null) {
+            const found = nextTemplates.find((item: CertificateTemplate) => String(item.id) === String(templateIdToOpen));
+            if (found) {
+                selectTemplate(found);
+                return;
+            }
+            if (fallbackTemplate) {
+                selectTemplate(fallbackTemplate);
+                return;
+            }
             return;
         }
 
-        if (data.length > 0 && !form.id) {
-            selectTemplate(data[0]);
+        if (nextTemplates.length > 0 && !templateIdToOpen && !fallbackTemplate) {
+            selectTemplate(nextTemplates[0]);
         }
     };
 
@@ -402,7 +595,20 @@ export default function AdminCertificateTemplatesPage() {
             }
 
             const saved = await res.json();
-            await fetchTemplates(saved.id);
+            const normalizedSaved: CertificateTemplate = {
+                ...saved,
+                layout_config: mergeLayout(saved.layout_config),
+            };
+
+            setIsCreatingNewTemplate(false);
+            selectTemplate(normalizedSaved);
+            setTemplates(prev => upsertTemplateList(prev, normalizedSaved));
+            await fetchTemplates({
+                templateIdToOpen: normalizedSaved.id,
+                fallbackTemplate: normalizedSaved,
+                mergeWithExisting: true,
+                preserveCurrentOnEmpty: true,
+            });
             showToast(form.id ? 'Template sertifikat berhasil diperbarui.' : 'Template sertifikat berhasil dibuat.');
         } catch (error) {
             console.error('Failed to save certificate template:', error);
@@ -425,10 +631,12 @@ export default function AdminCertificateTemplatesPage() {
             if (!res.ok) throw new Error('Delete failed');
 
             showToast('Template sertifikat dihapus.');
+            setIsCreatingNewTemplate(false);
             setForm(createEmptyForm());
             setBackgroundPreview(null);
             setSignaturePreview(null);
-            await fetchTemplates(null);
+            setTemplates(prev => prev.filter(template => template.id !== form.id));
+            await fetchTemplates();
         } catch (error) {
             console.error('Failed to delete certificate template:', error);
             showToast('Gagal menghapus template sertifikat.', 'error');
@@ -447,12 +655,12 @@ export default function AdminCertificateTemplatesPage() {
                 }}
             >
                 {backgroundPreview ? (
-                    <img src={backgroundPreview} alt="Preview background sertifikat" className="absolute inset-0 h-full w-full object-cover" />
+                    <img src={backgroundPreview} alt="Preview background sertifikat" className="pointer-events-none absolute inset-0 h-full w-full object-cover" />
                 ) : (
-                    <div className="absolute inset-0 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_45%,#eef2ff_100%)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_45%,#eef2ff_100%)]" />
                 )}
 
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.12),transparent_30%)]" />
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.14),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.12),transparent_30%)]" />
 
                 <div
                     className={`absolute whitespace-nowrap rounded-lg border border-dashed border-transparent px-2 py-1 transition ${draggingElement?.key === 'recipient_name' ? 'cursor-grabbing border-blue-300 bg-white/80 shadow-sm' : 'cursor-grab hover:border-blue-200 hover:bg-white/70'}`}
@@ -581,12 +789,12 @@ export default function AdminCertificateTemplatesPage() {
     return (
         <div className="space-y-6">
             {toast && (
-                <div className={`fixed right-5 top-5 z-[100] rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+                <div className={`pointer-events-none fixed right-5 top-5 z-[100] rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
                     {toast.message}
                 </div>
             )}
 
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Template Sertifikat</h1>
                     <p className="mt-1 text-sm text-gray-500">
@@ -603,7 +811,7 @@ export default function AdminCertificateTemplatesPage() {
                     <button
                         type="button"
                         onClick={handleCreateNew}
-                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                        className="relative z-10 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
                     >
                         <Plus className="h-4 w-4" />
                         Template Baru
@@ -632,6 +840,34 @@ export default function AdminCertificateTemplatesPage() {
                         </div>
 
                         <div className="space-y-3">
+                            {!loading && (
+                                <button
+                                    type="button"
+                                    onClick={handleCreateNew}
+                                    className={`w-full rounded-2xl border p-4 text-left transition-all ${
+                                        isCreatingNewTemplate
+                                            ? 'border-blue-200 bg-blue-50 shadow-sm'
+                                            : 'border-dashed border-blue-200 bg-blue-50/60 hover:border-blue-300 hover:bg-blue-50'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="font-semibold text-gray-900">Template Baru</p>
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Buka draft kosong tanpa menghilangkan template yang sudah tersimpan.
+                                            </p>
+                                        </div>
+                                        <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-bold uppercase text-blue-700">
+                                            Draft
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 flex items-center gap-2 text-xs text-blue-500">
+                                        <Plus className="h-3.5 w-3.5" />
+                                        <span>Buat template sertifikat baru</span>
+                                    </div>
+                                </button>
+                            )}
+
                             {loading ? (
                                 [1, 2, 3].map(item => (
                                     <div key={item} className="h-24 animate-pulse rounded-2xl border border-gray-100 bg-gray-50" />
@@ -641,7 +877,7 @@ export default function AdminCertificateTemplatesPage() {
                                     key={template.id}
                                     type="button"
                                     onClick={() => selectTemplate(template)}
-                                    className={`w-full rounded-2xl border p-4 text-left transition-all ${form.id === template.id
+                                    className={`w-full rounded-2xl border p-4 text-left transition-all ${!isCreatingNewTemplate && form.id === template.id
                                         ? 'border-blue-200 bg-blue-50 shadow-sm'
                                         : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
                                         }`}
@@ -677,21 +913,31 @@ export default function AdminCertificateTemplatesPage() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-lg font-bold text-gray-900">
-                                        {form.id ? 'Edit Template Sertifikat' : 'Buat Template Sertifikat'}
+                                        {!isCreatingNewTemplate && form.id ? 'Edit Template Sertifikat' : 'Buat Template Sertifikat'}
                                     </h2>
                                     <p className="mt-1 text-sm text-gray-500">
                                         Atur background, penandatangan, dan detail dasar template.
                                     </p>
                                 </div>
-                                {form.id && (
-                                    <button
-                                        type="button"
-                                        onClick={handleDelete}
-                                        className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                        Hapus
-                                    </button>
+                                {!isCreatingNewTemplate && form.id && (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleDuplicateTemplate}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                                        >
+                                            <Copy className="h-4 w-4" />
+                                            Duplikat
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDelete}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            Hapus
+                                        </button>
+                                    </div>
                                 )}
                             </div>
 

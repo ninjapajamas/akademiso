@@ -9,6 +9,7 @@ import {
     Calendar,
     LayoutDashboard,
     LogOut,
+    MessageSquare,
     Settings,
     ShieldAlert,
     ShieldCheck,
@@ -155,6 +156,7 @@ export default function DashboardLayout({
     const menuItems = [
         { icon: LayoutDashboard, label: 'Beranda', href: '/dashboard' },
         { icon: BookOpen, label: 'Kursus Saya', href: '/dashboard/courses' },
+        { icon: MessageSquare, label: 'Forum Diskusi', href: '/dashboard/forum' },
         { icon: Calendar, label: 'Jadwal Ujian', href: '/dashboard/schedule' },
         { icon: Award, label: 'Sertifikat', href: '/dashboard/certificates' },
         { icon: Settings, label: 'Pengaturan', href: '/dashboard/settings' },

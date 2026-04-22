@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { User, Mail, Lock, Shield, Save, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { useCallback, useState, useEffect } from 'react';
+import { User, Mail, Lock, Shield, Save, Eye, EyeOff, CheckCircle, Signature } from 'lucide-react';
 import { getProfileDisplayName, splitFullName } from '@/utils/profile';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -34,17 +34,25 @@ export default function InstructorSettingsPage() {
         company: '',
         position: '',
         bio: '',
-        avatar: null as string | null
+        avatar: null as string | null,
+        signature_image: null as string | null
     });
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [signatureFile, setSignatureFile] = useState<File | null>(null);
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
     const [pwError, setPwError] = useState('');
     const canEditEmail = !profile.email.trim();
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-    const fetchProfile = async () => {
+    const resolveMediaUrl = (url: string | null) => {
+        if (!url) return null;
+        if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
+        return `${apiUrl}${url}`;
+    };
+
+    const fetchProfile = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             const res = await fetch(`${apiUrl}/api/profile/`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -57,7 +65,8 @@ export default function InstructorSettingsPage() {
                     company: data.profile?.company || '',
                     position: data.profile?.position || '',
                     bio: data.profile?.bio || '',
-                    avatar: data.profile?.avatar || null
+                    avatar: data.profile?.avatar || null,
+                    signature_image: data.instructor?.signature_image || null
                 });
             }
         } catch (e) {
@@ -65,17 +74,16 @@ export default function InstructorSettingsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [apiUrl]);
 
     useEffect(() => {
         fetchProfile();
-    }, []);
+    }, [fetchProfile]);
 
     const handleSaveProfile = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             const { firstName, lastName } = splitFullName(profile.full_name);
             const normalizedEmail = profile.email.trim();
 
@@ -93,6 +101,9 @@ export default function InstructorSettingsPage() {
             if (avatarFile) {
                 formData.append('avatar', avatarFile);
             }
+            if (signatureFile) {
+                formData.append('signature_image', signatureFile);
+            }
 
             const res = await fetch(`${apiUrl}/api/profile/`, {
                 method: 'PATCH',
@@ -102,6 +113,8 @@ export default function InstructorSettingsPage() {
 
             if (res.ok) {
                 setSaved(true);
+                setAvatarFile(null);
+                setSignatureFile(null);
                 fetchProfile();
                 setTimeout(() => setSaved(false), 2500);
             } else {
@@ -127,7 +140,6 @@ export default function InstructorSettingsPage() {
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
             const payload = JSON.parse(atob(token!.split('.')[1]));
             const userId = payload.user_id;
@@ -148,12 +160,20 @@ export default function InstructorSettingsPage() {
             } else {
                 setPwError('Gagal memperbarui password');
             }
-        } catch (e) {
+        } catch {
             setPwError('Kesalahan sistem');
         }
     };
 
     const inputClass = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all';
+
+    if (loading) {
+        return (
+            <div className="flex min-h-[360px] items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-indigo-600" />
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
@@ -177,7 +197,8 @@ export default function InstructorSettingsPage() {
                         <div className="relative group">
                             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg overflow-hidden border-4 border-white">
                                 {profile.avatar ? (
-                                    <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={resolveMediaUrl(profile.avatar) || ''} alt="Avatar" className="w-full h-full object-cover" />
                                 ) : (
                                     (profile.full_name?.trim().charAt(0) || 'I').toUpperCase()
                                 )}
@@ -216,6 +237,52 @@ export default function InstructorSettingsPage() {
                                     }}
                                 />
                             </label>
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-5">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                                    <Signature className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-900">Tanda Tangan Sertifikat</h3>
+                                    <p className="mt-1 text-sm text-indigo-700">
+                                        File ini menjadi tanda tangan otomatis pada sertifikat peserta bila template course tidak memakai tanda tangan khusus.
+                                    </p>
+                                </div>
+                            </div>
+                            <label className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-indigo-700">
+                                Upload Tanda Tangan
+                                <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setSignatureFile(file);
+                                            setProfile(p => ({ ...p, signature_image: URL.createObjectURL(file) }));
+                                        }
+                                    }}
+                                />
+                            </label>
+                        </div>
+
+                        <div className="mt-4 flex min-h-28 items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-white p-4">
+                            {profile.signature_image ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={resolveMediaUrl(profile.signature_image) || ''}
+                                    alt="Tanda tangan instruktur"
+                                    className="max-h-24 max-w-full object-contain"
+                                />
+                            ) : (
+                                <p className="text-center text-sm font-medium text-gray-400">
+                                    Belum ada tanda tangan. Gunakan PNG transparan agar hasil PDF lebih rapi.
+                                </p>
+                            )}
                         </div>
                     </div>
 

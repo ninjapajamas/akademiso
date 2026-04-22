@@ -14,6 +14,7 @@ export interface Instructor {
     title: string;
     bio: string;
     photo: string | null;
+    signature_image?: string | null;
     cv?: string | null;
     approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
     rejection_reason?: string | null;
@@ -27,6 +28,14 @@ export interface Lesson {
     order: number;
     duration: string;
     video_url?: string;
+    content?: string;
+    type?: string;
+    image?: string | null;
+    attachment?: string | null;
+    attachment_name?: string;
+    is_completed?: boolean;
+    is_locked?: boolean;
+    quiz_data?: unknown;
 }
 
 export interface CourseSection {
@@ -102,6 +111,9 @@ export interface Course {
 export interface EnrolledCourse {
     id: number;
     course: Course;
+    offer_type?: 'elearning' | 'public';
+    offer_mode?: 'online' | 'offline' | '';
+    public_session_id?: string;
     status: 'Pending' | 'Completed' | 'Cancelled';
     progress_percentage?: number;
     created_at: string;
@@ -187,6 +199,8 @@ export interface Certificate {
     course_title?: string;
     exam: number | null;
     exam_title?: string;
+    template?: number | null;
+    template_name?: string | null;
     issue_date: string;
     certificate_number?: string;
     certificate_url?: string;
@@ -233,6 +247,34 @@ export interface InhouseTrainingRequest {
     sales_notes?: string | null;
     created_at: string;
     updated_at: string;
+}
+
+export interface DiscussionAuthor {
+    id: number;
+    username: string;
+    full_name: string;
+    avatar?: string | null;
+}
+
+export interface CourseDiscussionComment {
+    id: number;
+    content: string;
+    created_at: string;
+    updated_at: string;
+    author: DiscussionAuthor;
+}
+
+export interface CourseDiscussionTopic {
+    id: number;
+    course: number;
+    title: string;
+    content: string;
+    created_at: string;
+    updated_at: string;
+    latest_activity_at: string;
+    author: DiscussionAuthor;
+    comment_count: number;
+    comments: CourseDiscussionComment[];
 }
 
 export interface CertificateLayoutTextElement {

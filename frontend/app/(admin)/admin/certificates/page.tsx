@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, ExternalLink, FilePenLine, Search } from 'lucide-react';
-import { Certificate } from '@/types';
+import { Certificate, CertificateTemplate } from '@/types';
 
 function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -35,6 +35,8 @@ function getStatusMeta(status: Certificate['approval_status']) {
 
 export default function AdminCertificatesPage() {
     const [certificates, setCertificates] = useState<Certificate[]>([]);
+    const [templates, setTemplates] = useState<CertificateTemplate[]>([]);
+    const [selectedTemplateByCertificate, setSelectedTemplateByCertificate] = useState<Record<number, string>>({});
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [approvingCertificateId, setApprovingCertificateId] = useState<number | null>(null);
@@ -42,12 +44,12 @@ export default function AdminCertificatesPage() {
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
         window.setTimeout(() => setToast(null), 3200);
-    };
+    }, []);
 
-    const fetchCertificates = async () => {
+    const fetchCertificates = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
             if (!token) {
@@ -55,27 +57,46 @@ export default function AdminCertificatesPage() {
                 return;
             }
 
-            const res = await fetch(`${apiUrl}/api/certificates/?scope=all`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const [certificatesRes, templatesRes] = await Promise.all([
+                fetch(`${apiUrl}/api/certificates/?scope=all`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${apiUrl}/api/certificate-templates/`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+            ]);
 
-            if (!res.ok) {
+            if (!certificatesRes.ok) {
                 throw new Error('Gagal memuat daftar sertifikat.');
             }
 
-            const data = await res.json();
-            setCertificates(Array.isArray(data) ? data : []);
+            const data = await certificatesRes.json();
+            const certificateData = Array.isArray(data) ? data : [];
+            setCertificates(certificateData);
+
+            if (templatesRes.ok) {
+                const templateData = await templatesRes.json();
+                setTemplates(Array.isArray(templateData) ? templateData : []);
+            }
+
+            setSelectedTemplateByCertificate(prev => {
+                const next: Record<number, string> = {};
+                certificateData.forEach((certificate: Certificate) => {
+                    next[certificate.id] = prev[certificate.id] || (certificate.template ? String(certificate.template) : '');
+                });
+                return next;
+            });
         } catch (error) {
             console.error('Failed to fetch certificates:', error);
             showToast('Gagal memuat daftar sertifikat.', 'error');
         } finally {
             setLoading(false);
         }
-    };
+    }, [apiUrl, showToast]);
 
     useEffect(() => {
         fetchCertificates();
-    }, []);
+    }, [fetchCertificates]);
 
     const filteredCertificates = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase();
@@ -102,9 +123,14 @@ export default function AdminCertificatesPage() {
 
         try {
             const token = localStorage.getItem('access_token');
+            const selectedTemplate = selectedTemplateByCertificate[certificateId];
             const res = await fetch(`${apiUrl}/api/certificates/${certificateId}/approve/`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(selectedTemplate ? { template_id: selectedTemplate } : {}),
             });
 
             if (!res.ok) {
@@ -133,6 +159,10 @@ export default function AdminCertificatesPage() {
         } finally {
             setApprovingCertificateId(null);
         }
+    };
+
+    const getAvailableTemplates = (courseId: number) => {
+        return templates.filter(template => template.is_active && (template.course === courseId || template.course === null));
     };
 
     return (
@@ -191,6 +221,7 @@ export default function AdminCertificatesPage() {
                                     <th className="px-4 py-3">Peserta</th>
                                     <th className="px-4 py-3">Course</th>
                                     <th className="px-4 py-3">Ujian</th>
+                                    <th className="px-4 py-3">Template</th>
                                     <th className="px-4 py-3">Terbit</th>
                                     <th className="px-4 py-3">Status</th>
                                     <th className="px-4 py-3">Validator</th>
@@ -201,14 +232,14 @@ export default function AdminCertificatesPage() {
                                 {loading ? (
                                     Array.from({ length: 6 }).map((_, index) => (
                                         <tr key={index}>
-                                            <td className="px-4 py-4" colSpan={7}>
+                                            <td className="px-4 py-4" colSpan={8}>
                                                 <div className="h-10 animate-pulse rounded-xl bg-gray-100" />
                                             </td>
                                         </tr>
                                     ))
                                 ) : filteredCertificates.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-4 py-12 text-center">
+                                        <td colSpan={8} className="px-4 py-12 text-center">
                                             <div className="mx-auto max-w-md">
                                                 <Clock3 className="mx-auto h-10 w-10 text-gray-200" />
                                                 <p className="mt-3 font-semibold text-gray-600">Belum ada data sertifikat</p>
@@ -232,6 +263,9 @@ export default function AdminCertificatesPage() {
                                                 {certificate.exam_title || '-'}
                                             </td>
                                             <td className="px-4 py-4 align-top text-gray-500">
+                                                {certificate.template_name || 'Otomatis'}
+                                            </td>
+                                            <td className="px-4 py-4 align-top text-gray-500">
                                                 {formatDate(certificate.issue_date)}
                                             </td>
                                             <td className="px-4 py-4 align-top">
@@ -245,15 +279,34 @@ export default function AdminCertificatesPage() {
                                             <td className="px-4 py-4 align-top">
                                                 <div className="flex justify-end gap-2">
                                                     {certificate.approval_status === 'PENDING' ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleApprove(certificate.id)}
-                                                            disabled={approvingCertificateId === certificate.id}
-                                                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                                                        >
-                                                            <CheckCircle2 className="h-3.5 w-3.5" />
-                                                            {approvingCertificateId === certificate.id ? 'Memvalidasi...' : 'Validasi'}
-                                                        </button>
+                                                        <div className="flex flex-col items-end gap-2">
+                                                            {getAvailableTemplates(certificate.course).length > 0 && (
+                                                                <select
+                                                                    value={selectedTemplateByCertificate[certificate.id] || ''}
+                                                                    onChange={event => setSelectedTemplateByCertificate(prev => ({
+                                                                        ...prev,
+                                                                        [certificate.id]: event.target.value,
+                                                                    }))}
+                                                                    className="max-w-[220px] rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs font-semibold text-gray-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                                >
+                                                                    <option value="">Otomatis</option>
+                                                                    {getAvailableTemplates(certificate.course).map(template => (
+                                                                        <option key={template.id} value={template.id}>
+                                                                            {template.name}{template.course ? '' : ' (Global)'}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleApprove(certificate.id)}
+                                                                disabled={approvingCertificateId === certificate.id}
+                                                                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                                                            >
+                                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                                {approvingCertificateId === certificate.id ? 'Memvalidasi...' : 'Validasi'}
+                                                            </button>
+                                                        </div>
                                                     ) : certificate.certificate_url ? (
                                                         <a
                                                             href={certificate.certificate_url}

@@ -1,18 +1,26 @@
 function toDigitString(value: string | number | null | undefined) {
+    if (typeof value === 'number') {
+        const numericValue = Math.trunc(value);
+        return Number.isFinite(numericValue) ? String(numericValue) : '';
+    }
+
     const raw = String(value ?? '').trim();
 
     if (!raw) {
         return '';
     }
 
+    const compactValue = raw.replace(/\s+/g, '');
+
     // Values from the API usually arrive as plain decimal strings like "1500000.00".
-    // Parse them numerically so the trailing ".00" does not become extra digits.
-    if (/^\d+(\.\d+)?$/.test(raw)) {
-        const numericValue = Math.trunc(Number(raw));
+    // User input is formatted with Indonesian grouping ("1.500.000"), so only treat
+    // one or two digits after a single separator as a decimal fraction.
+    if (/^\d+[.,]\d{1,2}$/.test(compactValue)) {
+        const numericValue = Math.trunc(Number(compactValue.replace(',', '.')));
         return Number.isFinite(numericValue) ? String(numericValue) : '';
     }
 
-    return raw.replace(/\D/g, '');
+    return compactValue.replace(/\D/g, '');
 }
 
 export function parseCurrencyValue(value: string | number | null | undefined) {

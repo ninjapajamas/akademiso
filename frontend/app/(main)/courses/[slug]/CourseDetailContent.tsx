@@ -777,7 +777,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                     {session.cta_url ? (
                                                         <div className="space-y-2">
                                                             <Link
-                                                                href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}`}
+                                                                href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}&session=${encodeURIComponent(session.id)}`}
                                                                 className="block w-full text-center rounded-full bg-blue-600 text-white px-4 py-3 font-bold hover:bg-blue-700 transition"
                                                             >
                                                                 Checkout Public
@@ -794,7 +794,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                     ) : (
                                                         <div className="space-y-2">
                                                             <Link
-                                                                href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}`}
+                                                                href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}&session=${encodeURIComponent(session.id)}`}
                                                                 className="block w-full text-center rounded-full bg-blue-600 text-white px-4 py-3 font-bold hover:bg-blue-700 transition"
                                                             >
                                                                 Checkout Public
@@ -897,7 +897,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                 </Link>
                                             ) : (
                                                 <>
-                                                    <Link href={`/checkout?slug=${course.slug}`} className="block w-full text-center rounded-full bg-blue-600 text-white px-5 py-3.5 font-bold hover:bg-blue-700 transition">
+                                                    <Link href={`/checkout?slug=${course.slug}&offer=elearning`} className="block w-full text-center rounded-full bg-blue-600 text-white px-5 py-3.5 font-bold hover:bg-blue-700 transition">
                                                         {isFreeOffering ? 'Daftar Gratis' : 'Checkout Sekarang'}
                                                     </Link>
                                                     <button onClick={addToCart} disabled={isAdding} className="w-full rounded-full border border-gray-300 bg-white px-5 py-3.5 font-bold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">

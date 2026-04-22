@@ -55,6 +55,7 @@ type LessonFormData = {
     duration: string;
     order: number;
     image: File | null;
+    attachment: File | null;
     quiz_data: QuizData;
 };
 
@@ -118,6 +119,7 @@ export default function LessonFormContent({
         duration: '',
         order: 1,
         image: null,
+        attachment: null,
         quiz_data: {
             pass_score: 70,
             time_limit: null as number | null,
@@ -128,6 +130,8 @@ export default function LessonFormContent({
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+    const [currentAttachmentUrl, setCurrentAttachmentUrl] = useState<string | null>(null);
+    const [currentAttachmentName, setCurrentAttachmentName] = useState('');
     const [questionBankOpen, setQuestionBankOpen] = useState(false);
     const [questionBankLoading, setQuestionBankLoading] = useState(false);
     const [questionBankItems, setQuestionBankItems] = useState<QuestionBankItem[]>([]);
@@ -184,9 +188,12 @@ export default function LessonFormContent({
                             duration: data.duration || '',
                             order: data.order,
                             image: null,
+                            attachment: null,
                             quiz_data: normalizeQuizData(data.quiz_data)
                         });
                         setCurrentImageUrl(data.image);
+                        setCurrentAttachmentUrl(data.attachment || null);
+                        setCurrentAttachmentName(data.attachment_name || '');
                     }
                 } else if (initialSectionId) {
                     setFormData(prev => ({ ...prev, section_id: initialSectionId }));
@@ -216,6 +223,12 @@ export default function LessonFormContent({
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setFormData({ ...formData, image: e.target.files[0] });
+        }
+    };
+
+    const handleAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setFormData({ ...formData, attachment: e.target.files[0] });
         }
     };
 
@@ -432,6 +445,10 @@ export default function LessonFormContent({
             // Only append image if it's not an article (per user request)
             if ((formData.type === 'video' || ASSESSMENT_LESSON_TYPES.includes(formData.type)) && formData.image) {
                 data.append('image', formData.image);
+            }
+
+            if (formData.attachment) {
+                data.append('attachment', formData.attachment);
             }
 
             const url = isNew ? `${apiUrl}/api/lessons/` : `${apiUrl}/api/lessons/${lessonId}/`;
@@ -830,6 +847,37 @@ export default function LessonFormContent({
                             )}
                         </div>
                     )}
+
+                    <div>
+                        <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Lampiran Materi (Opsional)</label>
+                        <div className="group relative border-2 border-dashed border-gray-200 rounded-[2rem] p-8 text-center hover:border-indigo-400 hover:bg-indigo-50/20 transition-all cursor-pointer overflow-hidden">
+                            <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                onChange={handleAttachmentChange}
+                            />
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="p-4 bg-gray-50 rounded-2xl group-hover:bg-white transition-colors">
+                                    <FileText className="w-8 h-8 text-gray-400 group-hover:text-indigo-600 transition-colors" />
+                                </div>
+                                <div>
+                                    <span className="block text-sm font-bold text-gray-700">
+                                        {formData.attachment ? formData.attachment.name : 'Pilih File PDF, Word, PPT, atau Excel'}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-medium">Maksimal 10MB. Format PDF, DOC, DOCX, PPT, PPTX, XLS, atau XLSX.</span>
+                                </div>
+                            </div>
+                        </div>
+                        {currentAttachmentUrl && !formData.attachment && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Lampiran Saat Ini:</span>
+                                <a href={currentAttachmentUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-indigo-600 hover:underline">
+                                    {currentAttachmentName || 'LIHAT LAMPIRAN'}
+                                </a>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="pt-8 border-t border-gray-50 flex justify-end">

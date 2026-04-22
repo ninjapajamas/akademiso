@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BookOpen, ArrowRight, Search, Filter, BarChart, CreditCard } from 'lucide-react';
+import { BookOpen, ArrowRight, Search, Filter, BarChart, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
 import { CertificationAttempt, EnrolledCourse } from '@/types';
 import { ParticipantIdentity } from '@/components/dashboard/ParticipantCard';
 import ParticipantCardModal from '@/components/dashboard/ParticipantCardModal';
@@ -60,6 +60,7 @@ export default function MyCoursesPage() {
     const [attempts, setAttempts] = useState<CertificationAttempt[]>([]);
     const [markingAttendanceCourseId, setMarkingAttendanceCourseId] = useState<number | null>(null);
     const [attendanceForms, setAttendanceForms] = useState<Record<number, WebinarAttendanceFormState>>({});
+    const [expandedExamCourses, setExpandedExamCourses] = useState<Record<number, boolean>>({});
 
     const fetchAttempts = async (token?: string) => {
         try {
@@ -249,6 +250,13 @@ export default function MyCoursesPage() {
         } finally {
             setMarkingAttendanceCourseId(null);
         }
+    };
+
+    const toggleExamSection = (courseId: number) => {
+        setExpandedExamCourses(prev => ({
+            ...prev,
+            [courseId]: !prev[courseId],
+        }));
     };
 
     return (
@@ -460,18 +468,45 @@ export default function MyCoursesPage() {
                                 )}
 
                                 {(enrollment.course.certification_exams || []).length > 0 && (
-                                    <div className="mt-6">
-                                        <StudentExamSection
-                                            course={{
-                                                ...enrollment.course,
-                                                is_enrolled: true,
-                                                progress_percentage: enrollment.progress_percentage ?? enrollment.course.progress_percentage,
-                                            }}
-                                            variant="embedded"
-                                            attempts={attempts}
-                                            attemptsLoading={isAttemptsLoading}
-                                            onAttemptsRefresh={() => fetchAttempts()}
-                                        />
+                                    <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleExamSection(enrollment.course.id)}
+                                            className="flex w-full items-center justify-between gap-4 text-left"
+                                        >
+                                            <div>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-500">Ujian Akhir</p>
+                                                <p className="mt-1 text-sm font-semibold text-gray-900">
+                                                    {(enrollment.course.certification_exams || []).length} sesi ujian tersedia untuk course ini.
+                                                </p>
+                                                <p className="mt-1 text-xs text-gray-500">
+                                                    Klik untuk {expandedExamCourses[enrollment.course.id] ? 'menutup' : 'membuka'} detail ujian akhir agar tampilan lebih rapi.
+                                                </p>
+                                            </div>
+                                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+                                                {expandedExamCourses[enrollment.course.id] ? (
+                                                    <ChevronUp className="h-5 w-5" />
+                                                ) : (
+                                                    <ChevronDown className="h-5 w-5" />
+                                                )}
+                                            </div>
+                                        </button>
+
+                                        {expandedExamCourses[enrollment.course.id] && (
+                                            <div className="mt-4">
+                                                <StudentExamSection
+                                                    course={{
+                                                        ...enrollment.course,
+                                                        is_enrolled: true,
+                                                        progress_percentage: enrollment.progress_percentage ?? enrollment.course.progress_percentage,
+                                                    }}
+                                                    variant="embedded"
+                                                    attempts={attempts}
+                                                    attemptsLoading={isAttemptsLoading}
+                                                    onAttemptsRefresh={() => fetchAttempts()}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

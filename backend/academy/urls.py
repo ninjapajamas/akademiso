@@ -7,7 +7,8 @@ from .views import (
     AdminResetPasswordView, AdminEditUserView, AdminImpersonateView, ProfileView,
     MidtransNotificationView, QuizAttemptView, CompleteLessonView, AccessLessonView,
     CertificationExamViewSet, CertificationQuestionViewSet, CertificationAlternativeViewSet, CertificationInstructorSlotViewSet,
-    CertificationAttemptViewSet, CertificateViewSet, CertificateTemplateViewSet, InhouseTrainingRequestViewSet
+    CertificationAttemptViewSet, CertificateViewSet, CertificateTemplateViewSet, InhouseTrainingRequestViewSet,
+    CourseDiscussionTopicListCreateView, CourseDiscussionCommentCreateView
 )
 
 router = DefaultRouter()
@@ -45,4 +46,6 @@ urlpatterns = [
     path('lessons/<int:lesson_id>/quiz-attempt/', QuizAttemptView.as_view(), name='quiz-attempt'),
     path('lessons/<int:lesson_id>/complete/', CompleteLessonView.as_view(), name='lesson-complete'),
     path('lessons/<int:lesson_id>/access/', AccessLessonView.as_view(), name='lesson-access'),
+    path('courses/<slug:course_slug>/forum-topics/', CourseDiscussionTopicListCreateView.as_view(), name='course-forum-topics'),
+    path('courses/<slug:course_slug>/forum-topics/<int:topic_id>/comments/', CourseDiscussionCommentCreateView.as_view(), name='course-forum-comments'),
 ]

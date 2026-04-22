@@ -1,13 +1,241 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Award, Calendar, Clock, Plus, Trash2, CheckCircle2, ChevronRight } from 'lucide-react';
-import { CertificationExam, CertificationInstructorSlot } from '@/types';
+import Link from 'next/link';
+import { Award, Calendar, Clock, Plus, Trash2, CheckCircle2, ChevronRight, X, AlertTriangle, CircleAlert, CircleCheckBig, Info } from 'lucide-react';
+import { CertificationAttempt, CertificationExam, CertificationInstructorSlot } from '@/types';
+
+type ApiListPayload<T> = T[] | { results?: T[] };
+type ApiErrorPayload = Record<string, string[] | string | undefined>;
+
+async function readJsonSafely<T>(res: Response): Promise<T | null> {
+    const text = await res.text();
+    if (!text) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(text) as T;
+    } catch {
+        throw new Error(
+            text.startsWith('<!DOCTYPE')
+                ? 'Server mengembalikan halaman HTML, bukan JSON. Biasanya endpoint sedang error.'
+                : 'Respons server tidak valid.'
+        );
+    }
+}
+
+function getListPayload<T>(payload: ApiListPayload<T> | null): T[] {
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (Array.isArray(payload?.results)) {
+        return payload.results;
+    }
+
+    return [];
+}
+
+function getApiErrorMessage(payload: ApiErrorPayload | null, fallback: string) {
+    if (!payload) {
+        return fallback;
+    }
+
+    const firstValue = Object.values(payload)[0];
+    if (Array.isArray(firstValue)) {
+        return firstValue[0] || fallback;
+    }
+
+    if (typeof firstValue === 'string') {
+        return firstValue;
+    }
+
+    return fallback;
+}
+
+function getSlotDateParts(dateValue: string) {
+    const date = new Date(`${dateValue}T00:00:00`);
+    if (Number.isNaN(date.getTime())) {
+        return { day: '--', month: '' };
+    }
+
+    return {
+        day: date.toLocaleDateString('id-ID', { day: '2-digit' }),
+        month: date.toLocaleDateString('id-ID', { month: 'short' }).toUpperCase(),
+    };
+}
+
+type FeedbackModalState = {
+    tone: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+} | null;
+
+function FeedbackModal({
+    modal,
+    onClose,
+}: {
+    modal: FeedbackModalState;
+    onClose: () => void;
+}) {
+    if (!modal) {
+        return null;
+    }
+
+    const toneStyles = {
+        success: {
+            icon: CircleCheckBig,
+            iconClassName: 'text-emerald-600',
+            badgeClassName: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+            buttonClassName: 'bg-emerald-600 hover:bg-emerald-700',
+            label: 'Berhasil',
+        },
+        error: {
+            icon: CircleAlert,
+            iconClassName: 'text-rose-600',
+            badgeClassName: 'bg-rose-50 text-rose-700 border-rose-100',
+            buttonClassName: 'bg-rose-600 hover:bg-rose-700',
+            label: 'Error',
+        },
+        warning: {
+            icon: AlertTriangle,
+            iconClassName: 'text-amber-600',
+            badgeClassName: 'bg-amber-50 text-amber-700 border-amber-100',
+            buttonClassName: 'bg-amber-500 hover:bg-amber-600',
+            label: 'Peringatan',
+        },
+        info: {
+            icon: Info,
+            iconClassName: 'text-indigo-600',
+            badgeClassName: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+            buttonClassName: 'bg-indigo-600 hover:bg-indigo-700',
+            label: 'Informasi',
+        },
+    } as const;
+
+    const tone = toneStyles[modal.tone];
+    const Icon = tone.icon;
+
+    return (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50">
+                            <Icon className={`h-6 w-6 ${tone.iconClassName}`} />
+                        </div>
+                        <div>
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${tone.badgeClassName}`}>
+                                {tone.label}
+                            </div>
+                            <h3 className="mt-3 text-lg font-bold text-slate-900">{modal.title}</h3>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{modal.message}</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        aria-label="Tutup modal"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                <div className="mt-6 flex justify-end">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className={`rounded-xl px-4 py-2.5 text-sm font-bold text-white transition ${tone.buttonClassName}`}
+                    >
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ConfirmModal({
+    open,
+    title,
+    message,
+    confirmLabel,
+    cancelLabel,
+    busy,
+    onConfirm,
+    onClose,
+}: {
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    cancelLabel: string;
+    busy?: boolean;
+    onConfirm: () => void;
+    onClose: () => void;
+}) {
+    if (!open) {
+        return null;
+    }
+
+    return (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50">
+                            <AlertTriangle className="h-6 w-6 text-amber-600" />
+                        </div>
+                        <div>
+                            <div className="inline-flex rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                Konfirmasi
+                            </div>
+                            <h3 className="mt-3 text-lg font-bold text-slate-900">{title}</h3>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{message}</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={busy}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Tutup modal"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                <div className="mt-6 flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={busy}
+                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {cancelLabel}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={busy}
+                        className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {busy ? 'Memproses...' : confirmLabel}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function InstructorCertificationPage() {
     const [exams, setExams] = useState<CertificationExam[]>([]);
     const [slots, setSlots] = useState<CertificationInstructorSlot[]>([]);
+    const [attempts, setAttempts] = useState<CertificationAttempt[]>([]);
     const [loading, setLoading] = useState(true);
+    const [feedbackModal, setFeedbackModal] = useState<FeedbackModalState>(null);
+    const [slotToDelete, setSlotToDelete] = useState<CertificationInstructorSlot | null>(null);
+    const [deletingSlotId, setDeletingSlotId] = useState<number | null>(null);
 
     // New slot form
     const [newSlot, setNewSlot] = useState({
@@ -27,19 +255,47 @@ export default function InstructorCertificationPage() {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-            const [examRes, slotRes] = await Promise.all([
+            const [examRes, slotRes, attemptRes] = await Promise.all([
                 fetch(`${apiUrl}/api/certification-exams/`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 }),
                 fetch(`${apiUrl}/api/certification-slots/`, {
                     headers: { 'Authorization': `Bearer ${token}` }
+                }),
+                fetch(`${apiUrl}/api/certification-attempts/`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 })
             ]);
 
-            setExams(await examRes.json());
-            setSlots(await slotRes.json());
+            const examData = await readJsonSafely<ApiListPayload<CertificationExam> | ApiErrorPayload>(examRes);
+            const slotData = await readJsonSafely<ApiListPayload<CertificationInstructorSlot> | ApiErrorPayload>(slotRes);
+            const attemptData = await readJsonSafely<ApiListPayload<CertificationAttempt> | ApiErrorPayload>(attemptRes);
+
+            if (!examRes.ok) {
+                throw new Error(getApiErrorMessage(examData as ApiErrorPayload | null, 'Data ujian akhir belum bisa dimuat.'));
+            }
+
+            if (!slotRes.ok) {
+                throw new Error(getApiErrorMessage(slotData as ApiErrorPayload | null, 'Data slot ujian belum bisa dimuat.'));
+            }
+
+            if (!attemptRes.ok) {
+                throw new Error(getApiErrorMessage(attemptData as ApiErrorPayload | null, 'Data peserta ujian belum bisa dimuat.'));
+            }
+
+            setExams(getListPayload(examData as ApiListPayload<CertificationExam> | null));
+            setSlots(getListPayload(slotData as ApiListPayload<CertificationInstructorSlot> | null));
+            setAttempts(getListPayload(attemptData as ApiListPayload<CertificationAttempt> | null));
         } catch (error) {
             console.error('Error fetching data:', error);
+            setExams([]);
+            setSlots([]);
+            setAttempts([]);
+            setFeedbackModal({
+                tone: 'error',
+                title: 'Data Belum Bisa Dimuat',
+                message: error instanceof Error ? error.message : 'Data ujian akhir belum bisa dimuat.',
+            });
         } finally {
             setLoading(false);
         }
@@ -61,27 +317,71 @@ export default function InstructorCertificationPage() {
             });
 
             if (res.ok) {
-                fetchData();
+                await fetchData();
                 setNewSlot({ exam: '', date: '', start_time: '', end_time: '', zoom_link: '' });
-                alert('Slot ketersediaan berhasil ditambahkan.');
+                setFeedbackModal({
+                    tone: 'success',
+                    title: 'Slot Berhasil Ditambahkan',
+                    message: 'Slot ketersediaan baru sudah tersimpan dan siap dipakai peserta.',
+                });
+            } else {
+                const errorData = await readJsonSafely<ApiErrorPayload>(res);
+                setFeedbackModal({
+                    tone: 'error',
+                    title: 'Slot Belum Bisa Ditambahkan',
+                    message: getApiErrorMessage(errorData, 'Slot ketersediaan belum bisa ditambahkan.'),
+                });
             }
         } catch (error) {
             console.error('Error adding slot:', error);
+            setFeedbackModal({
+                tone: 'error',
+                title: 'Koneksi Bermasalah',
+                message: error instanceof Error ? error.message : 'Slot ketersediaan belum bisa ditambahkan.',
+            });
         }
     };
 
-    const handleDeleteSlot = async (id: number) => {
-        if (!confirm('Hapus slot ini?')) return;
+    const handleDeleteSlot = async () => {
+        if (!slotToDelete) {
+            return;
+        }
+
         try {
+            setDeletingSlotId(slotToDelete.id);
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            await fetch(`${apiUrl}/api/certification-slots/${id}/`, {
+            const res = await fetch(`${apiUrl}/api/certification-slots/${slotToDelete.id}/`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            fetchData();
+
+            if (!res.ok) {
+                const errorData = await readJsonSafely<ApiErrorPayload>(res);
+                setFeedbackModal({
+                    tone: 'error',
+                    title: 'Slot Belum Bisa Dihapus',
+                    message: getApiErrorMessage(errorData, 'Slot sesi ujian belum bisa dihapus.'),
+                });
+                return;
+            }
+
+            await fetchData();
+            setFeedbackModal({
+                tone: 'success',
+                title: 'Slot Berhasil Dihapus',
+                message: `Jadwal ${slotToDelete.exam_title || 'ujian'} sudah dihapus dari daftar slot Anda.`,
+            });
+            setSlotToDelete(null);
         } catch (error) {
             console.error('Error deleting slot:', error);
+            setFeedbackModal({
+                tone: 'error',
+                title: 'Penghapusan Gagal',
+                message: error instanceof Error ? error.message : 'Slot sesi ujian belum bisa dihapus.',
+            });
+        } finally {
+            setDeletingSlotId(null);
         }
     };
 
@@ -109,36 +409,49 @@ export default function InstructorCertificationPage() {
                         </div>
                     ) : (
                         <div className="grid gap-4">
-                            {exams.map(exam => (
-                                <div key={exam.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                                    <div className="flex items-start justify-between">
-                                        <div>
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded mb-2 inline-block">
-                                                {exam.course_title}
-                                            </span>
-                                            <h3 className="text-lg font-bold text-gray-900">{exam.title}</h3>
-                                            <p className="text-sm text-gray-500 mt-1">{exam.description}</p>
+                            {exams.map(exam => {
+                                const examSlots = slots.filter(slot => slot.exam === exam.id);
+                                const availableSlots = examSlots.filter(slot => !slot.is_booked).length;
+                                const waitingStudents = attempts.filter(attempt => attempt.exam === exam.id && attempt.status !== 'GRADED').length;
+
+                                return (
+                                    <div key={exam.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div>
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded mb-2 inline-block">
+                                                    {exam.course_title}
+                                                </span>
+                                                <h3 className="text-lg font-bold text-gray-900">{exam.title}</h3>
+                                                <p className="text-sm text-gray-500 mt-1">{exam.description}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-2 shrink-0">
+                                                <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${exam.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                    {exam.is_active ? 'AKTIF' : 'NONAKTIF'}
+                                                </div>
+                                                <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${exam.instructor_confirmed ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                    {exam.instructor_confirmed ? 'DIKONFIRMASI' : 'MENUNGGU JADWAL'}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex flex-col items-end gap-2">
-                                            <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${exam.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
-                                                {exam.is_active ? 'AKTIF' : 'NONAKTIF'}
+                                        <div className="mt-6 pt-6 border-t border-gray-50 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                                                <span className="flex items-center gap-1">
+                                                    <Calendar className="w-3.5 h-3.5" /> {waitingStudents} Siswa Menunggu
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <Clock className="w-3.5 h-3.5" /> {availableSlots} Slot Tersedia
+                                                </span>
                                             </div>
-                                            <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${exam.instructor_confirmed ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                                {exam.instructor_confirmed ? 'DIKONFIRMASI' : 'MENUNGGU JADWAL'}
-                                            </div>
+                                            <Link
+                                                href={`/instructor/courses/${exam.course}`}
+                                                className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all"
+                                            >
+                                                Kelola Ujian <ChevronRight className="w-4 h-4" />
+                                            </Link>
                                         </div>
                                     </div>
-                                    <div className="mt-6 pt-6 border-t border-gray-50 flex items-center justify-between">
-                                        <div className="flex items-center gap-4 text-xs text-gray-500">
-                                            <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> 12 Siswa Menunggu</span>
-                                            <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> 0 Slot Tersedia</span>
-                                        </div>
-                                        <button className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all">
-                                            Kelola Ujian <ChevronRight className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -202,33 +515,55 @@ export default function InstructorCertificationPage() {
                     {/* Slots List */}
                     <div className="space-y-3">
                         <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Jadwal Anda</h3>
-                        {slots.map(slot => (
-                            <div key={slot.id} className="bg-white p-4 rounded-xl border border-gray-100 flex items-center justify-between group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gray-50 rounded-lg flex flex-col items-center justify-center text-[10px] font-bold text-gray-500 line-clamp-1">
-                                        <span className="text-gray-900">{slot.date.split('-')[2]}</span>
-                                        <span>OKT</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] font-black uppercase text-indigo-500 mb-0.5">{slot.exam_title}</div>
-                                        <div className="text-sm font-bold text-gray-900">{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="text-[10px] text-gray-400 font-medium">
-                                                {slot.is_booked ? <span className="text-red-500">Terpesan</span> : 'Tersedia'}
+                        {slots.map(slot => {
+                            const slotDate = getSlotDateParts(slot.date);
+
+                            return (
+                                <div key={slot.id} className="bg-white p-4 rounded-xl border border-gray-100 flex items-center justify-between group">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-gray-50 rounded-lg flex flex-col items-center justify-center text-[10px] font-bold text-gray-500 line-clamp-1">
+                                            <span className="text-gray-900">{slotDate.day}</span>
+                                            <span>{slotDate.month}</span>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] font-black uppercase text-indigo-500 mb-0.5">{slot.exam_title}</div>
+                                            <div className="text-sm font-bold text-gray-900">{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-[10px] text-gray-400 font-medium">
+                                                    {slot.is_booked ? <span className="text-red-500">Terpesan</span> : 'Tersedia'}
+                                                </div>
+                                                {slot.zoom_link && <div className="text-[10px] text-indigo-500 font-bold truncate max-w-[100px]">{slot.zoom_link}</div>}
                                             </div>
-                                            {slot.zoom_link && <div className="text-[10px] text-indigo-500 font-bold truncate max-w-[100px]">{slot.zoom_link}</div>}
                                         </div>
                                     </div>
+                                    <button
+                                        onClick={() => setSlotToDelete(slot)}
+                                        className="p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
-                                <button onClick={() => handleDeleteSlot(slot.id)} className="p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {slots.length === 0 && <p className="text-center text-xs text-gray-400 py-4">Belum ada jadwal ditambahkan.</p>}
                     </div>
                 </div>
             </div>
+            <FeedbackModal modal={feedbackModal} onClose={() => setFeedbackModal(null)} />
+            <ConfirmModal
+                open={Boolean(slotToDelete)}
+                title="Hapus Slot Sesi?"
+                message={slotToDelete ? `Slot ${slotToDelete.exam_title || 'ujian'} pada ${slotToDelete.date} ${slotToDelete.start_time.slice(0, 5)} akan dihapus dari jadwal instruktur.` : ''}
+                confirmLabel="Ya, Hapus"
+                cancelLabel="Batal"
+                busy={Boolean(slotToDelete && deletingSlotId === slotToDelete.id)}
+                onConfirm={handleDeleteSlot}
+                onClose={() => {
+                    if (!deletingSlotId) {
+                        setSlotToDelete(null);
+                    }
+                }}
+            />
         </div>
     );
 }

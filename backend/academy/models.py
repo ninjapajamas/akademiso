@@ -14,6 +14,12 @@ STAFF_ROLE_CHOICES = [
 
 PLATFORM_FEE_RATE = Decimal('0.10')
 MONEY_QUANTIZER = Decimal('0.01')
+ORDER_OFFER_ELEARNING = 'elearning'
+ORDER_OFFER_PUBLIC = 'public'
+ORDER_OFFER_CHOICES = [
+    (ORDER_OFFER_ELEARNING, 'E-Learning'),
+    (ORDER_OFFER_PUBLIC, 'Public Training'),
+]
 
 
 def calculate_platform_fee(amount, rate=PLATFORM_FEE_RATE):
@@ -58,6 +64,61 @@ def get_user_role(user):
     if instructor_profile and instructor_profile.is_approved:
         return 'instructor'
     return 'student'
+
+
+def get_public_session(course, session_id=None, offer_mode=''):
+    sessions = list(getattr(course, 'public_sessions', []) or [])
+    normalized_mode = (offer_mode or '').strip().lower()
+
+    if session_id:
+        for session in sessions:
+            if str(session.get('id') or '').strip() == str(session_id).strip():
+                return session
+
+    if normalized_mode:
+        for session in sessions:
+            if str(session.get('delivery_mode') or '').strip().lower() == normalized_mode:
+                return session
+
+    return sessions[0] if sessions else None
+
+
+def get_order_total_amount(course, offer_type=ORDER_OFFER_ELEARNING, public_session_id='', offer_mode=''):
+    if offer_type == ORDER_OFFER_PUBLIC:
+        session = get_public_session(course, session_id=public_session_id, offer_mode=offer_mode)
+        if not session:
+            return None
+
+        raw_price = session.get('price')
+        try:
+            return Decimal(str(raw_price or 0)).quantize(MONEY_QUANTIZER, rounding=ROUND_HALF_UP)
+        except Exception:
+            return None
+
+    return (Decimal('0') if course.is_free else Decimal(course.discount_price or course.price)).quantize(
+        MONEY_QUANTIZER,
+        rounding=ROUND_HALF_UP,
+    )
+
+
+def has_elearning_access(user, course):
+    if not getattr(user, 'is_authenticated', False):
+        return False
+
+    role = get_user_role(user)
+    if role == STAFF_ROLE_ADMIN:
+        return True
+
+    instructor = getattr(user, 'instructor_profile', None)
+    if instructor and instructor.is_approved and course.instructor_id == instructor.id:
+        return True
+
+    return Order.objects.filter(
+        user=user,
+        course=course,
+        status='Completed',
+        offer_type=ORDER_OFFER_ELEARNING,
+    ).exists()
 
 
 def default_certificate_layout():
@@ -109,6 +170,7 @@ class Instructor(models.Model):
     title = models.CharField(max_length=100)
     bio = models.TextField()
     photo = models.ImageField(upload_to='instructors/', blank=True, null=True)
+    signature_image = models.ImageField(upload_to='instructor_signatures/', blank=True, null=True)
     cv = models.FileField(upload_to='instructor_cvs/', blank=True, null=True)
     approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default=APPROVAL_APPROVED)
     rejection_reason = models.TextField(blank=True, null=True)
@@ -216,6 +278,7 @@ class Lesson(models.Model):
     content = models.TextField(blank=True, null=True) # For article content
     video_url = models.URLField(blank=True, null=True)
     image = models.ImageField(upload_to='lessons/', blank=True, null=True)
+    attachment = models.FileField(upload_to='lesson_attachments/', blank=True, null=True)
     duration = models.CharField(max_length=50, blank=True)
     order = models.PositiveIntegerField()
 
@@ -258,6 +321,9 @@ class Order(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    offer_type = models.CharField(max_length=20, choices=ORDER_OFFER_CHOICES, default=ORDER_OFFER_ELEARNING)
+    offer_mode = models.CharField(max_length=20, blank=True, default='')
+    public_session_id = models.CharField(max_length=100, blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     platform_fee_rate = models.DecimalField(max_digits=5, decimal_places=4, default=PLATFORM_FEE_RATE)
@@ -268,7 +334,7 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Order #{self.id} - {self.user.username}"
+        return f"Order #{self.id} - {self.user.username} ({self.offer_type})"
 
     def refresh_revenue_split(self):
         self.platform_fee_amount = calculate_platform_fee(self.total_amount, self.platform_fee_rate)
@@ -338,6 +404,35 @@ class InhouseTrainingRequest(models.Model):
 
     def __str__(self):
         return f"Inhouse {self.course.title} - {self.company_name}"
+
+
+class CourseDiscussionTopic(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='discussion_topics')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='discussion_topics')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+
+    def __str__(self):
+        return f"{self.course.title} - {self.title}"
+
+
+class CourseDiscussionComment(models.Model):
+    topic = models.ForeignKey(CourseDiscussionTopic, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='discussion_comments')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
+    def __str__(self):
+        return f"Komentar {self.user.username} pada {self.topic.title}"
 
 class Quiz(models.Model):
     lesson = models.OneToOneField('Lesson', on_delete=models.CASCADE, related_name='quiz_data')
@@ -532,6 +627,7 @@ class Certificate(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='certificates')
     course = models.ForeignKey('Course', on_delete=models.CASCADE)
     exam = models.ForeignKey(CertificationExam, null=True, blank=True, on_delete=models.CASCADE)
+    template = models.ForeignKey('CertificateTemplate', null=True, blank=True, on_delete=models.SET_NULL, related_name='certificates')
     issue_date = models.DateTimeField(auto_now_add=True)
     certificate_url = models.URLField(max_length=500, null=True, blank=True)
     approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default=APPROVAL_PENDING)

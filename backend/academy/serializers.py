@@ -9,7 +9,10 @@ from .models import (
     Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress,
     CertificationExam, CertificationQuestion, CertificationAlternative, 
     CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance,
-    InhouseTrainingRequest, STAFF_ROLE_ADMIN, STAFF_ROLE_CHOICES, get_staff_role, get_user_role
+    InhouseTrainingRequest, CourseDiscussionTopic, CourseDiscussionComment,
+    ORDER_OFFER_CHOICES, ORDER_OFFER_ELEARNING, ORDER_OFFER_PUBLIC,
+    STAFF_ROLE_ADMIN, STAFF_ROLE_CHOICES, get_order_total_amount, get_public_session, has_elearning_access,
+    get_staff_role, get_user_role
 )
 from django.contrib.auth.models import User
 from rest_framework.validators import UniqueValidator
@@ -190,6 +193,27 @@ class UserSerializer(serializers.ModelSerializer):
 
         return instance
 
+
+class DiscussionAuthorSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'full_name', 'avatar']
+
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip() or obj.username
+
+    def get_avatar(self, obj):
+        profile = getattr(obj, 'profile', None)
+        request = self.context.get('request')
+        if not profile or not profile.avatar:
+            return None
+        if request:
+            return request.build_absolute_uri(profile.avatar.url)
+        return profile.avatar.url
+
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
@@ -233,16 +257,39 @@ class QuizSerializer(serializers.ModelSerializer):
 class LessonSerializer(serializers.ModelSerializer):
     quiz_data = QuizSerializer(required=False)
     is_completed = serializers.SerializerMethodField()
+    attachment_name = serializers.SerializerMethodField()
 
     def get_is_completed(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
-        if user and user.is_authenticated:
+        if user and user.is_authenticated and has_elearning_access(user, obj.course):
             return UserLessonProgress.objects.filter(user=user, lesson=obj, is_completed=True).exists()
         return False
 
     class Meta:
         model = Lesson
-        fields = ['id', 'course', 'section', 'title', 'type', 'content', 'video_url', 'image', 'duration', 'order', 'quiz_data', 'is_completed']
+        fields = [
+            'id', 'course', 'section', 'title', 'type', 'content', 'video_url', 'image',
+            'attachment', 'attachment_name', 'duration', 'order', 'quiz_data', 'is_completed'
+        ]
+
+    def get_attachment_name(self, obj):
+        if not obj.attachment:
+            return ''
+        return Path(obj.attachment.name).name
+
+    def validate_attachment(self, value):
+        if not value:
+            return value
+
+        ext = Path(value.name).suffix.lower()
+        allowed_extensions = {'.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'}
+        if ext not in allowed_extensions:
+            raise serializers.ValidationError('Lampiran harus berupa PDF, Word, PowerPoint, atau Excel.')
+
+        if value.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError('Ukuran lampiran maksimal 10MB.')
+
+        return value
 
     def to_internal_value(self, data):
         # Support for JSON string if sent via FormData
@@ -264,15 +311,14 @@ class LessonSerializer(serializers.ModelSerializer):
         # Check enrollment
         is_enrolled = False
         if user and user.is_authenticated:
-            if get_user_role(user) in {STAFF_ROLE_ADMIN, 'instructor'}:
-                is_enrolled = True
-            else:
-                is_enrolled = Order.objects.filter(user=user, course=instance.course, status='Completed').exists()
+            is_enrolled = has_elearning_access(user, instance.course)
         
         # If not enrolled, hide sensitive content
         if not is_enrolled:
             data['content'] = "Konten ini hanya tersedia untuk peserta yang sudah terdaftar."
             data['video_url'] = None
+            data['attachment'] = None
+            data['attachment_name'] = ''
             data['is_locked'] = True
             # Hide quiz data if not enrolled
             if 'quiz_data' in data:
@@ -413,14 +459,12 @@ class CourseSerializer(serializers.ModelSerializer):
         user = self.context.get('request').user if self.context.get('request') else None
         if not user or not user.is_authenticated:
             return False
-        if get_user_role(user) in {STAFF_ROLE_ADMIN, 'instructor'}:
-            return True
-        return Order.objects.filter(user=user, course=obj, status='Completed').exists()
+        return has_elearning_access(user, obj)
     
     
     def get_last_accessed_lesson_id(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or not has_elearning_access(user, obj):
             return None
         
         last_progress = UserLessonProgress.objects.filter(
@@ -434,7 +478,7 @@ class CourseSerializer(serializers.ModelSerializer):
 
     def get_progress_percentage(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or not has_elearning_access(user, obj):
             return 0
         
         total_lessons = Lesson.objects.filter(course=obj).count()
@@ -588,6 +632,9 @@ class CourseSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
     course_title = serializers.ReadOnlyField(source='course.title')
+    offer_type = serializers.ChoiceField(choices=ORDER_OFFER_CHOICES, required=False, default=ORDER_OFFER_ELEARNING)
+    offer_mode = serializers.CharField(required=False, allow_blank=True, default='')
+    public_session_id = serializers.CharField(required=False, allow_blank=True, default='')
     total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
     platform_fee_rate = serializers.DecimalField(max_digits=5, decimal_places=4, read_only=True)
     platform_fee_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -599,14 +646,46 @@ class OrderSerializer(serializers.ModelSerializer):
         if self.instance is None:
             course = attrs.get('course')
             if course:
-                attrs['total_amount'] = Decimal('0') if course.is_free else (course.discount_price or course.price)
+                offer_type = attrs.get('offer_type', ORDER_OFFER_ELEARNING)
+                offer_mode = (attrs.get('offer_mode') or '').strip().lower()
+                public_session_id = (attrs.get('public_session_id') or '').strip()
+
+                if offer_type == ORDER_OFFER_ELEARNING:
+                    if not course.elearning_enabled:
+                        raise serializers.ValidationError({
+                            'offer_type': 'Course ini tidak membuka paket e-learning.'
+                        })
+                elif offer_type == ORDER_OFFER_PUBLIC:
+                    if not course.public_training_enabled:
+                        raise serializers.ValidationError({
+                            'offer_type': 'Course ini tidak membuka paket public training.'
+                        })
+                    if not get_public_session(course, session_id=public_session_id, offer_mode=offer_mode):
+                        raise serializers.ValidationError({
+                            'public_session_id': 'Sesi public training yang dipilih tidak ditemukan.'
+                        })
+
+                total_amount = get_order_total_amount(
+                    course,
+                    offer_type=offer_type,
+                    public_session_id=public_session_id,
+                    offer_mode=offer_mode,
+                )
+                if total_amount is None:
+                    raise serializers.ValidationError({
+                        'total_amount': 'Harga paket yang dipilih tidak valid.'
+                    })
+
+                attrs['offer_mode'] = offer_mode
+                attrs['public_session_id'] = public_session_id
+                attrs['total_amount'] = total_amount
 
         return attrs
     
     class Meta:
         model = Order
         fields = [
-            'id', 'user', 'course', 'course_title', 'total_amount', 'platform_fee_rate',
+            'id', 'user', 'course', 'course_title', 'offer_type', 'offer_mode', 'public_session_id', 'total_amount', 'platform_fee_rate',
             'platform_fee_amount', 'instructor_earning_amount', 'status', 'snap_token',
             'midtrans_id', 'created_at'
         ]
@@ -618,7 +697,7 @@ class MyCourseSerializer(serializers.ModelSerializer):
     
     def get_last_accessed_lesson_id(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or obj.offer_type != ORDER_OFFER_ELEARNING:
             return None
         
         last_progress = UserLessonProgress.objects.filter(
@@ -632,7 +711,7 @@ class MyCourseSerializer(serializers.ModelSerializer):
     
     def get_progress_percentage(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or obj.offer_type != ORDER_OFFER_ELEARNING:
             return 0
         
         total_lessons = Lesson.objects.filter(course=obj.course).count()
@@ -649,7 +728,7 @@ class MyCourseSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Order
-        fields = ['id', 'course', 'status', 'created_at', 'progress_percentage', 'last_accessed_lesson_id']
+        fields = ['id', 'course', 'status', 'offer_type', 'offer_mode', 'public_session_id', 'created_at', 'progress_percentage', 'last_accessed_lesson_id']
 
 class CartItemSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
@@ -677,16 +756,36 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(required=False)
     is_instructor = serializers.SerializerMethodField()
+    instructor = serializers.SerializerMethodField()
+    instructor_signature_image = serializers.ImageField(write_only=True, required=False, allow_null=True)
     role = serializers.SerializerMethodField()
     staff_role = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile', 'is_staff', 'is_instructor', 'role', 'staff_role')
+        fields = (
+            'id', 'username', 'email', 'first_name', 'last_name', 'profile',
+            'is_staff', 'is_instructor', 'instructor', 'instructor_signature_image',
+            'role', 'staff_role'
+        )
         read_only_fields = ('id', 'username', 'is_staff', 'is_instructor', 'role', 'staff_role')
 
     def get_is_instructor(self, obj):
         return get_user_role(obj) == 'instructor'
+
+    def get_instructor(self, obj):
+        instructor = getattr(obj, 'instructor_profile', None)
+        if not instructor:
+            return None
+        return {
+            'id': instructor.id,
+            'name': instructor.name,
+            'title': instructor.title,
+            'bio': instructor.bio,
+            'photo': instructor.photo.url if instructor.photo else None,
+            'signature_image': instructor.signature_image.url if instructor.signature_image else None,
+            'approval_status': instructor.approval_status,
+        }
 
     def get_role(self, obj):
         return get_user_role(obj)
@@ -710,6 +809,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
+        instructor_signature_image = validated_data.pop('instructor_signature_image', None)
         
         # Update User fields
         incoming_email = validated_data.get('email')
@@ -731,10 +831,14 @@ class ProfileSerializer(serializers.ModelSerializer):
             instr.name = f"{instance.first_name} {instance.last_name}".strip()
             if 'bio' in profile_data:
                 instr.bio = profile_data['bio']
+            if 'position' in profile_data:
+                instr.title = profile_data['position']
             if 'avatar' in profile_data:
                 instr.photo = profile_data['avatar']
+            if instructor_signature_image:
+                instr.signature_image = instructor_signature_image
             instr.save()
-            
+
         return instance
 
 class CertificationAlternativeSerializer(serializers.ModelSerializer):
@@ -876,6 +980,7 @@ class CertificateSerializer(serializers.ModelSerializer):
     certificate_number = serializers.SerializerMethodField()
     course_title = serializers.SerializerMethodField()
     exam_title = serializers.SerializerMethodField()
+    template_name = serializers.ReadOnlyField(source='template.name')
     approved_by_name = serializers.SerializerMethodField()
 
     def get_user_name(self, obj):
@@ -910,7 +1015,7 @@ class CertificateSerializer(serializers.ModelSerializer):
         model = Certificate
         fields = [
             'id', 'user', 'user_name', 'course', 'course_title', 'exam', 'exam_title',
-            'issue_date', 'certificate_url', 'certificate_number', 'approval_status',
+            'template', 'template_name', 'issue_date', 'certificate_url', 'certificate_number', 'approval_status',
             'approved_at', 'approved_by', 'approved_by_name'
         ]
 
@@ -994,4 +1099,51 @@ class CertificateTemplateSerializer(serializers.ModelSerializer):
             return {}
         if not isinstance(value, dict):
             raise serializers.ValidationError('Layout template harus berupa object JSON.')
+        return value
+
+
+class CourseDiscussionCommentSerializer(serializers.ModelSerializer):
+    author = DiscussionAuthorSerializer(source='user', read_only=True)
+
+    class Meta:
+        model = CourseDiscussionComment
+        fields = ['id', 'content', 'created_at', 'updated_at', 'author']
+
+    def validate_content(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Komentar tidak boleh kosong.')
+        return value
+
+
+class CourseDiscussionTopicSerializer(serializers.ModelSerializer):
+    author = DiscussionAuthorSerializer(source='user', read_only=True)
+    comments = CourseDiscussionCommentSerializer(many=True, read_only=True)
+    comment_count = serializers.SerializerMethodField()
+    latest_activity_at = serializers.DateTimeField(source='updated_at', read_only=True)
+
+    class Meta:
+        model = CourseDiscussionTopic
+        fields = [
+            'id', 'course', 'title', 'content', 'created_at', 'updated_at',
+            'latest_activity_at', 'author', 'comment_count', 'comments'
+        ]
+        read_only_fields = ['course']
+
+    def get_comment_count(self, obj):
+        annotated_value = getattr(obj, 'comment_count', None)
+        if annotated_value is not None:
+            return annotated_value
+        return obj.comments.count()
+
+    def validate_title(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Judul topik tidak boleh kosong.')
+        return value
+
+    def validate_content(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Isi topik tidak boleh kosong.')
         return value

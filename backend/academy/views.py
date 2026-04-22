@@ -8,14 +8,17 @@ from .models import (
     Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress,
     CertificationExam, CertificationQuestion, CertificationAlternative, 
     CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance,
-    InhouseTrainingRequest, STAFF_ROLE_ACCOUNTANT, STAFF_ROLE_ADMIN, get_staff_role, get_user_role
+    InhouseTrainingRequest, CourseDiscussionTopic, CourseDiscussionComment,
+    ORDER_OFFER_ELEARNING, STAFF_ROLE_ACCOUNTANT, STAFF_ROLE_ADMIN, has_elearning_access,
+    get_staff_role, get_user_role
 )
 from .serializers import (
     CategorySerializer, InstructorSerializer, CourseSerializer, OrderSerializer, 
     RegisterSerializer, LessonSerializer, SectionSerializer, ProfileSerializer,
     CertificationExamSerializer, CertificationQuestionSerializer, CertificationAlternativeSerializer,
     CertificationInstructorSlotSerializer, CertificationAttemptSerializer, CertificationAnswerSerializer,
-    CertificateSerializer, CertificateTemplateSerializer, WebinarAttendanceSerializer, InhouseTrainingRequestSerializer
+    CertificateSerializer, CertificateTemplateSerializer, WebinarAttendanceSerializer, InhouseTrainingRequestSerializer,
+    CourseDiscussionTopicSerializer, CourseDiscussionCommentSerializer
 )
 from .certificates import generate_certificate_pdf
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, BasePermission, SAFE_METHODS
@@ -105,6 +108,20 @@ def _can_manage_course(user, course):
 
 def _get_completed_order(course, user):
     return Order.objects.filter(user=user, course=course, status='Completed').order_by('-created_at').first()
+
+
+def _get_course_by_lookup(lookup_value):
+    _sync_course_activity()
+    queryset = Course.objects.all()
+    if str(lookup_value).isdigit():
+        by_id = queryset.filter(pk=lookup_value).first()
+        if by_id:
+            return by_id
+    return get_object_or_404(queryset, slug=lookup_value)
+
+
+def _can_access_course_discussion(user, course):
+    return has_elearning_access(user, course)
 
 
 def _get_default_webinar_attendance_payload(user):
@@ -373,6 +390,7 @@ class LessonViewSet(viewsets.ModelViewSet):
             content=source_lesson.content,
             video_url=source_lesson.video_url,
             image=source_lesson.image,
+            attachment=source_lesson.attachment,
             duration=source_lesson.duration,
             order=order,
         )
@@ -658,6 +676,64 @@ class CourseViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class CourseDiscussionTopicListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_course(self, course_slug):
+        return _get_course_by_lookup(course_slug)
+
+    def get(self, request, course_slug):
+        course = self.get_course(course_slug)
+        if not _can_access_course_discussion(request.user, course):
+            return Response({'error': 'Forum diskusi hanya tersedia untuk peserta course ini.'}, status=403)
+
+        topics = CourseDiscussionTopic.objects.filter(course=course).select_related(
+            'user', 'user__profile'
+        ).prefetch_related(
+            'comments__user', 'comments__user__profile'
+        ).annotate(
+            comment_count=Count('comments')
+        ).order_by('-updated_at', '-id')
+        serializer = CourseDiscussionTopicSerializer(topics, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def post(self, request, course_slug):
+        course = self.get_course(course_slug)
+        if not _can_access_course_discussion(request.user, course):
+            return Response({'error': 'Anda belum bisa membuat topik pada forum course ini.'}, status=403)
+
+        serializer = CourseDiscussionTopicSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        topic = serializer.save(course=course, user=request.user)
+        return Response(
+            CourseDiscussionTopicSerializer(topic, context={'request': request}).data,
+            status=201
+        )
+
+
+class CourseDiscussionCommentCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, course_slug, topic_id):
+        course = _get_course_by_lookup(course_slug)
+        if not _can_access_course_discussion(request.user, course):
+            return Response({'error': 'Anda belum bisa berkomentar pada forum course ini.'}, status=403)
+
+        topic = get_object_or_404(
+            CourseDiscussionTopic.objects.select_related('course'),
+            pk=topic_id,
+            course=course,
+        )
+        serializer = CourseDiscussionCommentSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save(topic=topic, user=request.user)
+        topic.save(update_fields=['updated_at'])
+        return Response(
+            CourseDiscussionCommentSerializer(comment, context={'request': request}).data,
+            status=201
+        )
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().select_related('user', 'course').order_by('-created_at')
     serializer_class = OrderSerializer
@@ -815,7 +891,11 @@ class MyCoursesView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Order.objects.filter(user=self.request.user, status='Completed').order_by('-created_at')
+        return Order.objects.filter(
+            user=self.request.user,
+            status='Completed',
+            offer_type=ORDER_OFFER_ELEARNING,
+        ).order_by('-created_at')
 
     def get_serializer_class(self):
         from .serializers import MyCourseSerializer
@@ -1031,9 +1111,22 @@ class CertificationAttemptViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        queryset = CertificationAttempt.objects.select_related(
+            'user',
+            'exam',
+            'exam__course',
+            'exam__course__instructor',
+            'interview_slot',
+            'interview_slot__instructor',
+        )
         if get_user_role(user) == STAFF_ROLE_ADMIN:
-            return CertificationAttempt.objects.all()
-        return CertificationAttempt.objects.filter(user=user)
+            return queryset
+
+        instructor = _get_instructor_for_user(user)
+        if instructor:
+            return queryset.filter(exam__course__instructor=instructor)
+
+        return queryset.filter(user=user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -1044,7 +1137,7 @@ class CertificationAttemptViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         selected_slot = serializer.validated_data.get('interview_slot')
 
-        if get_user_role(user) != STAFF_ROLE_ADMIN and not Order.objects.filter(user=user, course=exam.course, status='Completed').exists():
+        if not has_elearning_access(user, exam.course):
             return Response({'error': 'Anda harus terdaftar pada pelatihan ini untuk mengikuti ujian akhir.'}, status=403)
 
         if not exam.is_active:
@@ -1262,11 +1355,11 @@ class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if get_user_role(user) == STAFF_ROLE_ADMIN and self.request.query_params.get('scope') == 'all':
-            return Certificate.objects.all().select_related('course', 'exam', 'user', 'approved_by')
+            return Certificate.objects.all().select_related('course', 'course__instructor', 'exam', 'user', 'approved_by', 'template')
         return Certificate.objects.filter(
             user=user,
             approval_status=Certificate.APPROVAL_APPROVED,
-        ).select_related('course', 'exam', 'user', 'approved_by')
+        ).select_related('course', 'course__instructor', 'exam', 'user', 'approved_by', 'template')
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -1286,7 +1379,21 @@ class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
         certificate = self.get_object()
+        template_id = request.data.get('template') or request.data.get('template_id')
+        if template_id:
+            template = CertificateTemplate.objects.filter(
+                Q(course=certificate.course) | Q(course__isnull=True),
+                id=template_id,
+                is_active=True,
+            ).first()
+            if not template:
+                return Response({'template': 'Template tidak aktif atau tidak berlaku untuk course ini.'}, status=400)
+            certificate.template = template
+
         if certificate.approval_status == Certificate.APPROVAL_APPROVED:
+            if template_id:
+                generate_certificate_pdf(certificate, force=True)
+                certificate.save(update_fields=['template', 'certificate_url'])
             serializer = self.get_serializer(certificate)
             return Response(serializer.data)
 
@@ -1294,7 +1401,7 @@ class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
         certificate.approved_by = request.user
         certificate.approved_at = timezone.now()
         generate_certificate_pdf(certificate, force=True)
-        certificate.save(update_fields=['approval_status', 'approved_by', 'approved_at', 'certificate_url'])
+        certificate.save(update_fields=['approval_status', 'approved_by', 'approved_at', 'certificate_url', 'template'])
         serializer = self.get_serializer(certificate)
         return Response(serializer.data)
 
@@ -1612,7 +1719,7 @@ class QuizAttemptView(APIView):
             quiz = lesson.quiz_data
             
             # Check enrollment
-            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and get_user_role(request.user) != STAFF_ROLE_ADMIN:
+            if not has_elearning_access(request.user, lesson.course):
                 return Response({'error': 'You must be enrolled to take this quiz'}, status=403)
             
             user_answers = request.data.get('answers', {}) # {question_id: alternative_id}
@@ -1691,14 +1798,17 @@ class ProfileView(APIView):
         # 3. Add avatar from FILES
         if 'avatar' in request.FILES:
             profile_data['avatar'] = request.FILES['avatar']
-            
+
         # Create a clean dict for serializer
         serializer_data = {
+            'email': data.get('email'),
             'first_name': data.get('first_name'),
             'last_name': data.get('last_name'),
             'profile': profile_data
         }
-        
+        if 'signature_image' in request.FILES:
+            serializer_data['instructor_signature_image'] = request.FILES['signature_image']
+
         # Remove None values to allow partial update
         serializer_data = {k: v for k, v in serializer_data.items() if v is not None}
 
@@ -1716,7 +1826,7 @@ class CompleteLessonView(APIView):
             lesson = Lesson.objects.get(id=lesson_id)
             
             # Check enrollment
-            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and get_user_role(request.user) != STAFF_ROLE_ADMIN:
+            if not has_elearning_access(request.user, lesson.course):
                 return Response({'error': 'You must be enrolled to complete this lesson'}, status=403)
             
             progress, created = UserLessonProgress.objects.get_or_create(
@@ -1747,7 +1857,7 @@ class AccessLessonView(APIView):
         try:
             lesson = Lesson.objects.get(id=lesson_id)
             
-            if not Order.objects.filter(user=request.user, course=lesson.course, status='Completed').exists() and get_user_role(request.user) != STAFF_ROLE_ADMIN:
+            if not has_elearning_access(request.user, lesson.course):
                 return Response({'error': 'You must be enrolled to access this lesson'}, status=403)
             
             progress, created = UserLessonProgress.objects.get_or_create(

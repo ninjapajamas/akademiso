@@ -10,8 +10,6 @@ import {
     MessageSquare,
     ChevronLeft,
     ChevronRight,
-    Menu,
-    X,
     ShieldCheck,
     ChevronDown,
     Clock,
@@ -23,15 +21,34 @@ import {
     ArrowRight,
     Video
 } from 'lucide-react';
+import Link from 'next/link';
 
 const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
 const QUESTION_TYPE_SHORT_ANSWER = 'SHORT_ANSWER';
+const LESSON_TABS = [
+    { key: 'deskripsi', label: 'Deskripsi' },
+    { key: 'sumber-daya', label: 'Sumber Daya' },
+] as const;
 const isAssessmentLesson = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '');
 const getLessonTypeLabel = (type?: string) => {
     if (isAssessmentLesson(type)) return 'Quiz / Tes';
     if (type === 'video') return 'Video';
     if (type === 'article') return 'Artikel';
     return type || 'Materi';
+};
+const normalizeTabKey = (value?: string | null) => {
+    if (!value) return 'deskripsi';
+    const normalizedValue = value.trim().toLowerCase();
+    return LESSON_TABS.some((tab) => tab.key === normalizedValue) ? normalizedValue : 'deskripsi';
+};
+const getAttachmentLabel = (lesson: { attachment?: string | null; attachment_name?: string } | null) => {
+    if (!lesson) return '';
+    if (lesson.attachment_name) return lesson.attachment_name;
+    if (!lesson.attachment) return '';
+
+    const segments = lesson.attachment.split('/');
+    const filename = segments[segments.length - 1] || '';
+    return decodeURIComponent(filename.split('?')[0] || '');
 };
 
 const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => void }) => {
@@ -265,7 +282,6 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         </div>
     );
 };
-import Link from 'next/link';
 
 // Helper to get embed URL for external videos
 const getEmbedUrl = (url: string) => {
@@ -384,6 +400,9 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                 if (res.ok) {
                     const data = await res.json();
                     setCourse(data);
+                    const params = new URLSearchParams(window.location.search);
+                    const urlTab = params.get('tab');
+                    setActiveTab(normalizeTabKey(urlTab));
 
                     // Resume Logic: Find exact lesson from URL, or fallback to first incomplete
                     if (data.sections && data.sections.length > 0) {
@@ -392,7 +411,6 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                             .flatMap((s: any) => (s.lessons || []).sort((a: any, b: any) => a.order - b.order));
 
                         // Use standard DOM API to avoid Next.js Suspense boundary errors
-                        const params = new URLSearchParams(window.location.search);
                         const urlLessonId = params.get('lesson');
                         let resumeLesson;
 
@@ -459,6 +477,9 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
     );
 
     const sections = course.sections || [];
+    const openLessonView = (lesson: any) => {
+        setActiveLesson(lesson);
+    };
 
     // Calculate real progress dynamically from the lessons' is_completed status
     const allLessons = sections.flatMap((s: any) => s.lessons || []);
@@ -540,7 +561,6 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                         </div>
                     )}
 
-                    {/* Video Player / Article Content */}
                     {activeLesson ? (
                         <>
                             {activeLesson.type === 'video' && (
@@ -584,76 +604,113 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                 />
                             )}
 
-                            {/* Content Meta - Only show for video/article */}
-                            {['video', 'article'].includes(activeLesson.type) && (
-                                <div className="mt-8">
-                                    <div className="flex justify-between items-start mb-6">
-                                        <div>
-                                            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">
-                                                <span className="bg-blue-600 text-white px-3 py-1 rounded-full">MATERI SEKARANG</span>
-                                                <span className="flex items-center gap-1.5"><Clock className="w-3 h-3" /> {activeLesson.duration || '-'}</span>
-                                            </div>
-                                            <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">{activeLesson.title}</h2>
+                            <div className="mt-8">
+                                <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                    <div>
+                                        <div className="mb-3 flex flex-wrap items-center gap-3 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                            <span className="rounded-full bg-blue-600 px-3 py-1 text-white">Materi Sekarang</span>
+                                            <span className="flex items-center gap-1.5">
+                                                <Clock className="w-3 h-3" /> {activeLesson.duration || '-'}
+                                            </span>
+                                            <span className="flex items-center gap-1.5">
+                                                <MessageSquare className="w-3 h-3" /> {getLessonTypeLabel(activeLesson.type)}
+                                            </span>
                                         </div>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={handlePrevLesson}
-                                                className="flex items-center gap-2 px-5 py-3 bg-white border border-gray-100 rounded-2xl text-xs font-bold text-gray-600 hover:bg-gray-50 transition-all shadow-sm"
-                                            >
-                                                <ChevronLeft className="w-4 h-4" /> Sebelumnya
-                                            </button>
-                                            <button
-                                                onClick={handleNextLesson}
-                                                className="flex items-center gap-2 px-5 py-3 bg-blue-600 rounded-2xl text-xs font-bold text-white hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 active:scale-95"
-                                            >
-                                                Materi Selanjutnya <ChevronRight className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                        <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">{activeLesson.title}</h2>
                                     </div>
-
-                                    {/* Tabs */}
-                                    <div className="border-b border-gray-100 mb-8 overflow-x-auto">
-                                        <div className="flex gap-10 min-w-max">
-                                            {['Deskripsi', 'Sumber Daya', 'Diskusi'].map((tab) => (
-                                                <button
-                                                    key={tab}
-                                                    onClick={() => setActiveTab(tab.toLowerCase())}
-                                                    className={`pb-4 text-xs font-black uppercase tracking-widest relative transition-all ${activeTab === tab.toLowerCase() ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-                                                >
-                                                    {tab}
-                                                    {activeTab === tab.toLowerCase() && (
-                                                        <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-600 rounded-full animate-in fade-in zoom-in-50 duration-300"></div>
-                                                    )}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Tab Content */}
-                                    <div className="max-w-none text-gray-600 text-base leading-relaxed mb-10 pb-10">
-                                        {activeTab === 'deskripsi' && (
-                                            <div className="animate-in fade-in slide-in-from-bottom-2">
-                                                {activeLesson.type === 'article' ? (
-                                                    <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm rich-text-content prose prose-blue max-w-none">
-                                                        <div dangerouslySetInnerHTML={{ __html: activeLesson.content || '' }} />
-                                                    </div>
-                                                ) : (
-                                                    <div className="prose prose-blue max-w-none">
-                                                        <p className="text-gray-600 leading-relaxed text-lg">
-                                                            {activeLesson.content || 'Tidak ada deskripsi tambahan untuk materi ini.'}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                        {activeTab === 'sumber' && <p className="text-gray-400 font-medium">Belum ada sumber daya yang dapat diunduh.</p>}
-                                        {activeTab === 'diskusi' && <p className="text-gray-400 font-medium">Fitur diskusi akan segera hadir.</p>}
+                                    <div className="flex flex-wrap gap-3">
+                                        <button
+                                            onClick={handlePrevLesson}
+                                            className="flex items-center gap-2 rounded-2xl border border-gray-100 bg-white px-5 py-3 text-xs font-bold text-gray-600 transition-all shadow-sm hover:bg-gray-50"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" /> Sebelumnya
+                                        </button>
+                                        <button
+                                            onClick={handleNextLesson}
+                                            className="flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-bold text-white transition-all shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95"
+                                        >
+                                            Materi Selanjutnya <ChevronRight className="w-4 h-4" />
+                                        </button>
                                     </div>
                                 </div>
-                            )}
+
+                                <div className="mb-8 overflow-x-auto border-b border-gray-100">
+                                    <div className="flex min-w-max gap-10">
+                                        {LESSON_TABS.map((tab) => (
+                                            <button
+                                                key={tab.key}
+                                                onClick={() => setActiveTab(tab.key)}
+                                                className={`relative pb-4 text-xs font-black uppercase tracking-widest transition-all ${
+                                                    activeTab === tab.key ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                                                }`}
+                                            >
+                                                {tab.label}
+                                                {activeTab === tab.key && (
+                                                    <div className="absolute bottom-0 left-0 h-1 w-full animate-in fade-in zoom-in-50 rounded-full bg-blue-600 duration-300"></div>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="mb-10 max-w-none pb-10 text-base leading-relaxed text-gray-600">
+                                    {activeTab === 'deskripsi' && (
+                                        <div className="animate-in slide-in-from-bottom-2 fade-in">
+                                            {activeLesson.type === 'article' ? (
+                                                <div className="rich-text-content prose prose-blue max-w-none rounded-[2rem] border border-gray-100 bg-white p-8 shadow-sm">
+                                                    <div dangerouslySetInnerHTML={{ __html: activeLesson.content || '' }} />
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-[2rem] border border-gray-100 bg-white p-8 shadow-sm">
+                                                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Ringkasan Materi</p>
+                                                    <p className="mt-4 text-lg leading-relaxed text-gray-600">
+                                                        {activeLesson.content || 'Belum ada deskripsi tambahan untuk materi ini.'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'sumber-daya' && (
+                                        activeLesson.attachment ? (
+                                            <div className="rounded-[2rem] border border-gray-100 bg-white p-8 shadow-sm">
+                                                <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div className="flex items-start gap-4">
+                                                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm">
+                                                            <FileText className="h-6 w-6" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Lampiran Materi</p>
+                                                            <p className="mt-2 text-lg font-bold text-gray-900">{getAttachmentLabel(activeLesson) || 'Dokumen Materi'}</p>
+                                                            <p className="mt-2 text-sm text-gray-500">Unduh file pendukung yang dibagikan instruktur untuk materi ini.</p>
+                                                        </div>
+                                                    </div>
+                                                    <a
+                                                        href={activeLesson.attachment}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-blue-700"
+                                                    >
+                                                        <Download className="h-4 w-4" />
+                                                        Unduh File
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-[2rem] border border-dashed border-gray-200 bg-gray-50 px-8 py-12 text-center">
+                                                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-gray-400 shadow-sm">
+                                                    <Download className="h-6 w-6" />
+                                                </div>
+                                                <p className="mt-5 font-semibold text-gray-700">Belum ada sumber daya yang dapat diunduh.</p>
+                                                <p className="mt-2 text-sm text-gray-400">Jika instruktur menambahkan lampiran atau bahan pendukung, file-nya akan muncul di tab ini.</p>
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            </div>
                         </>
                     ) : (
-                        <div className="flex-1 flex items-center justify-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+                        <div className="flex-1 flex items-center justify-center rounded-3xl border-2 border-dashed border-gray-200 bg-gray-50">
                             <p className="text-gray-400">Pilih materi untuk memulai belajar.</p>
                         </div>
                     )}
@@ -704,7 +761,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                         return (
                                             <div
                                                 key={lesson.id}
-                                                onClick={() => !isLocked && setActiveLesson(lesson)}
+                                                onClick={() => !isLocked && openLessonView(lesson)}
                                                 className={`px-4 py-4 flex gap-4 text-sm rounded-2xl transition-all relative group
                                                     ${isLocked ? 'opacity-50 cursor-not-allowed filter grayscale-[0.5]' : 'cursor-pointer'}
                                                     ${isActive

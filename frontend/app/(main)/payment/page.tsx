@@ -1,23 +1,66 @@
 "use client"
-import Link from 'next/link';
 import { Clock, CreditCard, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
+import { Course, PublicTrainingSession } from '@/types';
+
+type PaymentOffer = 'elearning' | 'public';
+
+type SnapResult = Record<string, unknown>;
+
+type SnapPayOptions = {
+    onSuccess?: (result: SnapResult) => void | Promise<void>;
+    onPending?: (result: SnapResult) => void | Promise<void>;
+    onError?: (error: SnapResult) => void;
+    onClose?: () => void;
+};
+
+declare global {
+    interface Window {
+        snap?: {
+            pay: (token: string, options: SnapPayOptions) => void;
+        };
+    }
+}
+
+function getSelectedPublicSession(
+    course: Course | null,
+    sessionId: string | null,
+    offerMode: string | null
+): PublicTrainingSession | null {
+    const sessions = Array.isArray(course?.public_sessions) ? course.public_sessions : [];
+
+    if (sessionId) {
+        const matchedById = sessions.find((session) => session.id === sessionId);
+        if (matchedById) return matchedById;
+    }
+
+    if (offerMode) {
+        const matchedByMode = sessions.find((session) => session.delivery_mode === offerMode);
+        if (matchedByMode) return matchedByMode;
+    }
+
+    return sessions[0] || null;
+}
 
 function PaymentContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const slug = searchParams.get('slug');
+    const offer = (searchParams.get('offer') || 'elearning') as PaymentOffer;
+    const offerMode = searchParams.get('mode');
+    const publicSessionId = searchParams.get('session');
+    const paymentQuery = searchParams.toString();
 
     const [selectedMethod, setSelectedMethod] = useState<string>('mandiri');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [course, setCourse] = useState<any>(null);
+    const [course, setCourse] = useState<Course | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
         if (!token) {
-            router.push(`/login?redirect=/payment${slug ? `?slug=${slug}` : ''}`);
+            router.push(`/login?redirect=/payment${paymentQuery ? `?${paymentQuery}` : ''}`);
             return;
         }
 
@@ -31,7 +74,7 @@ function PaymentContent() {
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
                 const res = await fetch(`${apiUrl}/api/courses/${slug}/`);
                 if (res.ok) {
-                    const data = await res.json();
+                    const data: Course = await res.json();
                     setCourse(data);
                 } else {
                     router.push('/courses');
@@ -44,11 +87,11 @@ function PaymentContent() {
         };
 
         fetchCourse();
-    }, [router, slug]);
+    }, [paymentQuery, router, slug]);
 
     // Midtrans Snap declaration
     const snapPay = (token: string, orderId: number) => {
-        if (!(window as any).snap) {
+        if (!window.snap) {
             alert('Midtrans Snap is not loaded yet');
             return;
         }
@@ -68,18 +111,18 @@ function PaymentContent() {
             }
         };
 
-        (window as any).snap.pay(token, {
-            onSuccess: async (result: any) => {
+        window.snap.pay(token, {
+            onSuccess: async (result) => {
                 console.log('Payment success:', result);
                 await handleSync();
                 router.push('/dashboard/courses');
             },
-            onPending: async (result: any) => {
+            onPending: async (result) => {
                 console.log('Payment pending:', result);
                 await handleSync();
                 router.push('/dashboard/courses');
             },
-            onError: (error: any) => {
+            onError: (error) => {
                 console.error('Payment error:', error);
                 alert('Pembayaran gagal. Silakan coba lagi.');
             },
@@ -104,7 +147,12 @@ function PaymentContent() {
                 },
                 body: JSON.stringify({
                     course: course.id,
-                    total_amount: parseInt(course.discount_price || course.price),
+                    offer_type: offer,
+                    offer_mode: offerMode || '',
+                    public_session_id: publicSessionId || '',
+                    total_amount: offer === 'public'
+                        ? Number(selectedPublicSession?.price || 0)
+                        : parseInt(course.discount_price || course.price),
                     status: 'Pending'
                 })
             });
@@ -137,7 +185,13 @@ function PaymentContent() {
 
     if (!course) return null;
 
-    const price = parseInt(course.discount_price || course.price);
+    const selectedPublicSession = offer === 'public' ? getSelectedPublicSession(course, publicSessionId, offerMode) : null;
+    const price = offer === 'public'
+        ? Number(selectedPublicSession?.price || 0)
+        : Number(course.discount_price || course.price || 0);
+    const offerLabel = offer === 'public'
+        ? `Public Training${offerMode ? ` ${offerMode === 'online' ? 'Online' : 'Offline'}` : ''}`
+        : 'Paket E-Learning';
 
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
@@ -303,6 +357,7 @@ function PaymentContent() {
                                     <div>
                                         <h4 className="font-bold text-gray-900 text-sm line-clamp-2">{course.title}</h4>
                                         <p className="text-xs text-gray-500 mt-1">{course.category?.name || 'Sesi Online + Sertifikat Resmi'}</p>
+                                        <div className="mt-2 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">{offerLabel}</div>
                                         <div className="mt-2 inline-block bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">Batch Termudah</div>
                                     </div>
                                 </div>
@@ -310,12 +365,12 @@ function PaymentContent() {
                                 <div className="space-y-3 mb-6 pb-6 border-b border-gray-100 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Subtotal</span>
-                                        <span className="font-medium text-gray-900">Rp {parseInt(course.price).toLocaleString('id-ID')}</span>
+                                        <span className="font-medium text-gray-900">Rp {price.toLocaleString('id-ID')}</span>
                                     </div>
-                                    {course.discount_price && (
+                                    {offer === 'elearning' && course.discount_price && (
                                         <div className="flex justify-between text-green-600">
                                             <span className="font-medium flex items-center gap-1">Potongan Harga</span>
-                                            <span className="font-bold">- Rp {(parseInt(course.price) - parseInt(course.discount_price)).toLocaleString('id-ID')}</span>
+                                            <span className="font-bold">- Rp {(Number(course.price || 0) - Number(course.discount_price || 0)).toLocaleString('id-ID')}</span>
                                         </div>
                                     )}
                                     <div className="flex justify-between">

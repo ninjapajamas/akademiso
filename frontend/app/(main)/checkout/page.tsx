@@ -7,10 +7,31 @@ import { Suspense, useEffect, useState } from 'react';
 import { Course } from '@/types';
 import { getProfileDisplayName, getRequiredProfileMissingFields, isRequiredProfileComplete, type UserProfilePayload } from '@/utils/profile';
 
+type CheckoutOffer = 'elearning' | 'public';
+
+function getSelectedPublicSession(course: Course | null, sessionId: string | null, offerMode: string | null) {
+    const sessions = Array.isArray(course?.public_sessions) ? course.public_sessions : [];
+
+    if (sessionId) {
+        const matchedById = sessions.find((session) => session.id === sessionId);
+        if (matchedById) return matchedById;
+    }
+
+    if (offerMode) {
+        const matchedByMode = sessions.find((session) => session.delivery_mode === offerMode);
+        if (matchedByMode) return matchedByMode;
+    }
+
+    return sessions[0] || null;
+}
+
 function CheckoutContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const slug = searchParams.get('slug');
+    const offer = (searchParams.get('offer') || 'elearning') as CheckoutOffer;
+    const offerMode = searchParams.get('mode');
+    const publicSessionId = searchParams.get('session');
     const checkoutQuery = searchParams.toString();
 
     const [course, setCourse] = useState<Course | null>(null);
@@ -75,8 +96,19 @@ function CheckoutContent() {
 
     if (!course) return null;
 
-    const price = parseInt(course.discount_price || course.price);
+    const selectedPublicSession = offer === 'public' ? getSelectedPublicSession(course, publicSessionId, offerMode) : null;
+    const selectedPrice = offer === 'public'
+        ? Number(selectedPublicSession?.price || 0)
+        : Number(course.discount_price || course.price || 0);
+    const price = Number.isFinite(selectedPrice) ? selectedPrice : 0;
     const isFreeWebinar = course.type === 'webinar' && course.is_free;
+    const isFreeOffering = price <= 0;
+    const offerTitle = offer === 'public'
+        ? `Public Training${offerMode ? ` ${offerMode === 'online' ? 'Online' : 'Offline'}` : ''}`
+        : 'Paket E-Learning';
+    const offerSchedule = offer === 'public'
+        ? selectedPublicSession?.schedule || 'Jadwal akan diinformasikan'
+        : 'Akses materi aktif setelah pembayaran berhasil';
     const displayName = getProfileDisplayName(profile) || '-';
     const phone = profile?.profile?.phone?.trim() || '-';
     const company = profile?.profile?.company?.trim() || '-';
@@ -229,24 +261,27 @@ function CheckoutContent() {
 
                             <div className="p-6">
                                 <h3 className="font-bold text-gray-900 mb-2">{course.title}</h3>
-                                <p className="text-sm text-gray-500 mb-6">{course.category?.name || 'Sertifikasi ISO'}</p>
+                                <p className="text-sm text-gray-500 mb-2">{course.category?.name || 'Sertifikasi ISO'}</p>
+                                <div className="mb-6 inline-flex rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">
+                                    {offerTitle}
+                                </div>
 
                                 <div className="bg-gray-50 rounded-lg p-4 mb-6 flex items-center gap-3">
                                     <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shadow-sm">
                                         <Calendar className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <p className="text-xs text-gray-500">Jadwal Pelaksanaan</p>
-                                        <p className="font-bold text-sm text-gray-900">24 - 25 Agustus 2024</p>
+                                        <p className="text-xs text-gray-500">{offer === 'public' ? 'Jadwal Public Training' : 'Akses Pelatihan'}</p>
+                                        <p className="font-bold text-sm text-gray-900">{offerSchedule}</p>
                                     </div>
                                 </div>
 
                                 <div className="space-y-3 mb-6 pb-6 border-b border-gray-100 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Harga Pelatihan</span>
-                                        <span className="font-medium text-gray-900">{isFreeWebinar ? 'Gratis' : `Rp ${parseInt(course.price).toLocaleString('id-ID')}`}</span>
+                                        <span className="font-medium text-gray-900">{isFreeWebinar || isFreeOffering ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                     </div>
-                                    {course.discount_price && !isFreeWebinar && (
+                                    {offer === 'elearning' && course.discount_price && !isFreeWebinar && !isFreeOffering && (
                                         <div className="flex justify-between text-green-600">
                                             <span className="text-gray-500">Potongan Harga</span>
                                             <span className="font-medium">- Rp {(parseInt(course.price) - parseInt(course.discount_price)).toLocaleString('id-ID')}</span>
@@ -264,14 +299,14 @@ function CheckoutContent() {
 
                                 <div className="flex justify-between items-center mb-6">
                                     <span className="font-bold text-gray-900">Total Bayar</span>
-                                    <span className="font-bold text-xl text-blue-600">{isFreeWebinar ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
+                                    <span className="font-bold text-xl text-blue-600">{isFreeWebinar || isFreeOffering ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                 </div>
 
                                 {canProceed ? (
                                     <button
                                         type="button"
                                         disabled={!agreed}
-                                        onClick={() => router.push(`/payment?slug=${encodeURIComponent(slug || '')}`)}
+                                        onClick={() => router.push(`/payment?${checkoutQuery}`)}
                                         className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         Lanjut ke Pembayaran
