@@ -1,16 +1,14 @@
 services:
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: akademiso-backend
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
     environment:
       DJANGO_DEBUG: "1"
-      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend,72.61.208.187"
 
   frontend:
     build:
@@ -21,12 +19,8 @@ services:
       - backend
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:8000"
+      NEXT_PUBLIC_API_URL: "http://72.61.208.187:8000"
       BACKEND_INTERNAL_URL: "http://backend:8000"
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"

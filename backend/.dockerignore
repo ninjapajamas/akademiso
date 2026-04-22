@@ -1,0 +1,8 @@
+__pycache__
+*/__pycache__
+media
+test_media
+db.sqlite3
+*.pyc
+*.pyo
+*.pyd
