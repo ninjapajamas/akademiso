@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import {
+    Award,
+    BriefcaseBusiness,
     CalendarDays,
     CheckCircle2,
     ChevronDown,
@@ -9,16 +11,26 @@ import {
     FileText,
     GraduationCap,
     LayoutList,
+    Lightbulb,
     MapPin,
     MessageSquare,
+    ShieldCheck,
     Star,
+    Target,
     ThumbsUp
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/context/CartContext';
 import AddToCartModal from '@/components/AddToCartModal';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 import StudentExamSection from '@/components/exam/StudentExamSection';
 import { Course, InhouseTrainingRequest, PublicTrainingSession, TrainingDetailSection } from '@/types';
+import {
+    getInstructorExpertiseBadges,
+    getInstructorProfileSummary
+} from '@/utils/instructorProfile';
+import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
+import { getRundownAgendaEntries } from '@/utils/rundown';
 
 const REVIEWS = [
     {
@@ -122,6 +134,73 @@ function slugifyAnchor(value: string) {
         .replace(/^-+|-+$/g, '') || 'bagian';
 }
 
+function getSectionPresentation(title: string, index: number) {
+    const normalizedTitle = title.toLowerCase();
+
+    if (normalizedTitle.includes('penting') || normalizedTitle.includes('mengapa')) {
+        return {
+            kicker: 'Pentingnya Training',
+            accent: 'from-blue-600 to-cyan-500',
+            border: 'border-blue-100',
+            soft: 'bg-blue-50',
+            text: 'text-blue-700',
+            icon: Lightbulb,
+        };
+    }
+
+    if (normalizedTitle.includes('manfaat') || normalizedTitle.includes('tujuan')) {
+        return {
+            kicker: 'Manfaat Utama',
+            accent: 'from-emerald-600 to-teal-500',
+            border: 'border-emerald-100',
+            soft: 'bg-emerald-50',
+            text: 'text-emerald-700',
+            icon: Target,
+        };
+    }
+
+    if (normalizedTitle.includes('materi') || normalizedTitle.includes('modul')) {
+        return {
+            kicker: 'Materi Training',
+            accent: 'from-violet-600 to-indigo-500',
+            border: 'border-violet-100',
+            soft: 'bg-violet-50',
+            text: 'text-violet-700',
+            icon: FileText,
+        };
+    }
+
+    if (normalizedTitle.includes('peserta') || normalizedTitle.includes('siapa')) {
+        return {
+            kicker: 'Target Peserta',
+            accent: 'from-amber-500 to-orange-500',
+            border: 'border-amber-100',
+            soft: 'bg-amber-50',
+            text: 'text-amber-700',
+            icon: ShieldCheck,
+        };
+    }
+
+    if (normalizedTitle.includes('hasil') || normalizedTitle.includes('output')) {
+        return {
+            kicker: 'Hasil yang Diharapkan',
+            accent: 'from-rose-500 to-pink-500',
+            border: 'border-rose-100',
+            soft: 'bg-rose-50',
+            text: 'text-rose-700',
+            icon: Award,
+        };
+    }
+
+    const fallbacks = [
+        { kicker: 'Sorotan Program', accent: 'from-slate-700 to-slate-900', border: 'border-slate-100', soft: 'bg-slate-50', text: 'text-slate-700', icon: LayoutList },
+        { kicker: 'Nilai Tambah', accent: 'from-cyan-600 to-sky-500', border: 'border-cyan-100', soft: 'bg-cyan-50', text: 'text-cyan-700', icon: Star },
+        { kicker: 'Ruang Belajar', accent: 'from-indigo-600 to-blue-500', border: 'border-indigo-100', soft: 'bg-indigo-50', text: 'text-indigo-700', icon: GraduationCap },
+    ];
+
+    return fallbacks[index % fallbacks.length];
+}
+
 function normalizeDetailSections(course: Course): TrainingDetailSection[] {
     if (Array.isArray(course.detail_sections) && course.detail_sections.length > 0) {
         return course.detail_sections.map((section, index) => ({
@@ -135,7 +214,7 @@ function normalizeDetailSections(course: Course): TrainingDetailSection[] {
     return [
         {
             id: 'tentang-pelatihan',
-            title: 'Tentang Pelatihan',
+            title: `Tentang Pelatihan ${course.title}`,
             body: course.description || '',
             items: [],
         }
@@ -155,7 +234,8 @@ function buildFallbackPublicSessions(course: Course): PublicTrainingSession[] {
             schedule: formatDateRange(course.scheduled_at, course.scheduled_end_at),
             location: course.zoom_link ? 'Live virtual class' : 'Platform online akan diinformasikan',
             duration: course.duration || 'Sesuai agenda',
-            price: course.price,
+            price: course.public_online_price || course.price,
+            discount_price: course.public_online_discount_price || '',
             badge: 'Online Class',
             cta_label: 'Konsultasikan Jadwal',
             cta_url: '',
@@ -167,7 +247,8 @@ function buildFallbackPublicSessions(course: Course): PublicTrainingSession[] {
             schedule: formatDateRange(course.scheduled_at, course.scheduled_end_at),
             location: course.location || 'Lokasi akan diinformasikan',
             duration: course.duration || 'Sesuai agenda',
-            price: course.price,
+            price: course.public_offline_price || course.price,
+            discount_price: course.public_offline_discount_price || '',
             badge: 'Tatap Muka',
             cta_label: 'Konsultasikan Jadwal',
             cta_url: '',
@@ -185,6 +266,23 @@ function renderParagraphs(text: string) {
                 {paragraph}
             </p>
         ));
+}
+
+function getSectionPreview(section: TrainingDetailSection) {
+    const firstParagraph = (section.body || '')
+        .split('\n')
+        .map(item => item.trim())
+        .find(Boolean);
+
+    if (firstParagraph) {
+        return firstParagraph.length > 120 ? `${firstParagraph.slice(0, 117)}...` : firstParagraph;
+    }
+
+    if (section.items.length > 0) {
+        return `${section.items.length} poin pembahasan utama siap dipelajari.`;
+    }
+
+    return 'Bagian ini berisi rincian penting yang relevan untuk calon peserta.';
 }
 
 function StarRow({ count, filled }: { count: number; filled: boolean }) {
@@ -305,10 +403,12 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
     const [inhouseSubmitting, setInhouseSubmitting] = useState(false);
     const [inhouseSuccess, setInhouseSuccess] = useState('');
     const [inhouseError, setInhouseError] = useState('');
+    const [activeAnchor, setActiveAnchor] = useState('');
 
     const { refreshCart } = useCart();
     const [isAdding, setIsAdding] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const { showError } = useFeedbackModal();
 
     useEffect(() => {
         const fetchCourse = async () => {
@@ -338,10 +438,10 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
         if (!course) return [] as Array<{ key: TrainingOfferKey; label: string }>;
 
         return [
-            { key: 'public', label: 'Public' },
-            { key: 'inhouse', label: 'Inhouse' },
-            { key: 'elearning', label: 'E-Learning' },
-        ] as Array<{ key: TrainingOfferKey; label: string }>;
+            course.public_training_enabled ? { key: 'public', label: 'Public' } : null,
+            course.inhouse_training_enabled ? { key: 'inhouse', label: 'Inhouse' } : null,
+            course.elearning_enabled ? { key: 'elearning', label: 'E-Learning' } : null,
+        ].filter(Boolean) as Array<{ key: TrainingOfferKey; label: string }>;
     }, [course]);
 
     useEffect(() => {
@@ -351,7 +451,11 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
         }
     }, [activeOffer, availableOffers]);
 
-    const addToCart = async () => {
+    const addToCart = async (payload?: {
+        offer_type?: 'elearning' | 'public';
+        offer_mode?: string;
+        public_session_id?: string;
+    }) => {
         if (!course) return;
 
         setIsAdding(true);
@@ -362,6 +466,13 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                 return;
             }
 
+            const cartPayload = {
+                course_id: course.id,
+                offer_type: payload?.offer_type || 'elearning',
+                offer_mode: payload?.offer_mode || '',
+                public_session_id: payload?.public_session_id || '',
+            };
+
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
             const res = await fetch(`${apiUrl}/api/cart/add_item/`, {
                 method: 'POST',
@@ -369,7 +480,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ course_id: course.id })
+                body: JSON.stringify(cartPayload)
             });
 
             if (res.ok) {
@@ -384,14 +495,108 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
             }
 
             const data = await res.json();
-            alert(data.message || 'Gagal menambahkan ke keranjang');
+            await showError(data.message || 'Kursus belum bisa ditambahkan ke keranjang.', 'Gagal Menambahkan');
         } catch (error) {
             console.error('Error adding to cart:', error);
-            alert('Terjadi kesalahan koneksi');
+            await showError('Terjadi kesalahan koneksi saat menambahkan kursus ke keranjang.', 'Koneksi Bermasalah');
         } finally {
             setIsAdding(false);
         }
     };
+
+    const detailSections = useMemo(() => (
+        course ? normalizeDetailSections(course) : []
+    ), [course]);
+    const publicSessions = useMemo(() => (
+        course ? buildFallbackPublicSessions(course) : []
+    ), [course]);
+    const onlinePublicSessions = publicSessions.filter(session => session.delivery_mode === 'online');
+    const offlinePublicSessions = publicSessions.filter(session => session.delivery_mode === 'offline');
+    const inhouseBenefits = course?.inhouse_training_benefits && course.inhouse_training_benefits.length > 0
+        ? course.inhouse_training_benefits
+        : [
+            'Materi dan studi kasus dapat disesuaikan dengan proses bisnis perusahaan.',
+            'Jadwal pelaksanaan lebih fleksibel mengikuti agenda tim internal.',
+            'Keluaran pelatihan lebih fokus pada implementasi dan action plan nyata.'
+        ];
+    const elearningPriceSummary = getElearningPriceSummary(course);
+    const isFreeOffering = elearningPriceSummary.isFree;
+    const effectivePrice = elearningPriceSummary.finalPrice;
+    const onlinePublicPriceSummary = getPublicModePriceSummary(course, 'online', onlinePublicSessions[0] || null);
+    const offlinePublicPriceSummary = getPublicModePriceSummary(course, 'offline', offlinePublicSessions[0] || null);
+    const startingPublicPrice = [onlinePublicPriceSummary.finalPrice, offlinePublicPriceSummary.finalPrice]
+        .filter((price): price is number => price != null)
+        .sort((left, right) => left - right)[0];
+    const resolvedPublicMode = activePublicMode === 'offline' && offlinePublicSessions.length > 0
+        ? 'offline'
+        : onlinePublicSessions.length > 0
+            ? 'online'
+            : 'offline';
+    const activePublicSessions = resolvedPublicMode === 'online' ? onlinePublicSessions : offlinePublicSessions;
+    const activePublicPriceSummary = resolvedPublicMode === 'online'
+        ? onlinePublicPriceSummary
+        : offlinePublicPriceSummary;
+    const heroMetrics = [
+        { label: 'Format Tersedia', value: `${availableOffers.length} Jalur` },
+        { label: 'Jumlah Peserta', value: `${(course?.enrolled_count || 0) + 1200}+` },
+        { label: 'Durasi', value: course?.duration || 'Fleksibel' },
+        { label: 'Bahasa', value: 'Indonesia' },
+    ];
+    const trainerExpertiseBadges = getInstructorExpertiseBadges(course?.instructor?.title, course?.instructor?.expertise_areas);
+    const trainerSummary = getInstructorProfileSummary(course?.instructor?.bio, course?.instructor?.title, course?.instructor?.expertise_areas);
+    const rundownEntries = getRundownAgendaEntries(course?.rundown_items);
+
+    const anchorItems = useMemo(() => ([
+        ...detailSections.map((section, index) => {
+            const presentation = getSectionPresentation(section.title, index);
+            return {
+                id: slugifyAnchor(section.id || section.title),
+                title: section.title,
+                kicker: presentation.kicker,
+            };
+        }),
+        ...(rundownEntries.length > 0 ? [{ id: 'rundown', title: 'Rundown', kicker: 'Agenda Program' }] : []),
+        { id: 'kurikulum', title: 'Kurikulum', kicker: 'Materi Belajar' },
+        ...(course?.instructor ? [{ id: 'trainer', title: 'Trainer', kicker: 'Fasilitator Ahli' }] : []),
+        { id: 'ulasan', title: 'Ulasan Peserta', kicker: 'Suara Alumni' },
+    ]), [course?.instructor, detailSections, rundownEntries.length]);
+
+    useEffect(() => {
+        if (!anchorItems.length) return;
+
+        setActiveAnchor((current) => current || anchorItems[0].id);
+
+        const targets = anchorItems
+            .map(item => document.getElementById(item.id))
+            .filter((element): element is HTMLElement => Boolean(element));
+
+        if (!targets.length) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const visibleEntries = entries
+                    .filter(entry => entry.isIntersecting)
+                    .sort((left, right) => {
+                        if (right.intersectionRatio !== left.intersectionRatio) {
+                            return right.intersectionRatio - left.intersectionRatio;
+                        }
+                        return left.boundingClientRect.top - right.boundingClientRect.top;
+                    });
+
+                if (visibleEntries[0]) {
+                    setActiveAnchor(visibleEntries[0].target.id);
+                }
+            },
+            {
+                rootMargin: '-18% 0px -55% 0px',
+                threshold: [0.15, 0.35, 0.6],
+            }
+        );
+
+        targets.forEach(target => observer.observe(target));
+
+        return () => observer.disconnect();
+    }, [anchorItems]);
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center">Memuat pelatihan...</div>;
@@ -400,50 +605,6 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
     if (!course) {
         return <div className="min-h-screen flex items-center justify-center">Pelatihan tidak ditemukan.</div>;
     }
-
-    const detailSections = normalizeDetailSections(course);
-    const publicSessions = buildFallbackPublicSessions(course);
-    const onlinePublicSessions = publicSessions.filter(session => session.delivery_mode === 'online');
-    const offlinePublicSessions = publicSessions.filter(session => session.delivery_mode === 'offline');
-    const inhouseBenefits = course.inhouse_training_benefits && course.inhouse_training_benefits.length > 0
-        ? course.inhouse_training_benefits
-        : [
-            'Materi dan studi kasus dapat disesuaikan dengan proses bisnis perusahaan.',
-            'Jadwal pelaksanaan lebih fleksibel mengikuti agenda tim internal.',
-            'Keluaran pelatihan lebih fokus pada implementasi dan action plan nyata.'
-        ];
-    const isFreeOffering = Number(course.discount_price || course.price || 0) <= 0;
-    const effectivePrice = course.discount_price || course.price;
-    const startingPublicPrice = publicSessions
-        .map(session => Number(session.price || 0))
-        .filter(price => price > 0)
-        .sort((left, right) => left - right)[0];
-    const resolvedPublicMode = activePublicMode === 'offline' && offlinePublicSessions.length > 0
-        ? 'offline'
-        : onlinePublicSessions.length > 0
-            ? 'online'
-            : 'offline';
-    const activePublicSessions = resolvedPublicMode === 'online' ? onlinePublicSessions : offlinePublicSessions;
-    const activePublicPrice = activePublicSessions
-        .map(session => Number(session.price || 0))
-        .filter(price => price > 0)
-        .sort((left, right) => left - right)[0];
-    const heroMetrics = [
-        { label: 'Format Tersedia', value: `${availableOffers.length} Jalur` },
-        { label: 'Jumlah Peserta', value: `${(course.enrolled_count || 0) + 1200}+` },
-        { label: 'Durasi', value: course.duration || 'Fleksibel' },
-        { label: 'Bahasa', value: 'Indonesia' },
-    ];
-
-    const anchorItems = [
-        ...detailSections.map(section => ({
-            id: slugifyAnchor(section.id || section.title),
-            title: section.title,
-        })),
-        { id: 'kurikulum', title: 'Kurikulum' },
-        ...(course.instructor ? [{ id: 'instruktur', title: 'Instruktur' }] : []),
-        { id: 'ulasan', title: 'Ulasan Peserta' },
-    ];
 
     const handleInhouseChange = (
         event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -575,34 +736,54 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                         </section>
 
                         <section className="sticky top-[6.5rem] z-20 md:top-36">
-                            <div className="flex max-w-full gap-2 overflow-x-auto rounded-2xl border border-gray-100 bg-white/95 px-3 py-3 shadow-sm backdrop-blur-md sm:w-fit sm:flex-wrap sm:gap-3 sm:rounded-full">
-                                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-blue-50 text-blue-700 text-sm font-bold shrink-0">
-                                    <LayoutList className="w-4 h-4" />
-                                    <span>Daftar Isi</span>
+                            <div className="rounded-3xl border border-gray-100 bg-white/95 p-3 shadow-sm backdrop-blur-md">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div className="inline-flex items-center gap-2 px-3 py-2 rounded-2xl bg-blue-50 text-blue-700 text-sm font-bold shrink-0">
+                                        <LayoutList className="w-4 h-4" />
+                                        <span>Daftar Isi Interaktif</span>
+                                    </div>
                                 </div>
-                                {anchorItems.map(item => (
-                                    <a
-                                        key={item.id}
-                                        href={`#${item.id}`}
-                                        className="shrink-0 px-4 py-2 rounded-full border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-blue-200 hover:text-blue-700 hover:bg-blue-50 transition"
-                                    >
-                                        {item.title}
-                                    </a>
-                                ))}
+                                <div className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1 sm:flex-wrap">
+                                    {anchorItems.map(item => (
+                                        <a
+                                            key={item.id}
+                                            href={`#${item.id}`}
+                                            aria-current={activeAnchor === item.id ? 'true' : undefined}
+                                            className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${activeAnchor === item.id ? 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200 hover:text-blue-700 hover:bg-blue-50'}`}
+                                        >
+                                            {item.title}
+                                        </a>
+                                    ))}
+                                </div>
                             </div>
                         </section>
 
                         {detailSections.map((section, index) => {
                             const anchorId = slugifyAnchor(section.id || section.title);
+                            const presentation = getSectionPresentation(section.title, index);
+                            const Icon = presentation.icon;
+                            const isActive = activeAnchor === anchorId;
                             return (
-                                <section key={`${anchorId}-${index}`} id={anchorId} className="scroll-mt-44 bg-white rounded-3xl border border-gray-100 p-5 md:p-8 space-y-5">
-                                    <div className="flex items-center gap-3 text-blue-700">
-                                        <span className="w-9 h-9 rounded-2xl bg-blue-50 border border-blue-100 inline-flex items-center justify-center font-bold text-sm">
+                                <section key={`${anchorId}-${index}`} id={anchorId} className={`scroll-mt-44 rounded-3xl border bg-white p-5 md:p-8 space-y-5 transition-all ${isActive ? `${presentation.border} shadow-lg shadow-slate-100` : 'border-gray-100'}`}>
+                                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                        <div className="flex items-center gap-3 text-blue-700">
+                                            <span className={`w-9 h-9 rounded-2xl border inline-flex items-center justify-center font-bold text-sm ${presentation.soft} ${presentation.border}`}>
+                                                <Icon className="h-4 w-4" />
+                                            </span>
+                                            <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${presentation.soft} ${presentation.text}`}>
+                                                {presentation.kicker}
+                                            </span>
+                                        </div>
+                                        <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
                                             {String(index + 1).padStart(2, '0')}
                                         </span>
-                                        <div className="text-sm font-bold uppercase tracking-wide">Bagian Training</div>
                                     </div>
                                     <h2 className="text-2xl font-bold text-gray-900">{section.title}</h2>
+                                    <div className={`rounded-3xl border p-5 ${presentation.border} ${presentation.soft}`}>
+                                        <p className={`text-sm font-semibold leading-7 ${presentation.text}`}>
+                                            {getSectionPreview(section)}
+                                        </p>
+                                    </div>
                                     <div className="space-y-4">
                                         {renderParagraphs(section.body)}
                                     </div>
@@ -619,6 +800,49 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                 </section>
                             );
                         })}
+
+                        {rundownEntries.length > 0 && (
+                            <section id="rundown" className="scroll-mt-44 space-y-4">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-gray-900">Rundown Pelatihan</h2>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Gambaran alur sesi yang akan diikuti peserta selama program berlangsung. Jika rundown diisi dengan format jam seperti `08:00 - 09:00 | Pembukaan`, waktunya akan tampil otomatis.
+                                    </p>
+                                </div>
+                                <div className="overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm">
+                                    <div className="grid grid-cols-1 gap-3 border-b border-gray-100 bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-white md:grid-cols-[170px_120px_minmax(0,1fr)]">
+                                        <div>Jam</div>
+                                        <div>Sesi</div>
+                                        <div>Agenda Pelatihan</div>
+                                    </div>
+                                    <div className="divide-y divide-gray-100">
+                                        {rundownEntries.map((entry, index) => {
+                                            const hasBlockGap = index > 0 && rundownEntries[index - 1].block !== entry.block;
+                                            return (
+                                                <div
+                                                    key={entry.id}
+                                                    className={`grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-[170px_120px_minmax(0,1fr)] ${hasBlockGap ? 'bg-blue-50/45' : 'bg-white'}`}
+                                                >
+                                                    <div className="flex items-center">
+                                                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${entry.timeLabel ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                            {entry.timeLabel || 'Menyesuaikan'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center">
+                                                        <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-blue-700">
+                                                            {entry.label}
+                                                        </span>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm leading-7 text-gray-700 whitespace-pre-line">
+                                                        {entry.text}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </section>
+                        )}
 
                         <section id="kurikulum" className="scroll-mt-44 space-y-4">
                             <div>
@@ -675,8 +899,8 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                         <StudentExamSection course={course} />
 
                         {course.instructor && (
-                            <section id="instruktur" className="scroll-mt-44 space-y-4">
-                                <h2 className="text-2xl font-bold text-gray-900">Instruktur</h2>
+                            <section id="trainer" className="scroll-mt-44 space-y-4">
+                                <h2 className="text-2xl font-bold text-gray-900">Trainer</h2>
                                 <div className="bg-white border border-blue-100 rounded-3xl p-6 md:p-8 flex flex-col sm:flex-row gap-6 items-start">
                                     <div className="w-20 h-20 rounded-full bg-gray-200 overflow-hidden relative flex-shrink-0">
                                         {course.instructor.photo ? (
@@ -693,9 +917,21 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                             <GraduationCap className="w-3.5 h-3.5" />
                                             Trainer / Konsultan
                                         </div>
-                                        <h3 className="mt-3 text-xl font-bold text-gray-900">{course.instructor.name}</h3>
+                                        {trainerExpertiseBadges.length > 0 && (
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                {trainerExpertiseBadges.map((badge) => (
+                                                    <span
+                                                        key={badge}
+                                                        className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700"
+                                                    >
+                                                        {badge}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <h3 className="mt-4 text-xl font-bold text-gray-900">{course.instructor.name}</h3>
                                         <p className="text-blue-600 font-medium text-sm mt-1">{course.instructor.title}</p>
-                                        <p className="text-gray-600 leading-7 mt-4">{course.instructor.bio}</p>
+                                        <p className="text-gray-600 leading-7 mt-4">{trainerSummary}</p>
                                     </div>
                                 </div>
                             </section>
@@ -708,12 +944,34 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                         <div className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-xl shadow-gray-200/50">
                             <div className="border-b border-gray-100 p-5 sm:p-6">
                                 <div className="text-xs uppercase tracking-wide text-gray-400 font-bold">Pilih Jalur Pelatihan</div>
-                                <div className="mt-4 grid grid-cols-3 gap-2">
+                                <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-1.5">
+                                    <div className="flex flex-wrap gap-1.5">
                                     {availableOffers.map(offer => (
-                                        <button key={offer.key} type="button" onClick={() => setActiveOffer(offer.key)} className={`rounded-2xl px-3 py-2.5 text-sm font-bold transition ${activeOffer === offer.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                                            {offer.label}
+                                        <button
+                                            key={offer.key}
+                                            type="button"
+                                            onClick={() => setActiveOffer(offer.key)}
+                                            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
+                                                activeOffer === offer.key
+                                                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
+                                                    : 'bg-transparent text-gray-500 hover:bg-white hover:text-gray-800'
+                                            }`}
+                                        >
+                                            <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${
+                                                activeOffer === offer.key ? 'bg-blue-100 text-blue-700' : 'bg-white text-gray-400'
+                                            }`}>
+                                                {offer.key === 'public' ? (
+                                                    <CalendarDays className="h-3.5 w-3.5" />
+                                                ) : offer.key === 'inhouse' ? (
+                                                    <BriefcaseBusiness className="h-3.5 w-3.5" />
+                                                ) : (
+                                                    <GraduationCap className="h-3.5 w-3.5" />
+                                                )}
+                                            </span>
+                                            <span>{offer.label}</span>
                                         </button>
                                     ))}
+                                    </div>
                                 </div>
                             </div>
 
@@ -744,8 +1002,17 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                 Harga Public {resolvedPublicMode === 'online' ? 'Online' : 'Offline'}
                                             </div>
                                             <div className="mt-2 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-                                                {activePublicPrice ? formatRupiah(activePublicPrice) : (startingPublicPrice ? formatRupiah(startingPublicPrice) : 'Hubungi Tim')}
+                                                {activePublicPriceSummary.finalPrice == null
+                                                    ? (startingPublicPrice != null ? formatRupiah(startingPublicPrice) : 'Hubungi Tim')
+                                                    : activePublicPriceSummary.isFree
+                                                        ? 'Gratis'
+                                                        : formatRupiah(activePublicPriceSummary.finalPrice)}
                                             </div>
+                                            {activePublicPriceSummary.hasDiscount && activePublicPriceSummary.originalPrice != null && (
+                                                <div className="mt-2 text-sm text-gray-400 line-through">
+                                                    {formatRupiah(activePublicPriceSummary.originalPrice)}
+                                                </div>
+                                            )}
                                             <p className="mt-2 text-sm text-gray-500">
                                                 Harga pada mode `online` dan `offline` dibaca terpisah sesuai sesi yang dipilih.
                                             </p>
@@ -757,58 +1024,133 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                     Belum ada opsi public {resolvedPublicMode} untuk pelatihan ini.
                                                 </div>
                                             ) : activePublicSessions.map(session => (
-                                                <div key={session.id} className="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 space-y-3">
-                                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                                                        <div>
-                                                            <div className="text-sm font-bold text-gray-900">{session.title}</div>
-                                                            {session.badge && (
-                                                                <div className="mt-1 text-[11px] font-bold uppercase text-blue-600">{session.badge}</div>
+                                                (() => {
+                                                    const sessionPriceSummary = getPublicModePriceSummary(course, resolvedPublicMode, session);
+                                                    const canCheckoutPublic = sessionPriceSummary.finalPrice != null;
+
+                                                    return (
+                                                        <div key={session.id} className="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 space-y-3">
+                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                                                                <div>
+                                                                    <div className="text-sm font-bold text-gray-900">{session.title}</div>
+                                                                    {session.badge && (
+                                                                        <div className="mt-1 text-[11px] font-bold uppercase text-blue-600">{session.badge}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-right text-sm font-bold text-gray-900">
+                                                                    <div>
+                                                                        {sessionPriceSummary.finalPrice == null
+                                                                            ? 'Hubungi Tim'
+                                                                            : sessionPriceSummary.isFree
+                                                                                ? 'Gratis'
+                                                                                : formatRupiah(sessionPriceSummary.finalPrice)}
+                                                                    </div>
+                                                                    {sessionPriceSummary.hasDiscount && sessionPriceSummary.originalPrice != null && (
+                                                                        <div className="mt-1 text-xs font-medium text-gray-400 line-through">
+                                                                            {formatRupiah(sessionPriceSummary.originalPrice)}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-2 text-sm text-gray-600">
+                                                                <div>{session.schedule || 'Jadwal akan diinformasikan'}</div>
+                                                                <div>{session.location || 'Lokasi / platform akan diinformasikan'}</div>
+                                                                <div>{session.duration || course.duration || 'Durasi menyesuaikan'}</div>
+                                                            </div>
+                                                            {!canCheckoutPublic && (
+                                                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                                                    Harga sesi ini belum tersedia. Silakan lihat detail sesi atau hubungi tim Akademiso terlebih dahulu.
+                                                                </div>
+                                                            )}
+                                                            {canCheckoutPublic ? (
+                                                                session.cta_url ? (
+                                                                    <div className="space-y-2">
+                                                                        <Link
+                                                                            href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}&session=${encodeURIComponent(session.id)}`}
+                                                                            className="block w-full text-center rounded-full bg-blue-600 text-white px-4 py-3 font-bold hover:bg-blue-700 transition"
+                                                                        >
+                                                                            Checkout Public
+                                                                        </Link>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => addToCart({
+                                                                                offer_type: 'public',
+                                                                                offer_mode: resolvedPublicMode,
+                                                                                public_session_id: session.id,
+                                                                            })}
+                                                                            disabled={isAdding}
+                                                                            className="w-full rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
+                                                                        >
+                                                                            {isAdding ? 'Menambahkan...' : 'Tambah ke Keranjang'}
+                                                                        </button>
+                                                                        <a
+                                                                            href={session.cta_url}
+                                                                            target="_blank"
+                                                                            rel="noreferrer"
+                                                                            className="block w-full text-center rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition"
+                                                                        >
+                                                                            {session.cta_label || 'Lihat Detail Sesi'}
+                                                                        </a>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="space-y-2">
+                                                                        <Link
+                                                                            href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}&session=${encodeURIComponent(session.id)}`}
+                                                                            className="block w-full text-center rounded-full bg-blue-600 text-white px-4 py-3 font-bold hover:bg-blue-700 transition"
+                                                                        >
+                                                                            Checkout Public
+                                                                        </Link>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => addToCart({
+                                                                                offer_type: 'public',
+                                                                                offer_mode: resolvedPublicMode,
+                                                                                public_session_id: session.id,
+                                                                            })}
+                                                                            disabled={isAdding}
+                                                                            className="w-full rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
+                                                                        >
+                                                                            {isAdding ? 'Menambahkan...' : 'Tambah ke Keranjang'}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setActiveOffer('inhouse')}
+                                                                            className="w-full rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition"
+                                                                        >
+                                                                            Butuh Jadwal Khusus?
+                                                                        </button>
+                                                                    </div>
+                                                                )
+                                                            ) : session.cta_url ? (
+                                                                <div className="space-y-2">
+                                                                    <a
+                                                                        href={session.cta_url}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="block w-full text-center rounded-full bg-blue-600 text-white px-4 py-3 font-bold hover:bg-blue-700 transition"
+                                                                    >
+                                                                        {session.cta_label || 'Lihat Detail Sesi'}
+                                                                    </a>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setActiveOffer('inhouse')}
+                                                                        className="w-full rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition"
+                                                                    >
+                                                                        Butuh Jadwal Khusus?
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setActiveOffer('inhouse')}
+                                                                    className="w-full rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition"
+                                                                >
+                                                                    Hubungi Tim Akademiso
+                                                                </button>
                                                             )}
                                                         </div>
-                                                        <div className="text-right text-sm font-bold text-gray-900">
-                                                            {formatRupiah(session.price)}
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-2 text-sm text-gray-600">
-                                                        <div>{session.schedule || 'Jadwal akan diinformasikan'}</div>
-                                                        <div>{session.location || 'Lokasi / platform akan diinformasikan'}</div>
-                                                        <div>{session.duration || course.duration || 'Durasi menyesuaikan'}</div>
-                                                    </div>
-                                                    {session.cta_url ? (
-                                                        <div className="space-y-2">
-                                                            <Link
-                                                                href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}&session=${encodeURIComponent(session.id)}`}
-                                                                className="block w-full text-center rounded-full bg-blue-600 text-white px-4 py-3 font-bold hover:bg-blue-700 transition"
-                                                            >
-                                                                Checkout Public
-                                                            </Link>
-                                                            <a
-                                                                href={session.cta_url}
-                                                                target="_blank"
-                                                                rel="noreferrer"
-                                                                className="block w-full text-center rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition"
-                                                            >
-                                                                {session.cta_label || 'Lihat Detail Sesi'}
-                                                            </a>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="space-y-2">
-                                                            <Link
-                                                                href={`/checkout?slug=${course.slug}&offer=public&mode=${resolvedPublicMode}&session=${encodeURIComponent(session.id)}`}
-                                                                className="block w-full text-center rounded-full bg-blue-600 text-white px-4 py-3 font-bold hover:bg-blue-700 transition"
-                                                            >
-                                                                Checkout Public
-                                                            </Link>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setActiveOffer('inhouse')}
-                                                                className="w-full rounded-full border border-gray-300 bg-white px-4 py-3 font-bold text-gray-700 hover:bg-gray-50 transition"
-                                                            >
-                                                                Butuh Jadwal Khusus?
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                    );
+                                                })()
                                             ))}
                                         </div>
                                     </>
@@ -879,9 +1221,9 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                             <div className="mt-2 text-3xl font-extrabold text-gray-900">
                                                 {isFreeOffering ? 'Gratis' : formatRupiah(effectivePrice)}
                                             </div>
-                                            {course.discount_price && Number(course.price) > Number(course.discount_price) && (
+                                            {elearningPriceSummary.hasDiscount && elearningPriceSummary.originalPrice != null && (
                                                 <div className="mt-2 text-sm text-gray-400 line-through">
-                                                    {formatRupiah(course.price)}
+                                                    {formatRupiah(elearningPriceSummary.originalPrice)}
                                                 </div>
                                             )}
                                         </div>
@@ -900,7 +1242,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                     <Link href={`/checkout?slug=${course.slug}&offer=elearning`} className="block w-full text-center rounded-full bg-blue-600 text-white px-5 py-3.5 font-bold hover:bg-blue-700 transition">
                                                         {isFreeOffering ? 'Daftar Gratis' : 'Checkout Sekarang'}
                                                     </Link>
-                                                    <button onClick={addToCart} disabled={isAdding} className="w-full rounded-full border border-gray-300 bg-white px-5 py-3.5 font-bold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
+                                                    <button onClick={() => addToCart({ offer_type: 'elearning' })} disabled={isAdding} className="w-full rounded-full border border-gray-300 bg-white px-5 py-3.5 font-bold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
                                                         {isAdding ? 'Menambahkan...' : 'Tambah ke Keranjang'}
                                                     </button>
                                                 </>
