@@ -5,3 +5,5 @@ pillow
 djangorestframework-simplejwt
 openpyxl
 reportlab
+gunicorn
+whitenoise
