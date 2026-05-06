@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { User, Mail, Lock, Shield, Save, Eye, EyeOff, TriangleAlert, Share2 } from 'lucide-react';
 import { getProfileDisplayName, getRequiredProfileMissingFields, splitFullName, type UserProfilePayload } from '@/utils/profile';
@@ -25,7 +25,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     );
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
     const searchParams = useSearchParams();
     const [loading, setLoading] = useState(true);
     const [showOldPw, setShowOldPw] = useState(false);
@@ -485,5 +485,17 @@ export default function SettingsPage() {
                 </button>
             </Section>
         </div>
+    );
+}
+
+export default function SettingsPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex min-h-[360px] items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+            </div>
+        }>
+            <SettingsPageContent />
+        </Suspense>
     );
 }

@@ -91,21 +91,19 @@ npm run dev
 ```
 *Frontend akan berjalan di `http://localhost:3000`*
 
-## Docker
+## Docker Production
 
-Project ini sekarang sudah punya konfigurasi Docker untuk menjalankan backend Django dan frontend Next.js secara bersamaan dalam mode development.
+Project ini sekarang sudah punya konfigurasi Docker yang lebih cocok untuk production ringan:
 
-### File yang ditambahkan
-- `docker-compose.yml`
-- `backend/Dockerfile`
-- `frontend/Dockerfile`
-- `.dockerignore`
-- `frontend/.dockerignore`
+- Frontend berjalan dengan `next build` lalu `next start`
+- Backend berjalan dengan `gunicorn`
+- Static files dikumpulkan otomatis saat startup
+- Database SQLite, media, dan static disimpan di Docker volume agar tetap ada saat redeploy
 
-### Cara menjalankan dengan Docker
+### Cara menjalankan
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
 Setelah container berjalan:
@@ -114,13 +112,39 @@ Setelah container berjalan:
 - Backend API: `http://localhost:8000`
 - Django Admin: `http://localhost:8000/admin`
 
+### Variabel environment penting
+
+Sebelum deploy, sangat disarankan set variabel berikut:
+
+```bash
+DJANGO_SECRET_KEY=isi-secret-yang-kuat
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,domain-anda.com
+DJANGO_CSRF_TRUSTED_ORIGINS=https://domain-anda.com
+NEXT_PUBLIC_API_URL=https://api.domain-anda.com
+```
+
+Jika server Anda sudah sepenuhnya memakai HTTPS di balik reverse proxy, Anda juga bisa mengaktifkan:
+
+```bash
+DJANGO_SECURE_SSL_REDIRECT=1
+DJANGO_SESSION_COOKIE_SECURE=1
+DJANGO_CSRF_COOKIE_SECURE=1
+DJANGO_SECURE_HSTS_SECONDS=31536000
+DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS=1
+DJANGO_SECURE_HSTS_PRELOAD=1
+```
+
 ### Catatan konfigurasi
 
-- Request dari browser/client menggunakan backend lokal di `http://localhost:8000`.
 - Request server-side dari Next.js container menggunakan alamat internal Docker `http://backend:8000`.
-- Rewrite di Next.js tetap tersedia untuk `/api` dan `/media` bila ada request relatif yang perlu diteruskan ke backend.
-- Backend tetap memakai `SQLite` development yang tersimpan di folder `backend`.
-- Saat startup, container backend akan otomatis menjalankan `python manage.py migrate`.
+- Rewrite di Next.js tetap tersedia untuk `/api` dan `/media`.
+- Backend tetap memakai `SQLite` sebagai default, tetapi sekarang file databasenya persisten di volume Docker.
+- Saat startup, container backend otomatis menjalankan `migrate` dan `collectstatic`.
+- Untuk traffic besar, tetap lebih baik memindahkan database ke PostgreSQL.
+
+### Jika sebelumnya sudah pernah deploy
+
+Jika sebelumnya container backend Anda menyimpan database SQLite di filesystem container lama, backup dulu database lama sebelum menjalankan deploy baru. Setelah konfigurasi baru ini aktif, database default akan berada di volume Docker pada path `/app/data/db.sqlite3`.
 
 ## 📚 Dokumentasi API
 

@@ -1,6 +1,7 @@
-import { Course } from '@/types';
 import { getServerApiBaseUrl } from '@/utils/api';
 import CatalogContent from './CatalogContent';
+
+export const dynamic = 'force-dynamic';
 
 async function getCourses() {
     try {

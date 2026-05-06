@@ -4,23 +4,47 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: akademiso-backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      DJANGO_DEBUG: "1"
-      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend,72.61.208.187"
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:-ganti-dengan-secret-key-production}"
+      DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}"
+      DJANGO_CORS_ALLOW_ALL_ORIGINS: "${DJANGO_CORS_ALLOW_ALL_ORIGINS:-1}"
+      DJANGO_CORS_ALLOWED_ORIGINS: "${DJANGO_CORS_ALLOWED_ORIGINS:-}"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "${DJANGO_CSRF_TRUSTED_ORIGINS:-}"
+      DJANGO_SERVE_MEDIA: "1"
+      DJANGO_SECURE_SSL_REDIRECT: "${DJANGO_SECURE_SSL_REDIRECT:-0}"
+      DJANGO_SESSION_COOKIE_SECURE: "${DJANGO_SESSION_COOKIE_SECURE:-0}"
+      DJANGO_CSRF_COOKIE_SECURE: "${DJANGO_CSRF_COOKIE_SECURE:-0}"
+      DJANGO_SECURE_HSTS_SECONDS: "${DJANGO_SECURE_HSTS_SECONDS:-0}"
+      DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "${DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS:-0}"
+      DJANGO_SECURE_HSTS_PRELOAD: "${DJANGO_SECURE_HSTS_PRELOAD:-0}"
+      DJANGO_DB_PATH: "/app/data/db.sqlite3"
+      GUNICORN_WORKERS: "${GUNICORN_WORKERS:-3}"
+      GUNICORN_TIMEOUT: "${GUNICORN_TIMEOUT:-120}"
+    volumes:
+      - backend_data:/app/data
+      - backend_media:/app/media
+      - backend_static:/app/staticfiles
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: akademiso-frontend
+    restart: unless-stopped
     depends_on:
       - backend
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: "http://72.61.208.187:8000"
+      NODE_ENV: "production"
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
       BACKEND_INTERNAL_URL: "http://backend:8000"
-      CHOKIDAR_USEPOLLING: "true"
-      WATCHPACK_POLLING: "true"
+
+volumes:
+  backend_data:
+  backend_media:
+  backend_static:

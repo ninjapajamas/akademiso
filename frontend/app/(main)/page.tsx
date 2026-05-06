@@ -15,6 +15,8 @@ import HomeTopicCourseSection from '@/components/home/HomeTopicCourseSection';
 import { Course } from '@/types';
 import { getServerApiBaseUrl } from '@/utils/api';
 
+export const dynamic = 'force-dynamic';
+
 async function getHomeCourses() {
   try {
     const apiUrl = getServerApiBaseUrl();
