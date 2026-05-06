@@ -1462,7 +1462,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = (
             'avatar', 'phone', 'company', 'position', 'bio',
-            'npwp', 'bank_name', 'bank_account_number', 'bank_account_holder',
+            'npwp', 'nik', 'bank_name', 'bank_account_number', 'bank_account_holder',
         )
 
 

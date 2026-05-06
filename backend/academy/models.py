@@ -428,6 +428,7 @@ class UserProfile(models.Model):
     position = models.CharField(max_length=100, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
     npwp = models.CharField(max_length=32, blank=True, null=True)
+    nik = models.CharField(max_length=32, blank=True, null=True)
     bank_name = models.CharField(max_length=100, blank=True, null=True)
     bank_account_number = models.CharField(max_length=50, blank=True, null=True)
     bank_account_holder = models.CharField(max_length=120, blank=True, null=True)

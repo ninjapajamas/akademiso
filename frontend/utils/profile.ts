@@ -14,6 +14,7 @@ export interface UserProfilePayload {
         position?: string;
         bio?: string;
         npwp?: string;
+        nik?: string;
         bank_name?: string;
         bank_account_number?: string;
         bank_account_holder?: string;
