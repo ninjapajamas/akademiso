@@ -33,6 +33,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://72.61.208.187:8000}"
+        BACKEND_INTERNAL_URL: "http://backend:8000"
     container_name: akademiso-frontend
     restart: unless-stopped
     depends_on:

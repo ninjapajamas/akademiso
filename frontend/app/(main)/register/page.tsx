@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { splitFullName } from '@/utils/profile';
+import { getClientApiBaseUrl } from '@/utils/api';
 import {
     ArrowRight, FileText, GraduationCap, Loader2,
     Lock, Mail, ShieldCheck, User, AlertCircle, Eye, EyeOff, X
@@ -209,6 +210,7 @@ export default function Register() {
         }
 
         try {
+            const apiUrl = getClientApiBaseUrl();
             const payload = new FormData();
             payload.append('account_type', accountType);
             Object.entries(formData).forEach(([key, value]) => {
@@ -221,7 +223,7 @@ export default function Register() {
             payload.append('affiliate_application', String(affiliateApplication));
             if (cvFile) payload.append('instructor_cv', cvFile);
 
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/register/`, {
+            const res = await fetch(`${apiUrl}/api/register/`, {
                 method: 'POST',
                 body: payload,
             });

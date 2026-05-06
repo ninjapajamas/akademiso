@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ShieldCheck, Mail, Lock, Loader2, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Suspense } from 'react';
 import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
+import { getClientApiBaseUrl } from '@/utils/api';
 
 function LoginForm() {
     const router = useRouter();
@@ -63,7 +64,8 @@ function LoginForm() {
         setFieldErrors({});
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/token/`, {
+            const apiUrl = getClientApiBaseUrl();
+            const res = await fetch(`${apiUrl}/api/token/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
