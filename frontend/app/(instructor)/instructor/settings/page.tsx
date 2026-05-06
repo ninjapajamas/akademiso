@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useState, useEffect } from 'react';
-import { User, Mail, Lock, Shield, Save, Eye, EyeOff, CheckCircle, Signature } from 'lucide-react';
+import { User, Mail, Lock, Shield, Save, Eye, EyeOff, Signature, Landmark } from 'lucide-react';
 import { getProfileDisplayName, splitFullName } from '@/utils/profile';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
@@ -23,10 +24,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function InstructorSettingsPage() {
-    const [saved, setSaved] = useState(false);
     const [loading, setLoading] = useState(true);
     const [showOldPw, setShowOldPw] = useState(false);
     const [showNewPw, setShowNewPw] = useState(false);
+    const [showConfirmPw, setShowConfirmPw] = useState(false);
     const [profile, setProfile] = useState({
         full_name: '',
         email: '',
@@ -34,6 +35,10 @@ export default function InstructorSettingsPage() {
         company: '',
         position: '',
         bio: '',
+        npwp: '',
+        bank_name: '',
+        bank_account_number: '',
+        bank_account_holder: '',
         avatar: null as string | null,
         signature_image: null as string | null
     });
@@ -43,6 +48,7 @@ export default function InstructorSettingsPage() {
     const [pwError, setPwError] = useState('');
     const canEditEmail = !profile.email.trim();
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const { showError, showSuccess } = useFeedbackModal();
 
     const resolveMediaUrl = (url: string | null) => {
         if (!url) return null;
@@ -65,6 +71,10 @@ export default function InstructorSettingsPage() {
                     company: data.profile?.company || '',
                     position: data.profile?.position || '',
                     bio: data.profile?.bio || '',
+                    npwp: data.profile?.npwp || '',
+                    bank_name: data.profile?.bank_name || '',
+                    bank_account_number: data.profile?.bank_account_number || '',
+                    bank_account_holder: data.profile?.bank_account_holder || '',
                     avatar: data.profile?.avatar || null,
                     signature_image: data.instructor?.signature_image || null
                 });
@@ -97,6 +107,10 @@ export default function InstructorSettingsPage() {
             formData.append('company', profile.company);
             formData.append('position', profile.position);
             formData.append('bio', profile.bio);
+            formData.append('npwp', profile.npwp);
+            formData.append('bank_name', profile.bank_name);
+            formData.append('bank_account_number', profile.bank_account_number);
+            formData.append('bank_account_holder', profile.bank_account_holder);
 
             if (avatarFile) {
                 formData.append('avatar', avatarFile);
@@ -112,17 +126,16 @@ export default function InstructorSettingsPage() {
             });
 
             if (res.ok) {
-                setSaved(true);
                 setAvatarFile(null);
                 setSignatureFile(null);
-                fetchProfile();
-                setTimeout(() => setSaved(false), 2500);
+                await fetchProfile();
+                await showSuccess('Profil trainer berhasil diperbarui.', 'Profil Tersimpan');
             } else {
-                alert('Gagal menyimpan profil');
+                await showError('Profil trainer belum bisa disimpan. Silakan coba lagi.', 'Penyimpanan Gagal');
             }
         } catch (e) {
             console.error('Save error:', e);
-            alert('Terjadi kesalahan koneksi');
+            await showError('Terjadi kesalahan koneksi saat menyimpan profil trainer.', 'Koneksi Bermasalah');
         }
     };
 
@@ -154,9 +167,8 @@ export default function InstructorSettingsPage() {
             });
 
             if (res.ok) {
-                setSaved(true);
                 setPasswords({ old: '', new: '', confirm: '' });
-                setTimeout(() => setSaved(false), 2500);
+                await showSuccess('Password trainer berhasil diperbarui.', 'Password Diperbarui');
             } else {
                 setPwError('Gagal memperbarui password');
             }
@@ -179,18 +191,13 @@ export default function InstructorSettingsPage() {
         <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Pengaturan Instruktur</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Pengaturan Trainer</h1>
                     <p className="text-gray-500 mt-1">Kelola biodata dan profil publik Anda sebagai pengajar.</p>
                 </div>
-                {saved && (
-                    <div className="flex items-center gap-2 text-sm font-semibold text-green-700 bg-green-50 border border-green-200 px-4 py-2 rounded-xl">
-                        <CheckCircle className="w-4 h-4" /> Tersimpan!
-                    </div>
-                )}
             </div>
 
             {/* Profile */}
-            <Section title="Profil Publik Instruktur">
+            <Section title="Profil Publik Trainer">
                 <form onSubmit={handleSaveProfile} className="space-y-4">
                     {/* Avatar */}
                     <div className="flex flex-col sm:flex-row items-center gap-6 pb-4 border-b border-gray-50">
@@ -275,7 +282,7 @@ export default function InstructorSettingsPage() {
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                     src={resolveMediaUrl(profile.signature_image) || ''}
-                                    alt="Tanda tangan instruktur"
+                                    alt="Tanda tangan trainer"
                                     className="max-h-24 max-w-full object-contain"
                                 />
                             ) : (
@@ -341,8 +348,57 @@ export default function InstructorSettingsPage() {
                         </Field>
                     </div>
 
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
+                        <div className="mb-4 flex items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+                                <Landmark className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-900">Data Pencairan Fee Trainer</h3>
+                                <p className="mt-1 text-sm text-emerald-800">
+                                    Data ini dipakai saat Anda mengajukan pencairan fee ke akunting melalui sistem.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <Field label="NPWP">
+                                <input
+                                    className={inputClass}
+                                    value={profile.npwp}
+                                    onChange={e => setProfile(p => ({ ...p, npwp: e.target.value }))}
+                                    placeholder="00.000.000.0-000.000"
+                                />
+                            </Field>
+                            <Field label="Nama Bank">
+                                <input
+                                    className={inputClass}
+                                    value={profile.bank_name}
+                                    onChange={e => setProfile(p => ({ ...p, bank_name: e.target.value }))}
+                                    placeholder="BCA, Mandiri, BNI, dll."
+                                />
+                            </Field>
+                            <Field label="Nomor Rekening">
+                                <input
+                                    className={inputClass}
+                                    value={profile.bank_account_number}
+                                    onChange={e => setProfile(p => ({ ...p, bank_account_number: e.target.value }))}
+                                    placeholder="1234567890"
+                                />
+                            </Field>
+                            <Field label="Nama Pemilik Rekening">
+                                <input
+                                    className={inputClass}
+                                    value={profile.bank_account_holder}
+                                    onChange={e => setProfile(p => ({ ...p, bank_account_holder: e.target.value }))}
+                                    placeholder="Nama sesuai rekening"
+                                />
+                            </Field>
+                        </div>
+                    </div>
+
                     <button type="submit" className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white font-bold text-sm rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/20">
-                        <Save className="w-4 h-4" /> Perbarui Profil Instruktur
+                        <Save className="w-4 h-4" /> Perbarui Profil Trainer
                     </button>
                 </form>
             </Section>
@@ -382,13 +438,19 @@ export default function InstructorSettingsPage() {
                             </div>
                         </Field>
                         <Field label="Konfirmasi Password">
-                            <input
-                                type="password"
-                                className={inputClass}
-                                value={passwords.confirm}
-                                onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
-                                placeholder="Ulangi password baru"
-                            />
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                                <input
+                                    type={showConfirmPw ? 'text' : 'password'}
+                                    className={`${inputClass} pl-9 pr-10`}
+                                    value={passwords.confirm}
+                                    onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
+                                    placeholder="Ulangi password baru"
+                                />
+                                <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600" aria-label={showConfirmPw ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'}>
+                                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
                         </Field>
                     </div>
                     {pwError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{pwError}</p>}

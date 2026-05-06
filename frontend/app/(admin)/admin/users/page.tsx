@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfileDisplayName, splitFullName } from '@/utils/profile';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
+import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
 import {
     Search, Filter, UserPlus, Trash2,
-    X, CheckCircle, XCircle, KeyRound, Edit3, LogIn, AlertTriangle
+    X, CheckCircle, XCircle, KeyRound, Edit3, LogIn, AlertTriangle, Eye, EyeOff
 } from 'lucide-react';
 
-type StaffRole = 'admin' | 'akuntan' | 'regular';
+type StaffRole = 'admin' | 'akuntan' | 'project_manager' | 'regular';
 
 interface UserData {
     id: number;
@@ -19,8 +21,8 @@ interface UserData {
     is_staff: boolean;
     is_active: boolean;
     date_joined: string;
-    role: 'admin' | 'akuntan' | 'instructor' | 'student';
-    staff_role?: 'admin' | 'akuntan' | null;
+    role: 'admin' | 'akuntan' | 'project_manager' | 'instructor' | 'student';
+    staff_role?: 'admin' | 'akuntan' | 'project_manager' | null;
     is_instructor?: boolean;
 }
 
@@ -39,21 +41,17 @@ export default function UsersPage() {
     const [roleFilter, setRoleFilter] = useState<'all' | StaffRole>('all');
     const [modal, setModal] = useState<Modal>(null);
     const [saving, setSaving] = useState(false);
-    const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
     // Form states
     const [newUser, setNewUser] = useState({ username: '', email: '', full_name: '', password: '', role: 'regular' as StaffRole });
     const [editForm, setEditForm] = useState({ full_name: '', email: '', role: 'regular' as StaffRole, is_active: true });
     const [newPassword, setNewPassword] = useState('');
-    const [showPw, setShowPw] = useState(false);
+    const [showCreatePw, setShowCreatePw] = useState(false);
+    const [showResetPw, setShowResetPw] = useState(false);
+    const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
     const token = () => localStorage.getItem('access_token');
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-    const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
-        setToast({ msg, type });
-        setTimeout(() => setToast(null), 3500);
-    };
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -70,13 +68,24 @@ export default function UsersPage() {
     }, [apiUrl]);
 
     const handleDelete = async (u: UserData) => {
-        if (!confirm(`Hapus user "${u.username}"? Tindakan tidak bisa dibatalkan.`)) return;
+        const shouldDelete = await confirmAction({
+            title: `Hapus User "${u.username}"?`,
+            message: 'Tindakan ini tidak bisa dibatalkan.',
+            confirmLabel: 'Ya, Hapus',
+            cancelLabel: 'Batal',
+            tone: 'warning',
+        });
+        if (!shouldDelete) return;
         const res = await fetch(`${apiUrl}/api/users/${u.id}/`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token()}` }
         });
-        if (res.ok) { showToast(`User ${u.username} dihapus.`); fetchUsers(); }
-        else showToast('Gagal menghapus user.', 'error');
+        if (res.ok) {
+            await fetchUsers();
+            await showSuccess(`User ${u.username} berhasil dihapus.`, 'Penghapusan Berhasil');
+        } else {
+            await showError('User belum bisa dihapus.', 'Penghapusan Gagal');
+        }
     };
 
     const handleAddUser = async (e: React.FormEvent) => {
@@ -95,17 +104,18 @@ export default function UsersPage() {
                 password_confirm: newUser.password,
                 is_staff: newUser.role !== 'regular',
                 staff_role: newUser.role === 'regular' ? null : newUser.role,
+                terms_accepted: true,
             }),
         });
         setSaving(false);
         if (res.ok) {
             setModal(null);
             setNewUser({ username: '', email: '', full_name: '', password: '', role: 'regular' });
-            showToast(`User ${newUser.username} berhasil dibuat.`);
-            fetchUsers();
+            await fetchUsers();
+            await showSuccess(`User ${newUser.username} berhasil dibuat.`, 'User Ditambahkan');
         } else {
             const err = await res.json();
-            showToast(JSON.stringify(err), 'error');
+            await showError(JSON.stringify(err), 'Pembuatan Gagal');
         }
     };
 
@@ -129,18 +139,21 @@ export default function UsersPage() {
         setSaving(false);
         if (res.ok) {
             setModal(null);
-            showToast(`Data ${modal.user.username} berhasil diperbarui.`);
-            fetchUsers();
+            await fetchUsers();
+            await showSuccess(`Data ${modal.user.username} berhasil diperbarui.`, 'Perubahan Tersimpan');
         } else {
             const err = await res.json();
-            showToast(err.error || 'Gagal mengubah data user.', 'error');
+            await showError(err.error || 'Gagal mengubah data user.', 'Pembaruan Gagal');
         }
     };
 
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         if (modal?.type !== 'reset-pw') return;
-        if (newPassword.length < 6) { showToast('Password minimal 6 karakter.', 'error'); return; }
+        if (newPassword.length < 6) {
+            await showError('Password minimal 6 karakter.', 'Validasi Password');
+            return;
+        }
         setSaving(true);
         const res = await fetch(`${apiUrl}/api/users/${modal.user.id}/reset-password/`, {
             method: 'POST',
@@ -151,10 +164,10 @@ export default function UsersPage() {
         if (res.ok) {
             setModal(null);
             setNewPassword('');
-            showToast(`Password ${modal.user.username} berhasil direset.`);
+            await showSuccess(`Password ${modal.user.username} berhasil direset.`, 'Password Diperbarui');
         } else {
             const err = await res.json();
-            showToast(err.error || 'Gagal mereset password.', 'error');
+            await showError(err.error || 'Gagal mereset password.', 'Reset Password Gagal');
         }
     };
 
@@ -177,16 +190,18 @@ export default function UsersPage() {
             localStorage.setItem('access_token', data.access);
             localStorage.setItem('refresh_token', data.refresh);
             setModal(null);
-            showToast(`🔑 Login sebagai ${data.username}. Mengalihkan...`);
-            setTimeout(() => router.push('/dashboard'), 1500);
+            await showSuccess(`Login sebagai ${data.username} berhasil. Anda akan segera dialihkan.`, 'Impersonasi Aktif');
+            const payload = decodeJwtPayload(data.access);
+            const portalPath = getPortalPathForRole(getRoleFromPayload(payload));
+            setTimeout(() => router.push(portalPath), 1500);
         } else {
             const err = await res.json();
-            showToast(err.error || 'Gagal melakukan impersonasi.', 'error');
+            await showError(err.error || 'Gagal melakukan impersonasi.', 'Impersonasi Gagal');
         }
     };
 
     const openEdit = (u: UserData) => {
-        const role: StaffRole = u.role === 'admin' || u.role === 'akuntan' ? u.role : 'regular';
+        const role: StaffRole = u.role === 'admin' || u.role === 'akuntan' || u.role === 'project_manager' ? u.role : 'regular';
         setEditForm({ full_name: getProfileDisplayName(u), email: u.email, role, is_active: u.is_active });
         setModal({ type: 'edit', user: u });
     };
@@ -204,7 +219,8 @@ export default function UsersPage() {
     const getRoleLabel = (user: UserData) => {
         if (user.role === 'admin') return { label: 'Admin', cls: 'bg-violet-100 text-violet-700 border-violet-200' };
         if (user.role === 'akuntan') return { label: 'Akuntan', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
-        if (user.role === 'instructor') return { label: 'Instruktur', cls: 'bg-sky-100 text-sky-700 border-sky-200' };
+        if (user.role === 'project_manager') return { label: 'Project Manager', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
+        if (user.role === 'instructor') return { label: 'Trainer', cls: 'bg-sky-100 text-sky-700 border-sky-200' };
         return { label: 'Regular', cls: 'bg-gray-100 text-gray-600 border-gray-200' };
     };
 
@@ -212,14 +228,6 @@ export default function UsersPage() {
 
     return (
         <div className="space-y-6">
-            {/* Toast */}
-            {toast && (
-                <div className={`fixed top-5 right-5 z-[100] px-4 py-3 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-2 transition-all ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                    {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                    {toast.msg}
-                </div>
-            )}
-
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Manajemen Pengguna</h1>
@@ -246,6 +254,7 @@ export default function UsersPage() {
                         <option value="all">Semua Role</option>
                         <option value="admin">Admin</option>
                         <option value="akuntan">Akuntan</option>
+                        <option value="project_manager">Project Manager</option>
                         <option value="regular">Regular</option>
                     </select>
                 </div>
@@ -302,7 +311,7 @@ export default function UsersPage() {
                                                 <Edit3 className="w-4 h-4" />
                                             </button>
                                             {/* Reset Password */}
-                                            <button onClick={() => { setNewPassword(''); setModal({ type: 'reset-pw', user: u }); }} title="Reset Password"
+                                            <button onClick={() => { setNewPassword(''); setShowResetPw(false); setModal({ type: 'reset-pw', user: u }); }} title="Reset Password"
                                                 className="p-2 text-yellow-500 hover:bg-yellow-50 rounded-lg transition-colors">
                                                 <KeyRound className="w-4 h-4" />
                                             </button>
@@ -344,13 +353,31 @@ export default function UsersPage() {
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Email</label>
                                     <input required type="email" className={inputCls} value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))} /></div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Password</label>
-                                    <input required type="password" className={inputCls} value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} /></div>
+                                    <div className="relative">
+                                        <input
+                                            required
+                                            type={showCreatePw ? 'text' : 'password'}
+                                            className={`${inputCls} pr-10`}
+                                            value={newUser.password}
+                                            onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCreatePw(v => !v)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700"
+                                            aria-label={showCreatePw ? 'Sembunyikan password' : 'Tampilkan password'}
+                                        >
+                                            {showCreatePw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
+                                </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 mb-1">Role</label>
                                     <select className={inputCls} value={newUser.role} onChange={e => setNewUser(u => ({ ...u, role: e.target.value as StaffRole }))}>
                                         <option value="regular">Regular</option>
                                         <option value="admin">Admin</option>
                                         <option value="akuntan">Akuntan</option>
+                                        <option value="project_manager">Project Manager</option>
                                     </select>
                                 </div>
                                 <div className="flex gap-3 pt-1">
@@ -381,6 +408,7 @@ export default function UsersPage() {
                                             <option value="regular">Regular</option>
                                             <option value="admin">Admin</option>
                                             <option value="akuntan">Akuntan</option>
+                                            <option value="project_manager">Project Manager</option>
                                         </select>
                                     </div>
                                     <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700">
@@ -412,13 +440,14 @@ export default function UsersPage() {
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 mb-1">Password Baru</label>
                                     <div className="relative">
-                                        <input type={showPw ? 'text' : 'password'} required minLength={6}
+                                        <input type={showResetPw ? 'text' : 'password'} required minLength={6}
                                             className={inputCls + ' pr-20'} value={newPassword}
                                             onChange={e => setNewPassword(e.target.value)}
                                             placeholder="Minimal 6 karakter" />
-                                        <button type="button" onClick={() => setShowPw(v => !v)}
-                                            className="absolute right-3 top-2 text-xs text-gray-400 hover:text-gray-700">
-                                            {showPw ? 'Sembunyikan' : 'Tampilkan'}
+                                        <button type="button" onClick={() => setShowResetPw(v => !v)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700"
+                                            aria-label={showResetPw ? 'Sembunyikan password baru' : 'Tampilkan password baru'}>
+                                            {showResetPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                         </button>
                                     </div>
                                     {/* Strength bar */}

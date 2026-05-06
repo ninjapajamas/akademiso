@@ -6,12 +6,12 @@ import {
   BookOpen,
   CheckCircle,
   Factory,
-  Heart,
   Search,
   Users,
   Zap,
 } from 'lucide-react';
-import CourseCard from '@/components/CourseCard';
+import HeroCategoryMarquee from '@/components/home/HeroCategoryMarquee';
+import HomeTopicCourseSection from '@/components/home/HomeTopicCourseSection';
 import { Course } from '@/types';
 import { getServerApiBaseUrl } from '@/utils/api';
 
@@ -44,13 +44,17 @@ export default async function Home() {
 
   const courseCategories = Array.from(
     new Map(
-      allCourses.map((course) => [
-        course.category.slug,
-        {
-          slug: course.category.slug,
-          name: course.category.name,
-        },
-      ])
+      allCourses.flatMap((course) =>
+        course.category
+          ? [[
+              course.category.slug,
+              {
+                slug: course.category.slug,
+                name: course.category.name,
+              },
+            ] as const]
+          : []
+      )
     ).values()
   ).slice(0, 6);
 
@@ -65,7 +69,6 @@ export default async function Home() {
           { slug: 'lead-auditor', name: 'Lead Auditor' },
           { slug: 'awareness', name: 'Awareness Class' },
         ];
-
   const totalHighlightedParticipants = highlightedCourses.reduce(
     (total, course) => total + course.enrolled_count,
     0
@@ -154,14 +157,6 @@ export default async function Home() {
     },
   ];
 
-  const trustPoints = [
-    { label: 'Manufaktur', icon: Factory },
-    { label: 'Healthcare', icon: Heart },
-    { label: 'Sistem Mutu', icon: Award },
-    { label: 'Pelatihan Internal', icon: Users },
-    { label: 'Operasional Cepat', icon: Zap },
-  ];
-
   const faqs = [
     {
       question: 'Apakah kelas ini cocok untuk individu maupun tim perusahaan?',
@@ -222,17 +217,7 @@ export default async function Home() {
               </Link>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              {categoryChips.map((category) => (
-                <Link
-                  key={category.slug}
-                  href="/courses"
-                  className="rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition-colors hover:border-blue-200 hover:text-blue-600 sm:px-4 sm:text-sm"
-                >
-                  {category.name}
-                </Link>
-              ))}
-            </div>
+            <HeroCategoryMarquee categories={categoryChips} />
 
             <div className="grid grid-cols-1 gap-4 border-t border-gray-100 pt-6 sm:grid-cols-3">
               {heroStats.map((stat) => (
@@ -297,24 +282,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="border-y border-gray-100 bg-white py-8 sm:py-10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <p className="mb-8 text-center text-xs font-bold uppercase tracking-[0.24em] text-blue-900/60">
-            Topik Yang Sering Dicari Untuk Pelatihan Dan Sertifikasi ISO
-          </p>
-          <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-center sm:gap-5 lg:gap-10">
-            {trustPoints.map(({ label, icon: Icon }) => (
-              <div
-                key={label}
-                className="flex items-center justify-center gap-2 rounded-full border border-gray-100 bg-gray-50 px-4 py-3 text-center text-xs font-bold text-gray-600 sm:px-5 sm:text-sm"
-              >
-                <Icon className="h-4 w-4 text-blue-600" />
-                {label}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <HomeTopicCourseSection courses={allCourses} />
 
       <section className="bg-gradient-to-br from-blue-600 to-indigo-700 py-12 text-white sm:py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -348,51 +316,6 @@ export default async function Home() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section id="featured-courses" className="py-14 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-12 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">
-                Program Populer
-              </p>
-              <h2 className="mt-3 text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
-                Mulai dari program yang paling sering dipilih untuk memperkuat kesiapan tim.
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-gray-600">
-                Kurasi program unggulan diletakkan lebih awal agar pengunjung cepat menemukan
-                kelas yang relevan, lalu bisa melanjutkan ke katalog lengkap tanpa kehilangan arah.
-              </p>
-            </div>
-            <Link
-              href="/courses"
-              className="inline-flex items-center text-sm font-bold text-blue-600 transition-colors hover:text-blue-700"
-            >
-              Jelajahi semua program
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </div>
-
-          {highlightedCourses.length > 0 ? (
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-4">
-              {highlightedCourses.map((course) => (
-                <CourseCard key={course.id} course={course} />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-[2rem] border border-dashed border-gray-200 bg-gray-50 px-6 py-16 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
-                <BookOpen className="h-8 w-8 text-blue-500" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900">Belum ada program yang tampil di beranda</h3>
-              <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-gray-500">
-                Area ini akan otomatis menampilkan program aktif atau featured begitu data kursus
-                sudah tersedia dari API.
-              </p>
-            </div>
-          )}
         </div>
       </section>
 

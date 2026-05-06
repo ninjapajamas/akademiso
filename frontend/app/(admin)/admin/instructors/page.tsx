@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 import {
     Plus, Search, Edit3, Trash2, KeyRound, LogIn, X, CheckCircle, XCircle,
-    AlertTriangle, FileText, Clock3
+    AlertTriangle, FileText, Clock3, Eye, EyeOff
 } from 'lucide-react';
 
 interface InstructorData {
@@ -15,13 +16,40 @@ interface InstructorData {
     name: string;
     title: string;
     bio: string;
+    expertise_areas?: string[];
     photo: string | null;
+    signature_image?: string | null;
     cv?: string | null;
     approval_status: 'PENDING' | 'APPROVED' | 'REJECTED';
     rejection_reason?: string | null;
     approved_at?: string | null;
     approved_by_name?: string | null;
 }
+
+type InstructorFormState = {
+    name: string;
+    title: string;
+    bio: string;
+    expertise_areas: string[];
+    photo: File | null;
+    signature_image: File | null;
+    cv: File | null;
+};
+
+interface CategoryOption {
+    id: number;
+    name: string;
+}
+
+const emptyFormData = (): InstructorFormState => ({
+    name: '',
+    title: '',
+    bio: '',
+    expertise_areas: [],
+    photo: null,
+    signature_image: null,
+    cv: null,
+});
 
 type Modal =
     | null
@@ -35,24 +63,20 @@ export default function InstructorsPage() {
     const [instructors, setInstructors] = useState<InstructorData[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [modal, setModal] = useState<Modal>(null);
     const [saving, setSaving] = useState(false);
-    const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
     // Form states
-    const [formData, setFormData] = useState({ name: '', title: '', bio: '' });
+    const [formData, setFormData] = useState<InstructorFormState>(emptyFormData);
     const [newPassword, setNewPassword] = useState('');
-    const [showPw, setShowPw] = useState(false);
+    const [showResetPw, setShowResetPw] = useState(false);
+    const { confirmAction, promptAction, showError, showSuccess } = useFeedbackModal();
 
     const token = () => localStorage.getItem('access_token');
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-    const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
-        setToast({ msg, type });
-        setTimeout(() => setToast(null), 3500);
-    };
-
-    const fetchInstructors = async () => {
+    const fetchInstructors = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch(`${apiUrl}/api/instructors/`, {
@@ -62,15 +86,45 @@ export default function InstructorsPage() {
                 const data = await res.json();
                 setInstructors(data);
             }
+
+            const categoryRes = await fetch(`${apiUrl}/api/categories/`);
+            if (categoryRes.ok) {
+                setCategories(await categoryRes.json());
+            }
         } catch (e) {
             console.error(e);
         } finally {
             setLoading(false);
         }
+    }, [apiUrl]);
+
+    const openCreateModal = () => {
+        setFormData(emptyFormData());
+        setModal({ type: 'add' });
+    };
+
+    const openEditModal = (instructor: InstructorData) => {
+        setFormData({
+            name: instructor.name,
+            title: instructor.title,
+            bio: instructor.bio,
+            expertise_areas: instructor.expertise_areas || [],
+            photo: null,
+            signature_image: null,
+            cv: null,
+        });
+        setModal({ type: 'edit', instructor });
     };
 
     const handleDelete = async (id: number, name: string) => {
-        if (!confirm(`Hapus instruktur "${name}"? Tindakan tidak bisa dibatalkan.`)) return;
+        const shouldDelete = await confirmAction({
+            title: `Hapus Trainer "${name}"?`,
+            message: 'Tindakan ini tidak bisa dibatalkan.',
+            confirmLabel: 'Ya, Hapus',
+            cancelLabel: 'Batal',
+            tone: 'warning',
+        });
+        if (!shouldDelete) return;
 
         try {
             const res = await fetch(`${apiUrl}/api/instructors/${id}/`, {
@@ -79,19 +133,29 @@ export default function InstructorsPage() {
             });
 
             if (res.ok) {
-                showToast(`Instruktur ${name} dihapus.`);
-                fetchInstructors();
+                await fetchInstructors();
+                await showSuccess(`Trainer ${name} berhasil dihapus.`, 'Penghapusan Berhasil');
             } else {
-                showToast('Gagal menghapus instruktur.', 'error');
+                await showError('Trainer belum bisa dihapus.', 'Penghapusan Gagal');
             }
         } catch (error) {
             console.error('Error deleting:', error);
+            await showError('Terjadi kesalahan saat menghapus trainer.', 'Koneksi Bermasalah');
         }
     };
 
     const handleReview = async (instructor: InstructorData, action: 'approve' | 'reject') => {
         const reason = action === 'reject'
-            ? prompt(`Alasan penolakan untuk ${instructor.name}:`, instructor.rejection_reason || '')
+            ? await promptAction({
+                title: `Tolak Pengajuan ${instructor.name}`,
+                message: 'Tuliskan alasan penolakan agar trainer tahu apa yang perlu diperbaiki.',
+                tone: 'warning',
+                confirmLabel: 'Kirim Penolakan',
+                cancelLabel: 'Batal',
+                initialValue: instructor.rejection_reason || '',
+                placeholder: 'Contoh: lengkapi pengalaman kerja, sertifikat, atau deskripsi profil.',
+                multiline: true,
+            })
             : '';
 
         if (action === 'reject' && reason === null) return;
@@ -105,15 +169,18 @@ export default function InstructorsPage() {
             });
 
             if (res.ok) {
-                showToast(action === 'approve' ? 'Instruktur disetujui.' : 'Pengajuan instruktur ditolak.');
-                fetchInstructors();
+                await fetchInstructors();
+                await showSuccess(
+                    action === 'approve' ? 'Trainer berhasil disetujui.' : 'Pengajuan trainer berhasil ditolak.',
+                    action === 'approve' ? 'Persetujuan Berhasil' : 'Penolakan Berhasil'
+                );
             } else {
                 const err = await res.json();
-                showToast(JSON.stringify(err) || 'Gagal memproses pengajuan.', 'error');
+                await showError(JSON.stringify(err) || 'Gagal memproses pengajuan.', 'Proses Pengajuan Gagal');
             }
         } catch (error) {
             console.error('Error reviewing instructor:', error);
-            showToast('Terjadi kesalahan saat memproses pengajuan.', 'error');
+            await showError('Terjadi kesalahan saat memproses pengajuan.', 'Koneksi Bermasalah');
         } finally {
             setSaving(false);
         }
@@ -127,19 +194,35 @@ export default function InstructorsPage() {
         try {
             let res;
             if (modal.type === 'add') {
+                const payload = new FormData();
+                payload.append('name', formData.name);
+                payload.append('title', formData.title);
+                payload.append('bio', formData.bio);
+                payload.append('expertise_areas', JSON.stringify(formData.expertise_areas));
+                if (formData.photo) payload.append('photo', formData.photo);
+                if (formData.signature_image) payload.append('signature_image', formData.signature_image);
+                if (formData.cv) payload.append('cv', formData.cv);
                 res = await fetch(`${apiUrl}/api/instructors/`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-                    body: JSON.stringify(formData),
+                    headers: { 'Authorization': `Bearer ${token()}` },
+                    body: payload,
                 });
             } else if (modal.type === 'edit') {
+                const payload = new FormData();
+                payload.append('name', formData.name);
+                payload.append('title', formData.title);
+                payload.append('bio', formData.bio);
+                payload.append('expertise_areas', JSON.stringify(formData.expertise_areas));
+                if (formData.photo) payload.append('photo', formData.photo);
+                if (formData.signature_image) payload.append('signature_image', formData.signature_image);
+                if (formData.cv) payload.append('cv', formData.cv);
                 res = await fetch(`${apiUrl}/api/instructors/${modal.instructor.id}/`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
-                    body: JSON.stringify(formData),
+                    headers: { 'Authorization': `Bearer ${token()}` },
+                    body: payload,
                 });
             } else if (modal.type === 'reset-pw') {
-                if (!modal.instructor.user) throw new Error('Instruktur tidak memiliki user terkait.');
+                if (!modal.instructor.user) throw new Error('Trainer tidak memiliki user terkait.');
                 res = await fetch(`${apiUrl}/api/users/${modal.instructor.user}/reset-password/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
@@ -148,15 +231,15 @@ export default function InstructorsPage() {
             }
 
             if (res?.ok) {
-                showToast('Berhasil disimpan.');
                 setModal(null);
-                fetchInstructors();
+                await fetchInstructors();
+                await showSuccess('Perubahan data trainer berhasil disimpan.', 'Perubahan Tersimpan');
             } else {
                 const err = await res?.json();
-                showToast(JSON.stringify(err) || 'Terjadi kesalahan.', 'error');
+                await showError(JSON.stringify(err) || 'Terjadi kesalahan.', 'Operasi Gagal');
             }
         } catch (err: unknown) {
-            showToast(err instanceof Error ? err.message : 'Terjadi kesalahan.', 'error');
+            await showError(err instanceof Error ? err.message : 'Terjadi kesalahan.', 'Operasi Gagal');
         } finally {
             setSaving(false);
         }
@@ -165,7 +248,7 @@ export default function InstructorsPage() {
     const handleHijack = async () => {
         if (modal?.type !== 'hijack') return;
         if (!modal.instructor.user) {
-            showToast('Instruktur tidak memiliki user terkait.', 'error');
+            await showError('Trainer tidak memiliki user terkait.', 'Impersonasi Gagal');
             return;
         }
         setSaving(true);
@@ -184,15 +267,17 @@ export default function InstructorsPage() {
             localStorage.setItem('access_token', data.access);
             localStorage.setItem('refresh_token', data.refresh);
             setModal(null);
-            showToast(`🔑 Login sebagai ${data.username}. Mengalihkan...`);
+            await showSuccess(`Login sebagai ${data.username} berhasil. Anda akan segera dialihkan.`, 'Impersonasi Aktif');
             setTimeout(() => router.push('/dashboard'), 1500);
         } else {
             const err = await res.json();
-            showToast(err.error || 'Gagal melakukan impersonasi.', 'error');
+            await showError(err.error || 'Gagal melakukan impersonasi.', 'Impersonasi Gagal');
         }
     };
 
-    useEffect(() => { fetchInstructors(); }, []);
+    useEffect(() => {
+        void fetchInstructors();
+    }, [fetchInstructors]);
 
     const filtered = instructors.filter(i =>
         i.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -211,27 +296,29 @@ export default function InstructorsPage() {
         return { label: 'Menunggu', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: Clock3 };
     };
 
-    const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none';
+    const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none';
+    const fileInputCls = 'block w-full rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-blue-700';
+    const toggleExpertiseArea = (name: string) => {
+        setFormData((current) => ({
+            ...current,
+            expertise_areas: current.expertise_areas.includes(name)
+                ? current.expertise_areas.filter((item) => item !== name)
+                : [...current.expertise_areas, name],
+        }));
+    };
 
     return (
         <div className="space-y-6">
-            {toast && (
-                <div className={`fixed top-5 right-5 z-[100] px-4 py-3 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-2 transition-all ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                    {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                    {toast.msg}
-                </div>
-            )}
-
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Manajemen Instruktur</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Manajemen Trainer</h1>
                     <p className="text-gray-500 text-sm mt-0.5">
-                        {instructors.length} instruktur terdaftar. {pendingCount > 0 ? `${pendingCount} menunggu approval.` : 'Tidak ada pengajuan pending.'}
+                        {instructors.length} trainer terdaftar. {pendingCount > 0 ? `${pendingCount} menunggu approval.` : 'Tidak ada pengajuan pending.'}
                     </p>
                 </div>
-                <button onClick={() => { setFormData({ name: '', title: '', bio: '' }); setModal({ type: 'add' }); }}
+                <button onClick={openCreateModal}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-600/20">
-                    <Plus className="w-4 h-4" /> Tambah Instruktur
+                    <Plus className="w-4 h-4" /> Tambah Trainer
                 </button>
             </div>
 
@@ -239,15 +326,16 @@ export default function InstructorsPage() {
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                 <input value={search} onChange={e => setSearch(e.target.value)}
                     placeholder="Cari nama atau gelar..."
-                    className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-100 outline-none" />
+                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-100 outline-none" />
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <table className="w-full">
                     <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider text-left">
                         <tr>
-                            <th className="px-5 py-3">Instruktur</th>
+                            <th className="px-5 py-3">Trainer</th>
                             <th className="px-5 py-3">Gelar</th>
+                            <th className="px-5 py-3">Bidang</th>
                             <th className="px-5 py-3">Status</th>
                             <th className="px-5 py-3">CV</th>
                             <th className="px-5 py-3 text-center">Aksi</th>
@@ -255,9 +343,9 @@ export default function InstructorsPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-black">
                         {loading ? (
-                            <tr><td colSpan={5} className="py-10 text-center text-gray-400">Memuat...</td></tr>
+                            <tr><td colSpan={6} className="py-10 text-center text-gray-400">Memuat...</td></tr>
                         ) : filtered.length === 0 ? (
-                            <tr><td colSpan={5} className="py-10 text-center text-gray-400">Tidak ada instruktur ditemukan.</td></tr>
+                            <tr><td colSpan={6} className="py-10 text-center text-gray-400">Tidak ada trainer ditemukan.</td></tr>
                         ) : filtered.map(i => {
                             const status = getStatusMeta(i.approval_status);
                             const StatusIcon = status.icon;
@@ -276,6 +364,15 @@ export default function InstructorsPage() {
                                         </div>
                                     </td>
                                     <td className="px-5 py-3 text-sm text-gray-600">{i.title}</td>
+                                    <td className="px-5 py-3">
+                                        <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                                            {(i.expertise_areas || []).length > 0 ? (i.expertise_areas || []).slice(0, 3).map((area) => (
+                                                <span key={area} className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                                                    {area}
+                                                </span>
+                                            )) : <span className="text-sm text-gray-400">-</span>}
+                                        </div>
+                                    </td>
                                     <td className="px-5 py-3">
                                         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${status.cls}`}>
                                             <StatusIcon className="w-3.5 h-3.5" />
@@ -311,11 +408,11 @@ export default function InstructorsPage() {
                                                     <XCircle className="w-4 h-4" />
                                                 </button>
                                             )}
-                                            <button onClick={() => { setFormData({ name: i.name, title: i.title, bio: i.bio }); setModal({ type: 'edit', instructor: i }); }}
+                                            <button onClick={() => openEditModal(i)}
                                                 title="Edit Data" className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg">
                                                 <Edit3 className="w-4 h-4" />
                                             </button>
-                                            <button onClick={() => { setNewPassword(''); setModal({ type: 'reset-pw', instructor: i }); }}
+                                            <button onClick={() => { setNewPassword(''); setShowResetPw(false); setModal({ type: 'reset-pw', instructor: i }); }}
                                                 title="Reset Password" className="p-2 text-yellow-500 hover:bg-yellow-50 rounded-lg">
                                                 <KeyRound className="w-4 h-4" />
                                             </button>
@@ -342,7 +439,7 @@ export default function InstructorsPage() {
                         {modal.type === 'add' || modal.type === 'edit' ? (
                             <form onSubmit={handleAction} className="p-6 space-y-4">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="font-bold text-lg text-gray-900">{modal.type === 'add' ? 'Tambah Instruktur' : 'Edit Instruktur'}</h2>
+                                    <h2 className="font-bold text-lg text-gray-900">{modal.type === 'add' ? 'Tambah Trainer' : 'Edit Trainer'}</h2>
                                     <button type="button" onClick={() => setModal(null)}><X className="w-5 h-5 text-gray-400" /></button>
                                 </div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Nama Lengkap</label>
@@ -351,6 +448,65 @@ export default function InstructorsPage() {
                                     <input required className={inputCls} value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} /></div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Bio</label>
                                     <textarea required className={inputCls + ' h-24'} value={formData.bio} onChange={e => setFormData({ ...formData, bio: e.target.value })} /></div>
+                                <div>
+                                    <label className="mb-2 block text-xs font-semibold text-gray-700">Bidang Trainer</label>
+                                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {categories.map((category) => {
+                                                const active = formData.expertise_areas.includes(category.name);
+                                                return (
+                                                    <button
+                                                        key={category.id}
+                                                        type="button"
+                                                        onClick={() => toggleExpertiseArea(category.name)}
+                                                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${active ? 'bg-blue-600 text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-700'}`}
+                                                    >
+                                                        {category.name}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="mt-3 text-xs text-gray-500">Pilih satu atau beberapa bidang utama yang dikuasai trainer.</p>
+                                    </div>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold text-gray-700">Foto Trainer</label>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className={fileInputCls}
+                                            onChange={e => setFormData({ ...formData, photo: e.target.files?.[0] || null })}
+                                        />
+                                        {modal.type === 'edit' && modal.instructor.photo && (
+                                            <p className="mt-2 text-xs text-gray-500">Foto saat ini tersimpan. Pilih file baru jika ingin mengganti.</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold text-gray-700">Tanda Tangan Trainer</label>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className={fileInputCls}
+                                            onChange={e => setFormData({ ...formData, signature_image: e.target.files?.[0] || null })}
+                                        />
+                                        {modal.type === 'edit' && modal.instructor.signature_image && (
+                                            <p className="mt-2 text-xs text-gray-500">Tanda tangan saat ini tersimpan. Pilih file baru jika ingin mengganti.</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-xs font-semibold text-gray-700">CV Trainer</label>
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.doc,.docx"
+                                        className={fileInputCls}
+                                        onChange={e => setFormData({ ...formData, cv: e.target.files?.[0] || null })}
+                                    />
+                                    {modal.type === 'edit' && modal.instructor.cv && (
+                                        <p className="mt-2 text-xs text-gray-500">CV saat ini tersimpan. Upload file baru jika ingin mengganti.</p>
+                                    )}
+                                </div>
                                 <div className="flex gap-3 pt-1">
                                     <button type="button" onClick={() => setModal(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700">Batal</button>
                                     <button type="submit" disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50">{saving ? 'Menyimpan...' : 'Simpan'}</button>
@@ -368,8 +524,15 @@ export default function InstructorsPage() {
                                 </div>
                                 <div><label className="block text-xs font-semibold text-gray-700 mb-1">Password Baru</label>
                                     <div className="relative">
-                                        <input type={showPw ? 'text' : 'password'} required minLength={6} className={inputCls} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-                                        <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-2 text-xs text-gray-400">{showPw ? 'Hide' : 'Show'}</button>
+                                        <input type={showResetPw ? 'text' : 'password'} required minLength={6} className={`${inputCls} pr-10`} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowResetPw(!showResetPw)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700"
+                                            aria-label={showResetPw ? 'Sembunyikan password baru' : 'Tampilkan password baru'}
+                                        >
+                                            {showResetPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="flex gap-3 pt-1">
@@ -379,7 +542,7 @@ export default function InstructorsPage() {
                             </form>
                         ) : modal.type === 'hijack' && (
                             <div className="p-6 space-y-4 text-center">
-                                <h2 className="font-bold text-lg text-gray-900">Login Sebagai Instruktur</h2>
+                                <h2 className="font-bold text-lg text-gray-900">Login Sebagai Trainer</h2>
                                 <p className="text-sm text-gray-500 italic">Anda akan masuk sebagai {modal.instructor.name}</p>
                                 <div className="flex gap-3 pt-4">
                                     <button onClick={() => setModal(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700">Batal</button>

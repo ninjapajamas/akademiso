@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "../context/CartContext";
+import AuthSessionWatcher from "@/components/AuthSessionWatcher";
+import { FeedbackModalProvider } from "@/components/FeedbackModalProvider";
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -21,9 +23,12 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body className={inter.className}>
-        <CartProvider>
-          {children}
-        </CartProvider>
+        <FeedbackModalProvider>
+          <CartProvider>
+            <AuthSessionWatcher />
+            {children}
+          </CartProvider>
+        </FeedbackModalProvider>
         <Script
           src="https://app.sandbox.midtrans.com/snap/snap.js"
           data-client-key="SB-Mid-client-meC4GEn5KGhc1Rld"

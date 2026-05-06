@@ -8,6 +8,8 @@ import { Course } from '@/types';
 import { useCart } from '../context/CartContext';
 import AddToCartModal from './AddToCartModal';
 import { formatRupiah } from '@/types/currency';
+import { useFeedbackModal } from './FeedbackModalProvider';
+import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
 
 interface CourseCardProps {
     course: Course;
@@ -18,6 +20,57 @@ export default function CourseCard({ course }: CourseCardProps) {
     const [isAdding, setIsAdding] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const isFreeWebinar = course.type === 'webinar' && course.is_free;
+    const categoryName = course.category?.name || 'ISO Training';
+    const { showError } = useFeedbackModal();
+    const elearningPriceSummary = getElearningPriceSummary(course);
+    const publicOnlinePriceSummary = getPublicModePriceSummary(course, 'online', course.public_sessions?.find(session => session.delivery_mode === 'online') || null);
+    const publicOfflinePriceSummary = getPublicModePriceSummary(course, 'offline', course.public_sessions?.find(session => session.delivery_mode === 'offline') || null);
+    const primaryPriceSummary = course.elearning_enabled
+        ? elearningPriceSummary
+        : publicOnlinePriceSummary.finalPrice != null
+            ? publicOnlinePriceSummary
+            : publicOfflinePriceSummary;
+
+    const getCartPayload = () => {
+        if (course.elearning_enabled) {
+            return {
+                course_id: course.id,
+                offer_type: 'elearning',
+                offer_mode: '',
+                public_session_id: '',
+            };
+        }
+
+        if (course.public_training_enabled && Array.isArray(course.public_sessions) && course.public_sessions.length > 0) {
+            const session = course.public_sessions[0];
+            return {
+                course_id: course.id,
+                offer_type: 'public',
+                offer_mode: session.delivery_mode || '',
+                public_session_id: session.id || '',
+            };
+        }
+
+        if (course.public_training_enabled && publicOnlinePriceSummary.finalPrice != null) {
+            return {
+                course_id: course.id,
+                offer_type: 'public',
+                offer_mode: 'online',
+                public_session_id: 'public-online',
+            };
+        }
+
+        if (course.public_training_enabled && publicOfflinePriceSummary.finalPrice != null) {
+            return {
+                course_id: course.id,
+                offer_type: 'public',
+                offer_mode: 'offline',
+                public_session_id: 'public-offline',
+            };
+        }
+
+        return null;
+    };
 
     const addToCart = async (e: React.MouseEvent) => {
         e.preventDefault(); // Prevent navigation if wrapped in Link
@@ -29,6 +82,12 @@ export default function CourseCard({ course }: CourseCardProps) {
                 return;
             }
 
+            const payload = getCartPayload();
+            if (!payload) {
+                await showError('Program ini belum memiliki paket transaksi yang bisa dimasukkan ke keranjang.', 'Belum Tersedia');
+                return;
+            }
+
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             const res = await fetch(`${apiUrl}/api/cart/add_item/`, {
                 method: 'POST',
@@ -36,7 +95,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ course_id: course.id })
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
@@ -48,11 +107,11 @@ export default function CourseCard({ course }: CourseCardProps) {
                     return;
                 }
                 const data = await res.json();
-                alert(data.message || 'Gagal menambahkan ke keranjang');
+                await showError(data.message || 'Kursus belum bisa ditambahkan ke keranjang.', 'Gagal Menambahkan');
             }
         } catch (error) {
             console.error('Error adding to cart:', error);
-            alert('Terjadi kesalahan koneksi');
+            await showError('Terjadi kesalahan koneksi saat menambahkan kursus ke keranjang.', 'Koneksi Bermasalah');
         } finally {
             setIsAdding(false);
         }
@@ -64,7 +123,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                 {/* Tag & Type Badge */}
                 <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
                     <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest text-gray-800 shadow-sm">
-                        {course.category.name}
+                        {categoryName}
                     </div>
                     <div className={`
                         px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest text-white shadow-sm border
@@ -99,7 +158,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                 ) : (
                     <div className="w-full h-full bg-gradient-to-br from-blue-500 to-indigo-600 flex flex-col items-center justify-center gap-2">
                         <BookOpen className="w-10 h-10 text-white/80" />
-                        <span className="text-white/60 text-xs font-medium">{course.category?.name || 'ISO Training'}</span>
+                        <span className="text-white/60 text-xs font-medium">{categoryName}</span>
                     </div>
                 )}
             </div>
@@ -165,7 +224,13 @@ export default function CourseCard({ course }: CourseCardProps) {
                 <div className="border-t border-gray-100 pt-3 flex justify-between items-end gap-3">
                     <div className="min-w-0">
                         <p className="text-blue-600 font-bold text-base sm:text-lg">
-                            {isFreeWebinar ? 'Gratis' : formatRupiah(course.price)}
+                            {isFreeWebinar
+                                ? 'Gratis'
+                                : primaryPriceSummary.finalPrice == null
+                                    ? 'Hubungi Tim'
+                                    : primaryPriceSummary.isFree
+                                        ? 'Gratis'
+                                        : formatRupiah(primaryPriceSummary.finalPrice)}
                         </p>
                     </div>
                     <button

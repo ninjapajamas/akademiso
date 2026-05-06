@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, HelpCircle, FileText, Users, Send, AlertCircle, CheckCircle2, Edit2, Check, CalendarRange, Clock3 } from 'lucide-react';
 import { CertificationExam, CertificationAlternative } from '@/types';
 import { formatApiDateTimeRangeForDisplay } from '@/types/datetime';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 interface ExamManagerProps {
     courseId: number;
@@ -22,7 +23,7 @@ const EXAM_MODE_OPTIONS: Array<{
     {
         value: 'QUESTIONS_ONLY',
         label: 'Soal Saja',
-        description: 'Siswa mengerjakan soal, dan Anda tetap bisa meminta instruktur menyiapkan slot sesi pengawasan bila diperlukan.',
+        description: 'Siswa mengerjakan soal, dan Anda tetap bisa meminta trainer menyiapkan slot sesi pengawasan bila diperlukan.',
     },
     {
         value: 'INTERVIEW_ONLY',
@@ -32,7 +33,7 @@ const EXAM_MODE_OPTIONS: Array<{
     {
         value: 'HYBRID',
         label: 'Soal + Wawancara',
-        description: 'Siswa mengerjakan soal pada sesi yang diawasi instruktur lalu tetap wajib mengikuti wawancara.',
+        description: 'Siswa mengerjakan soal pada sesi yang diawasi trainer lalu tetap wajib mengikuti wawancara.',
     },
 ];
 
@@ -80,6 +81,10 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
     const [saving, setSaving] = useState(false);
     const [requesting, setRequesting] = useState(false);
     const [savingQuestionId, setSavingQuestionId] = useState<number | null>(null);
+    const [questionCategoryFilter, setQuestionCategoryFilter] = useState('SEMUA');
+    const [questionImageFiles, setQuestionImageFiles] = useState<Record<number, File | null>>({});
+    const [exportingKey, setExportingKey] = useState<string | null>(null);
+    const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
     const fetchExam = useCallback(async () => {
         try {
@@ -90,7 +95,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
             });
             const data = await readJsonSafely<CertificationExam[]>(res);
             if (!res.ok) {
-                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data ujian akhir belum bisa dimuat.'));
+                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data assessment akhir belum bisa dimuat.'));
             }
 
             const examList = data || [];
@@ -101,13 +106,13 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 });
                 const fullData = await readJsonSafely<CertificationExam>(fullRes);
                 if (!fullRes.ok || !fullData) {
-                    throw new Error('Detail ujian akhir belum bisa dimuat.');
+                    throw new Error('Detail assessment akhir belum bisa dimuat.');
                 }
                 setExam(fullData);
             }
         } catch (error) {
             console.error('Error fetching exam:', error);
-            alert(error instanceof Error ? error.message : 'Data ujian akhir belum bisa dimuat.');
+            alert(error instanceof Error ? error.message : 'Data assessment akhir belum bisa dimuat.');
         } finally {
             setLoading(false);
         }
@@ -130,8 +135,8 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 },
                 body: JSON.stringify({
                     course: courseId,
-                    title: `Ujian Akhir - ${courseId}`,
-                    description: 'Ujian akhir untuk mengukur pemahaman siswa setelah menyelesaikan pelatihan.',
+                    title: `Assessment Akhir - ${courseId}`,
+                    description: 'Assessment akhir untuk mengukur pemahaman siswa setelah menyelesaikan pelatihan.',
                     exam_mode: 'QUESTIONS_ONLY',
                     tested_materials: '',
                     passing_percentage: 70,
@@ -143,11 +148,11 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 onExamChange?.();
             } else {
                 const errorData = await readJsonSafely<ApiErrorPayload>(res);
-                alert(getApiErrorMessage(errorData, 'Ujian akhir belum bisa dibuat.'));
+                alert(getApiErrorMessage(errorData, 'Assessment akhir belum bisa dibuat.'));
             }
         } catch (error) {
             console.error('Error creating exam:', error);
-            alert(error instanceof Error ? error.message : 'Ujian akhir belum bisa dibuat.');
+            alert(error instanceof Error ? error.message : 'Assessment akhir belum bisa dibuat.');
         } finally {
             setSaving(false);
         }
@@ -171,12 +176,12 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 setExam(prev => prev ? { ...prev, ...updates } : prev);
             } else {
                 const errorData = await readJsonSafely<ApiErrorPayload>(res);
-                alert(getApiErrorMessage(errorData, 'Perubahan ujian belum bisa disimpan.'));
+                alert(getApiErrorMessage(errorData, 'Perubahan assessment belum bisa disimpan.'));
                 fetchExam();
             }
         } catch (error) {
             console.error('Error updating exam:', error);
-            alert(error instanceof Error ? error.message : 'Perubahan ujian belum bisa disimpan.');
+            alert(error instanceof Error ? error.message : 'Perubahan assessment belum bisa disimpan.');
         } finally {
             setSaving(false);
         }
@@ -223,7 +228,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         const question = exam?.questions?.find(item => item.id === questionId);
         if (!question) return;
         if (!question.text.trim()) {
-            alert('Isi komponen ujian tidak boleh kosong.');
+            alert('Isi komponen assessment tidak boleh kosong.');
             return;
         }
 
@@ -231,30 +236,39 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const formData = new FormData();
+            formData.append('text', question.text);
+            formData.append('order', String(Math.max(1, Number(question.order) || 1)));
+            formData.append('points', String(Math.max(1, Number(question.points) || 1)));
+            formData.append('category_label', (question.category_label || 'Umum').trim() || 'Umum');
+            const selectedImage = questionImageFiles[questionId];
+            if (selectedImage) {
+                formData.append('image', selectedImage);
+            }
             const res = await fetch(`${apiUrl}/api/certification-questions/${questionId}/`, {
                 method: 'PATCH',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    text: question.text,
-                    order: Math.max(1, Number(question.order) || 1),
-                    points: Math.max(1, Number(question.points) || 1),
-                })
+                body: formData
             });
 
             if (!res.ok) {
                 const errorData = await readJsonSafely<ApiErrorPayload>(res);
-                alert(getApiErrorMessage(errorData, 'Komponen ujian belum bisa diperbarui.'));
+                alert(getApiErrorMessage(errorData, 'Komponen assessment belum bisa diperbarui.'));
                 await fetchExam();
                 return;
             }
 
+            setQuestionImageFiles((prev) => {
+                const next = { ...prev };
+                delete next[questionId];
+                return next;
+            });
             await fetchExam();
         } catch (error) {
             console.error('Error updating question:', error);
-            alert(error instanceof Error ? error.message : 'Komponen ujian belum bisa diperbarui.');
+            alert(error instanceof Error ? error.message : 'Komponen assessment belum bisa diperbarui.');
         } finally {
             setSavingQuestionId(null);
         }
@@ -279,6 +293,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 body: JSON.stringify({
                     exam: exam.id,
                     question_type: type,
+                    category_label: 'Umum',
                     text: defaultQuestionText,
                     order: Math.max(0, ...(exam.questions || []).map(question => question.order || 0)) + 1,
                     points: type === 'MC' ? 5 : (type === 'Essay' ? 20 : 50)
@@ -310,11 +325,44 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 fetchExam();
             } else {
                 const errorData = await readJsonSafely<ApiErrorPayload>(res);
-                alert(getApiErrorMessage(errorData, 'Komponen ujian belum bisa ditambahkan.'));
+                alert(getApiErrorMessage(errorData, 'Komponen assessment belum bisa ditambahkan.'));
             }
         } catch (error) {
             console.error('Error adding question:', error);
-            alert(error instanceof Error ? error.message : 'Komponen ujian belum bisa ditambahkan.');
+            alert(error instanceof Error ? error.message : 'Komponen assessment belum bisa ditambahkan.');
+        }
+    };
+
+    const handleExportExamData = async (dataset: 'questions' | 'attempts', format: 'xlsx' | 'pdf') => {
+        if (!exam) return;
+        const exportKey = `${dataset}-${format}`;
+        setExportingKey(exportKey);
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const endpoint = dataset === 'questions' ? 'export_questions' : 'export_attempts';
+            const res = await fetch(`${apiUrl}/api/certification-exams/${exam.id}/${endpoint}/?format=${format}`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+            });
+            if (!res.ok) {
+                const errorData = await readJsonSafely<ApiErrorPayload>(res);
+                throw new Error(getApiErrorMessage(errorData, 'Data assessment belum bisa diekspor.'));
+            }
+
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = `${dataset === 'questions' ? 'bank-soal' : 'hasil-assessment'}-${exam.id}.${format}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            console.error('Error exporting assessment data:', error);
+            alert(error instanceof Error ? error.message : 'Data assessment belum bisa diekspor.');
+        } finally {
+            setExportingKey(null);
         }
     };
 
@@ -394,7 +442,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 }
             });
             if (res.ok) {
-                alert('Permintaan kesediaan jadwal telah dikirim ke Instruktur.');
+                alert('Permintaan kesediaan jadwal telah dikirim ke Trainer.');
                 fetchExam();
             } else {
                 const errorData = await readJsonSafely<ApiErrorPayload>(res);
@@ -408,20 +456,20 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         }
     };
 
-    if (loading) return <div>Memuat data ujian...</div>;
+    if (loading) return <div>Memuat data assessment...</div>;
 
     if (!exam) {
         return (
             <div className="bg-white p-8 rounded-xl border-2 border-dashed border-gray-200 text-center">
                 <HelpCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-gray-900">Belum Ada Ujian Akhir</h3>
-                <p className="text-gray-500 mb-6">Buat ujian akhir untuk mengukur pemahaman siswa setelah menyelesaikan kursus ini.</p>
+                <h3 className="text-lg font-bold text-gray-900">Belum Ada Assessment Akhir</h3>
+                <p className="text-gray-500 mb-6">Buat assessment akhir untuk mengukur pemahaman siswa setelah menyelesaikan kursus ini.</p>
                 <button
                     onClick={handleCreateExam}
                     disabled={saving}
                     className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 transition"
                 >
-                    Buat Ujian Sekarang
+                    Buat Assessment Sekarang
                 </button>
             </div>
         );
@@ -435,19 +483,28 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         if (orderDelta !== 0) return orderDelta;
         return left.id - right.id;
     });
+    const availableCategories = Array.from(new Set(
+        sortedQuestions
+            .map((question) => (question.category_label || 'Umum').trim() || 'Umum')
+    )).sort((left, right) => left.localeCompare(right, 'id-ID'));
+    const filteredQuestions = sortedQuestions.filter((question) => (
+        questionCategoryFilter === 'SEMUA'
+            ? true
+            : ((question.category_label || 'Umum').trim() || 'Umum') === questionCategoryFilter
+    ));
 
     return (
         <div className="space-y-6">
             {/* Exam Header */}
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex items-start justify-between">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="flex-1 space-y-4">
                     <div className="group relative">
-                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Judul Ujian Akhir</label>
+                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Judul Assessment Akhir</label>
                         <div className="flex items-center gap-2">
                             <input
                                 className="text-2xl font-bold text-gray-900 w-full bg-gray-50/50 hover:bg-gray-100 px-4 py-2 rounded-xl transition border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none"
                                 value={exam.title}
-                                placeholder="Contoh: Ujian Akhir ISO 9001"
+                                placeholder="Contoh: Assessment Akhir ISO 9001"
                                 onChange={(e) => setExam({ ...exam, title: e.target.value })}
                                 onBlur={() => handleUpdateExam({ title: exam.title })}
                             />
@@ -455,12 +512,12 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                         </div>
                     </div>
                     <div className="group relative">
-                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Deskripsi Ujian Akhir</label>
+                        <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1 ml-1">Deskripsi Assessment Akhir</label>
                         <div className="flex items-start gap-2">
                             <textarea
                                 className="text-sm text-gray-600 w-full bg-gray-50/50 hover:bg-gray-100 px-4 py-3 rounded-xl transition border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none min-h-[80px]"
                                 value={exam.description}
-                                placeholder="Berikan penjelasan singkat mengenai cakupan dan aturan ujian akhir ini..."
+                                placeholder="Berikan penjelasan singkat mengenai cakupan dan aturan assessment akhir ini..."
                                 onChange={(e) => setExam({ ...exam, description: e.target.value })}
                                 onBlur={() => handleUpdateExam({ description: exam.description })}
                             />
@@ -468,7 +525,42 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col items-stretch gap-3 xl:min-w-[260px]">
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => void handleExportExamData('questions', 'xlsx')}
+                            disabled={exportingKey === 'questions-xlsx'}
+                            className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {exportingKey === 'questions-xlsx' ? 'Mengekspor...' : 'Soal Excel'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleExportExamData('questions', 'pdf')}
+                            disabled={exportingKey === 'questions-pdf'}
+                            className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {exportingKey === 'questions-pdf' ? 'Mengekspor...' : 'Soal PDF'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleExportExamData('attempts', 'xlsx')}
+                            disabled={exportingKey === 'attempts-xlsx'}
+                            className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {exportingKey === 'attempts-xlsx' ? 'Mengekspor...' : 'Peserta Excel'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleExportExamData('attempts', 'pdf')}
+                            disabled={exportingKey === 'attempts-pdf'}
+                            className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {exportingKey === 'attempts-pdf' ? 'Mengekspor...' : 'Peserta PDF'}
+                        </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
                     <div className={`px-3 py-1 rounded-full text-[10px] font-black ${exam.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
                         {exam.is_active ? 'AKTIF' : 'DRAFT'}
                     </div>
@@ -478,14 +570,15 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                     >
                         {exam.is_active ? 'Nonaktifkan' : 'Aktifkan'}
                     </button>
+                    </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-[1.4fr,1fr] gap-4">
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
                     <div>
-                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2">Mode Ujian</p>
-                        <h4 className="font-bold text-gray-900">Tentukan cara siswa mengikuti ujian akhir</h4>
+                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2">Mode Assessment</p>
+                        <h4 className="font-bold text-gray-900">Tentukan cara siswa mengikuti assessment akhir</h4>
                         <p className="text-sm text-gray-500 mt-1">{modeMeta.description}</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -526,8 +619,27 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                         className="min-h-[180px] w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-emerald-300 focus:bg-white"
                     />
                     <p className="text-xs text-gray-500">
-                        Bagian ini membantu admin, instruktur, dan siswa memahami apa saja yang diuji, terlepas dari bentuk ujiannya.
+                        Bagian ini membantu admin, trainer, dan siswa memahami apa saja yang dinilai, terlepas dari bentuk assessment-nya.
                     </p>
+
+                    <label className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(exam.randomize_questions)}
+                            onChange={(e) => {
+                                const nextValue = e.target.checked;
+                                setExam({ ...exam, randomize_questions: nextValue });
+                                void handleUpdateExam({ randomize_questions: nextValue });
+                            }}
+                            className="mt-1 h-4 w-4 rounded border-indigo-200 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                            <p className="text-sm font-bold text-indigo-950">Acak urutan soal tertulis saat siswa mulai assessment</p>
+                            <p className="mt-1 text-xs leading-5 text-indigo-800">
+                                Soal pilihan ganda dan essay akan diacak per attempt. Komponen wawancara tetap ditempatkan di bagian akhir.
+                            </p>
+                        </div>
+                    </label>
 
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
                         <label className="block text-[10px] font-black uppercase tracking-widest text-emerald-700">
@@ -557,7 +669,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                             <span className="text-sm font-semibold text-emerald-900">% jawaban benar minimal</span>
                         </div>
                         <p className="mt-2 text-xs text-emerald-800">
-                            Ujian dinyatakan lulus jika skor otomatis peserta mencapai minimal {exam.passing_percentage ?? 70}%.
+                            Assessment dinyatakan lulus jika skor otomatis peserta mencapai minimal {exam.passing_percentage ?? 70}%.
                         </p>
                     </div>
                 </div>
@@ -570,15 +682,15 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                         <Users className="w-6 h-6" />
                     </div>
                     <div>
-                        <h4 className="font-bold text-indigo-900">Konfirmasi Instruktur</h4>
+                        <h4 className="font-bold text-indigo-900">Konfirmasi Trainer</h4>
                         <p className="text-sm text-indigo-700 mt-1">
                             {exam.instructor_confirmed
                                 ? (exam.exam_mode === 'QUESTIONS_ONLY'
-                                    ? 'Instruktur telah mengonfirmasi periode ujian untuk siswa.'
-                                    : 'Instruktur telah mengonfirmasi periode ujian dan menyiapkan beberapa slot sesi.')
+                                    ? 'Trainer telah mengonfirmasi periode assessment untuk siswa.'
+                                    : 'Trainer telah mengonfirmasi periode assessment dan menyiapkan beberapa slot sesi.')
                                 : (exam.exam_mode === 'QUESTIONS_ONLY'
-                                    ? 'Minta instruktur mengunci periode ujian dan, jika perlu, menyiapkan slot sesi pengawasan.'
-                                    : 'Minta instruktur mengisi beberapa slot sesi sesuai mode ujian ini.')}
+                                    ? 'Minta trainer mengunci periode assessment dan, jika perlu, menyiapkan slot sesi pengawasan.'
+                                    : 'Minta trainer mengisi beberapa slot sesi sesuai mode assessment ini.')}
                         </p>
                     </div>
                 </div>
@@ -602,8 +714,8 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                             <CalendarRange className="w-5 h-5" />
                         </div>
                         <div>
-                            <p className="text-xs font-black uppercase tracking-widest text-indigo-600">Jadwal Ujian</p>
-                            <h4 className="font-bold text-gray-900">Rentang yang dikonfirmasi instruktur</h4>
+                            <p className="text-xs font-black uppercase tracking-widest text-indigo-600">Jadwal Assessment</p>
+                            <h4 className="font-bold text-gray-900">Rentang yang dikonfirmasi trainer</h4>
                         </div>
                     </div>
                     <p className="text-sm font-semibold text-gray-800">
@@ -612,7 +724,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                     <p className="text-xs text-gray-500 mt-2">
                         {exam.exam_mode === 'QUESTIONS_ONLY'
                             ? 'Siswa hanya bisa mulai mengerjakan soal pada rentang waktu ini.'
-                            : 'Rentang ini menjadi jadwal umum ujian akhir. Slot sesi detail diatur terpisah oleh instruktur.'}
+                            : 'Rentang ini menjadi jadwal umum assessment akhir. Slot sesi detail diatur terpisah oleh trainer.'}
                     </p>
                 </div>
 
@@ -630,13 +742,13 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                         {exam.is_active
                             ? exam.instructor_confirmed
                                 ? 'Aktif dan siap dibuka sesuai jadwal'
-                                : 'Aktif, tetapi masih menunggu konfirmasi instruktur'
+                                : 'Aktif, tetapi masih menunggu konfirmasi trainer'
                             : 'Masih draft dan belum bisa diikuti siswa'}
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
                         {exam.exam_mode === 'QUESTIONS_ONLY'
-                            ? 'Mode ini fokus pada soal tertulis, tetapi instruktur tetap bisa menyiapkan slot sesi pengawasan.'
-                            : 'Mode ini memerlukan pengaturan beberapa slot sesi dari instruktur.'}
+                            ? 'Mode ini fokus pada soal tertulis, tetapi trainer tetap bisa menyiapkan slot sesi pengawasan.'
+                            : 'Mode ini memerlukan pengaturan beberapa slot sesi dari trainer.'}
                     </p>
                 </div>
             </div>
@@ -645,10 +757,20 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                        Komponen Ujian
-                        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{sortedQuestions.length}</span>
+                        Komponen Assessment
+                        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{filteredQuestions.length}</span>
                     </h3>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <select
+                            value={questionCategoryFilter}
+                            onChange={(e) => setQuestionCategoryFilter(e.target.value)}
+                            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                        >
+                            <option value="SEMUA">Semua Kategori</option>
+                            {availableCategories.map((category) => (
+                                <option key={category} value={category}>{category}</option>
+                            ))}
+                        </select>
                         {canAddWrittenQuestions && (
                             <button onClick={() => addQuestion('MC')} className="flex items-center gap-2 bg-white text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-medium hover:bg-gray-50">
                                 <Plus className="w-4 h-4" /> Pilihan Ganda
@@ -668,12 +790,12 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                 </div>
 
                 <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                    {exam.exam_mode === 'QUESTIONS_ONLY' && 'Tambahkan soal yang akan dikerjakan siswa. Jika ujian diawasi, instruktur juga bisa menyiapkan slot sesi.'}
-                    {exam.exam_mode === 'INTERVIEW_ONLY' && 'Tambahkan komponen wawancara untuk menjelaskan alur sesi. Jadwal dipilih siswa dari slot yang disediakan instruktur.'}
-                    {exam.exam_mode === 'HYBRID' && 'Anda bisa menggabungkan soal tertulis dan komponen wawancara dalam satu ujian akhir, dengan slot sesi dari instruktur.'}
+                    {exam.exam_mode === 'QUESTIONS_ONLY' && 'Tambahkan soal yang akan dikerjakan siswa. Jika assessment diawasi, trainer juga bisa menyiapkan slot sesi.'}
+                    {exam.exam_mode === 'INTERVIEW_ONLY' && 'Tambahkan komponen wawancara untuk menjelaskan alur sesi. Jadwal dipilih siswa dari slot yang disediakan trainer.'}
+                    {exam.exam_mode === 'HYBRID' && 'Anda bisa menggabungkan soal tertulis dan komponen wawancara dalam satu assessment akhir, dengan slot sesi dari trainer.'}
                 </div>
 
-                {sortedQuestions.map((q, idx) => (
+                {filteredQuestions.map((q, idx) => (
                     <div key={q.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
                         <div className="p-6">
                             <div className="flex items-start justify-between mb-6">
@@ -686,10 +808,20 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                                             {q.question_type === 'MC' ? <HelpCircle className="w-3 h-3" /> : (q.question_type === 'Essay' ? <FileText className="w-3 h-3" /> : <Users className="w-3 h-3" />)}
                                             {q.question_type === 'MC' ? 'PILIHAN GANDA' : (q.question_type === 'Essay' ? 'ESAI / ISIAN' : 'WAWANCARA')}
                                         </div>
+                                        <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                            {(q.category_label || 'Umum').trim() || 'Umum'}
+                                        </div>
                                     </div>
                                 </div>
                                 <button onClick={async () => {
-                                    if (!confirm('Hapus pertanyaan ini?')) return;
+                                    const shouldDelete = await confirmAction({
+                                        title: 'Hapus Pertanyaan Ini?',
+                                        message: 'Pertanyaan dan opsi jawabannya akan dihapus dari assessment akhir.',
+                                        confirmLabel: 'Ya, Hapus',
+                                        cancelLabel: 'Batal',
+                                        tone: 'warning',
+                                    });
+                                    if (!shouldDelete) return;
                                     try {
                                         const token = localStorage.getItem('access_token');
                                         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -697,20 +829,32 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                                             method: 'DELETE',
                                             headers: { 'Authorization': `Bearer ${token}` }
                                         });
-                                        fetchExam();
+                                        await fetchExam();
+                                        await showSuccess('Pertanyaan assessment berhasil dihapus.', 'Penghapusan Berhasil');
                                     } catch (error) {
                                         console.error('Error deleting question:', error);
+                                        await showError('Pertanyaan assessment belum bisa dihapus.', 'Penghapusan Gagal');
                                     }
                                 }} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-xl transition">
                                     <Trash2 className="w-5 h-5" />
                                 </button>
                             </div>
-                            <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr),140px,140px]">
+                            <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr),160px,140px,140px]">
                                 <label className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Ringkasan Komponen</span>
                                     <p className="mt-2 text-sm font-semibold text-gray-700">
                                         Atur isi komponen, bobot poin, dan urutannya sebelum dipublikasikan ke siswa.
                                     </p>
+                                </label>
+                                <label className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Kategori</span>
+                                    <input
+                                        type="text"
+                                        value={q.category_label || 'Umum'}
+                                        onChange={(e) => updateQuestionLocal(q.id, { category_label: e.target.value })}
+                                        className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                        placeholder="Contoh: Audit Internal"
+                                    />
                                 </label>
                                 <label className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Urutan</span>
@@ -739,6 +883,40 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                                 placeholder="Tuliskan isi pertanyaan di sini secara lengkap..."
                                 onChange={(e) => updateQuestionLocal(q.id, { text: e.target.value })}
                             />
+
+                            <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr),260px]">
+                                <label className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-4">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Gambar Pendukung Soal</span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0] || null;
+                                            setQuestionImageFiles((prev) => ({ ...prev, [q.id]: file }));
+                                        }}
+                                        className="mt-3 block w-full text-sm text-gray-600 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-indigo-700"
+                                    />
+                                    <p className="mt-2 text-xs text-gray-500">
+                                        {questionImageFiles[q.id]?.name
+                                            ? `Siap diunggah: ${questionImageFiles[q.id]?.name}`
+                                            : 'Unggah gambar jika soal membutuhkan diagram, contoh visual, atau studi kasus berbentuk gambar.'}
+                                    </p>
+                                </label>
+                                <div className="rounded-2xl border border-gray-100 bg-white p-3">
+                                    {q.image_url ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                            src={q.image_url}
+                                            alt={`Gambar untuk soal ${idx + 1}`}
+                                            className="h-44 w-full rounded-xl object-cover"
+                                        />
+                                    ) : (
+                                        <div className="flex h-44 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 text-center text-sm text-gray-400">
+                                            Belum ada gambar pada soal ini.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
 
                             <div className="mb-6 flex justify-end">
                                 <button
@@ -791,7 +969,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                             {q.question_type === 'Interview' && (
                                 <div className="flex items-center gap-3 bg-purple-50 p-4 rounded-2xl text-purple-700 text-xs font-bold border border-purple-100">
                                     <AlertCircle className="w-5 h-5" />
-                                    <span>Instruksi: Siswa akan diminta memilih slot sesi yang telah disediakan oleh instruktur untuk bagian wawancara ini.</span>
+                                    <span>Instruksi: Siswa akan diminta memilih slot sesi yang telah disediakan oleh trainer untuk bagian wawancara ini.</span>
                                 </div>
                             )}
                         </div>

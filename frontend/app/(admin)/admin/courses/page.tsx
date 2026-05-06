@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2, BookOpen } from 'lucide-react';
 import { Course } from '@/types';
 import { formatRupiah } from '@/types/currency';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 export default function CoursesPage() {
     const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
+    const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
     const normalizeCoursesResponse = (payload: unknown): Course[] => {
         if (Array.isArray(payload)) {
@@ -27,7 +29,7 @@ export default function CoursesPage() {
         return [];
     };
 
-    const fetchCourses = async () => {
+    const fetchCourses = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -51,10 +53,17 @@ export default function CoursesPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     const handleDelete = async (id: number) => {
-        if (!confirm('Are you sure you want to delete this course?')) return;
+        const shouldDelete = await confirmAction({
+            title: 'Hapus Kursus?',
+            message: 'Kursus yang dihapus tidak bisa dipulihkan lagi.',
+            confirmLabel: 'Ya, Hapus',
+            cancelLabel: 'Batal',
+            tone: 'warning',
+        });
+        if (!shouldDelete) return;
 
         try {
             const token = localStorage.getItem('access_token');
@@ -67,18 +76,20 @@ export default function CoursesPage() {
             });
 
             if (res.ok) {
-                fetchCourses();
+                await fetchCourses();
+                await showSuccess('Kursus berhasil dihapus.', 'Penghapusan Berhasil');
             } else {
-                alert('Failed to delete');
+                await showError('Kursus belum bisa dihapus.', 'Penghapusan Gagal');
             }
         } catch (error) {
             console.error('Error deleting:', error);
+            await showError('Terjadi kesalahan saat menghapus kursus.', 'Koneksi Bermasalah');
         }
     };
 
     useEffect(() => {
-        fetchCourses();
-    }, []);
+        void fetchCourses();
+    }, [fetchCourses]);
 
     return (
         <div className="space-y-6">
@@ -101,10 +112,11 @@ export default function CoursesPage() {
                         <thead className="bg-gray-50 border-b border-gray-100">
                             <tr>
                                 <th className="p-4 font-semibold text-gray-600">Judul</th>
-                                <th className="p-4 font-semibold text-gray-600">Instruktur</th>
+                                <th className="p-4 font-semibold text-gray-600">Trainer</th>
                                 <th className="p-4 font-semibold text-gray-600">Tipe</th>
                                 <th className="p-4 font-semibold text-gray-600">Harga</th>
                                 <th className="p-4 font-semibold text-gray-600">Level</th>
+                                <th className="p-4 font-semibold text-gray-600">Kehadiran</th>
                                 <th className="p-4 font-semibold text-gray-600">Status</th>
                                 <th className="sticky right-0 z-10 min-w-[120px] bg-gray-50 p-4 font-semibold text-gray-600 text-right shadow-[-10px_0_14px_-14px_rgba(15,23,42,0.5)]">
                                     Aksi
@@ -153,6 +165,27 @@ export default function CoursesPage() {
                                     </td>
                                     <td className="p-4 whitespace-nowrap">
                                         <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">{course.level}</span>
+                                    </td>
+                                    <td className="p-4 whitespace-nowrap">
+                                        {course.type === 'course' ? (
+                                            <Link href={`/admin/courses/${course.id}/attendance`} className="block min-w-[110px] rounded-xl p-2 -m-2 hover:bg-emerald-50 transition-colors">
+                                                <div className="flex items-center justify-between gap-2 text-xs font-semibold text-gray-500">
+                                                    <span>{course.attendance_summary?.present ?? 0}/{course.attendance_summary?.total ?? 0}</span>
+                                                    <span>{course.attendance_summary?.percentage ?? 0}%</span>
+                                                </div>
+                                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                                                    <div
+                                                        className="h-full rounded-full bg-emerald-500"
+                                                        style={{ width: `${course.attendance_summary?.percentage ?? 0}%` }}
+                                                    />
+                                                </div>
+                                                <p className="mt-2 text-[11px] font-bold text-emerald-700">Buka daftar hadir</p>
+                                            </Link>
+                                        ) : (
+                                            <div className="min-w-[110px] rounded-xl border border-dashed border-gray-200 px-3 py-3 text-center text-[11px] font-semibold text-gray-400">
+                                                Tidak tersedia
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="p-4 whitespace-nowrap">
                                         <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${course.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>

@@ -13,6 +13,7 @@ export interface Instructor {
     name: string;
     title: string;
     bio: string;
+    expertise_areas?: string[];
     photo: string | null;
     signature_image?: string | null;
     cv?: string | null;
@@ -20,6 +21,83 @@ export interface Instructor {
     rejection_reason?: string | null;
     approved_at?: string | null;
     approved_by_name?: string | null;
+}
+
+export interface ProjectAssignment {
+    id: number;
+    instructor: number;
+    instructor_name?: string;
+    instructor_title?: string;
+    instructor_user_id?: number | null;
+    assigned_by?: number | null;
+    assigned_by_name?: string | null;
+    status: 'assigned' | 'in_progress' | 'review' | 'completed' | 'blocked';
+    role_label?: string;
+    notes?: string;
+    assigned_at?: string | null;
+    updated_at?: string | null;
+    completed_at?: string | null;
+}
+
+export interface Project {
+    id: number;
+    title: string;
+    client_name?: string;
+    description?: string;
+    deliverables?: string;
+    status: 'draft' | 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled';
+    status_label?: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    priority_label?: string;
+    start_date?: string | null;
+    due_date?: string | null;
+    related_course?: number | null;
+    related_course_title?: string | null;
+    created_by?: number;
+    created_by_name?: string;
+    created_at?: string | null;
+    updated_at?: string | null;
+    assignments?: ProjectAssignment[];
+    assigned_instructor_ids?: number[];
+    assignment_count?: number;
+    completed_assignment_count?: number;
+    is_overdue?: boolean;
+}
+
+export interface InstructorFinanceSummary {
+    gross_revenue: number;
+    instructor_earnings: number;
+    platform_fee_total: number;
+    available_balance: number;
+    pending_withdrawals: number;
+    paid_withdrawals: number;
+    rejected_withdrawals: number;
+    reserved_balance: number;
+    completed_orders: number;
+    payout_profile_ready: boolean;
+}
+
+export interface InstructorWithdrawalRequest {
+    id: number;
+    instructor: number;
+    instructor_name?: string;
+    requested_by: number;
+    requested_by_name?: string;
+    amount: string | number;
+    note?: string | null;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
+    status_label?: string;
+    accountant_notes?: string | null;
+    reviewed_by?: number | null;
+    reviewed_by_name?: string | null;
+    reviewed_at?: string | null;
+    paid_at?: string | null;
+    npwp_snapshot?: string | null;
+    bank_name_snapshot?: string | null;
+    bank_account_number_snapshot?: string | null;
+    bank_account_holder_snapshot?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
 }
 
 export interface Lesson {
@@ -61,6 +139,7 @@ export interface PublicTrainingSession {
     location: string;
     duration: string;
     price: string;
+    discount_price?: string;
     badge?: string;
     cta_label?: string;
     cta_url?: string;
@@ -72,9 +151,14 @@ export interface Course {
     slug: string;
     description: string;
     detail_sections?: TrainingDetailSection[];
+    rundown_items?: string[];
     public_training_enabled?: boolean;
     public_training_intro?: string;
     public_sessions?: PublicTrainingSession[];
+    public_online_price?: string;
+    public_online_discount_price?: string;
+    public_offline_price?: string;
+    public_offline_discount_price?: string;
     inhouse_training_enabled?: boolean;
     inhouse_training_intro?: string;
     inhouse_training_benefits?: string[];
@@ -88,7 +172,7 @@ export interface Course {
     rating: string;
     enrolled_count: number;
     instructor: Instructor;
-    category: Category;
+    category: Category | null;
     lessons?: Lesson[];
     sections?: CourseSection[];
     type: 'course' | 'webinar' | 'workshop';
@@ -106,6 +190,28 @@ export interface Course {
     is_enrolled?: boolean;
     certification_exams?: CertificationExam[];
     webinar_attendance?: WebinarAttendance | null;
+    attendance_summary?: {
+        total: number;
+        present: number;
+        absent: number;
+        percentage: number;
+    } | null;
+    discussion_summary?: {
+        topic_count: number;
+        comment_count: number;
+        latest_activity_at?: string | null;
+        has_active_discussion: boolean;
+    } | null;
+}
+
+export interface InstructorScheduleItem {
+    type: 'pelatihan' | 'assessment' | 'project';
+    title: string;
+    subtitle?: string;
+    status?: string;
+    scheduled_at?: string | null;
+    scheduled_end_at?: string | null;
+    action_url?: string;
 }
 
 export interface EnrolledCourse {
@@ -116,7 +222,103 @@ export interface EnrolledCourse {
     public_session_id?: string;
     status: 'Pending' | 'Completed' | 'Cancelled';
     progress_percentage?: number;
+    pre_test_score?: number | null;
+    post_test_score?: number | null;
     created_at: string;
+}
+
+export interface CourseFeedbackEntry {
+    id: number;
+    course: number;
+    user: number;
+    user_name: string;
+    user_email?: string | null;
+    lesson?: number | null;
+    lesson_title?: string | null;
+    quiz_attempt?: number | null;
+    quiz_score?: number | null;
+    criticism: string;
+    suggestion: string;
+    created_at?: string | null;
+    updated_at?: string | null;
+}
+
+export interface GamificationBadge {
+    key: string;
+    label: string;
+    description: string;
+    icon: string;
+    accent_color: string;
+    earned: boolean;
+    progress_current: number;
+    progress_target: number;
+    progress_percentage: number;
+}
+
+export interface GamificationLevel {
+    current: number;
+    label: string;
+    current_level_xp: number;
+    next_level_xp: number | null;
+    xp_to_next_level: number;
+    progress_percentage: number;
+}
+
+export interface GamificationStreak {
+    current: number;
+    longest: number;
+    last_activity_on?: string | null;
+    active_days_this_week: number;
+}
+
+export interface GamificationStats {
+    completed_lessons: number;
+    passed_quizzes: number;
+    perfect_quizzes: number;
+    completed_courses: number;
+    approved_certificates: number;
+}
+
+export interface GamificationSummary {
+    total_xp: number;
+    active_courses: number;
+    earned_badges_count: number;
+    next_focus: string;
+    level: GamificationLevel;
+    streak: GamificationStreak;
+    stats: GamificationStats;
+    badges: GamificationBadge[];
+    next_badges: GamificationBadge[];
+}
+
+export interface GamificationActivityItem {
+    id: string;
+    type: 'lesson_completed' | 'quiz_passed' | 'perfect_quiz' | 'course_completed' | 'certificate_approved';
+    title: string;
+    description: string;
+    occurred_at?: string | null;
+    xp_earned: number;
+    icon: string;
+    accent_color: string;
+}
+
+export interface GamificationLeaderboardEntry {
+    rank: number;
+    user_id: number;
+    username: string;
+    full_name: string;
+    avatar_url?: string | null;
+    total_xp: number;
+    level: GamificationLevel;
+    current_streak: number;
+    earned_badges_count: number;
+    completed_courses: number;
+    is_current_user: boolean;
+}
+
+export interface GamificationLeaderboard {
+    leaders: GamificationLeaderboardEntry[];
+    current_user_entry?: GamificationLeaderboardEntry | null;
 }
 
 export interface CertificationExam {
@@ -127,6 +329,7 @@ export interface CertificationExam {
     description: string;
     exam_mode: 'QUESTIONS_ONLY' | 'INTERVIEW_ONLY' | 'HYBRID';
     tested_materials?: string;
+    randomize_questions?: boolean;
     passing_percentage?: number;
     is_active: boolean;
     instructor_confirmed: boolean;
@@ -143,7 +346,10 @@ export interface CertificationQuestion {
     id: number;
     exam: number;
     question_type: 'MC' | 'Essay' | 'Interview';
+    category_label?: string;
     text: string;
+    image?: string | null;
+    image_url?: string | null;
     order: number;
     points: number;
     alternatives?: CertificationAlternative[];
@@ -178,6 +384,13 @@ export interface CertificationAttempt {
     score: string;
     interview_slot?: number;
     interview_slot_detail?: CertificationInstructorSlot;
+    question_order?: number[];
+    interview_result?: 'PENDING' | 'PASSED' | 'FAILED';
+    interview_reason?: string;
+    interview_feedback?: string;
+    interview_reviewed_by?: number | null;
+    interview_reviewed_by_name?: string | null;
+    interview_reviewed_at?: string | null;
     started_at: string;
     submitted_at?: string;
     answers?: CertificationAnswer[];
@@ -259,9 +472,14 @@ export interface DiscussionAuthor {
 export interface CourseDiscussionComment {
     id: number;
     content: string;
+    attachment?: string | null;
+    attachment_name?: string;
+    attachment_is_image?: boolean;
     created_at: string;
     updated_at: string;
     author: DiscussionAuthor;
+    can_edit?: boolean;
+    can_delete?: boolean;
 }
 
 export interface CourseDiscussionTopic {
@@ -269,6 +487,9 @@ export interface CourseDiscussionTopic {
     course: number;
     title: string;
     content: string;
+    attachment?: string | null;
+    attachment_name?: string;
+    attachment_is_image?: boolean;
     created_at: string;
     updated_at: string;
     latest_activity_at: string;

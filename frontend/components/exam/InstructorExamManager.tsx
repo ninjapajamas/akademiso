@@ -20,7 +20,7 @@ const EXAM_MODE_OPTIONS: Array<{
     {
         value: 'QUESTIONS_ONLY',
         label: 'Soal Saja',
-        description: 'Ujian hanya berupa soal, tetapi Anda tetap bisa menyediakan slot sesi jika perlu mengawasi peserta.',
+        description: 'Assessment hanya berupa soal, tetapi Anda tetap bisa menyediakan slot sesi jika perlu mengawasi peserta.',
     },
     {
         value: 'INTERVIEW_ONLY',
@@ -82,7 +82,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
             });
             const data = await readJsonSafely<CertificationExam[]>(res);
             if (!res.ok) {
-                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data ujian akhir belum bisa dimuat.'));
+                throw new Error(getApiErrorMessage(data as ApiErrorPayload | null, 'Data assessment akhir belum bisa dimuat.'));
             }
 
             const examList = data || [];
@@ -93,13 +93,13 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
                 });
                 const fullData = await readJsonSafely<CertificationExam>(fullRes);
                 if (!fullRes.ok || !fullData) {
-                    throw new Error('Detail ujian akhir belum bisa dimuat.');
+                    throw new Error('Detail assessment akhir belum bisa dimuat.');
                 }
                 setExam(fullData);
             }
         } catch (error) {
             console.error('Error fetching exam:', error);
-            alert(error instanceof Error ? error.message : 'Data ujian akhir belum bisa dimuat.');
+            alert(error instanceof Error ? error.message : 'Data assessment akhir belum bisa dimuat.');
         } finally {
             setLoading(false);
         }
@@ -126,12 +126,12 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
                 setExam({ ...exam, ...updates });
             } else {
                 const errorData = await readJsonSafely<ApiErrorPayload>(res);
-                alert(getApiErrorMessage(errorData, 'Perubahan ujian belum bisa disimpan.'));
+                alert(getApiErrorMessage(errorData, 'Perubahan assessment belum bisa disimpan.'));
                 fetchExam();
             }
         } catch (error) {
             console.error('Error updating exam:', error);
-            alert(error instanceof Error ? error.message : 'Perubahan ujian belum bisa disimpan.');
+            alert(error instanceof Error ? error.message : 'Perubahan assessment belum bisa disimpan.');
         }
     };
 
@@ -227,7 +227,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
         }
     };
 
-    if (loading) return <div>Memuat data ujian akhir...</div>;
+    if (loading) return <div>Memuat data assessment akhir...</div>;
 
     if (!exam) return null;
 
@@ -246,9 +246,9 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
                 <div>
                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <CheckCircle2 className="w-6 h-6 text-indigo-600" />
-                        Jadwal Ujian Akhir
+                        Jadwal Assessment Akhir
                     </h3>
-                    <p className="text-sm text-gray-500 mt-1">Atur periode dan slot sesi ujian akhir yang diawasi instruktur.</p>
+                    <p className="text-sm text-gray-500 mt-1">Atur periode dan slot sesi assessment akhir yang diawasi trainer.</p>
                 </div>
                 <div className={`px-4 py-1.5 rounded-xl text-[10px] font-black tracking-widest ${exam.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
                     {exam.is_active ? 'STATUS: AKTIF' : 'STATUS: DRAFT'}
@@ -258,7 +258,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
             {/* Exam Details for Instructor */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="group relative">
-                    <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1.5 ml-1">Nama Ujian Akhir</label>
+                    <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1.5 ml-1">Nama Assessment Akhir</label>
                     <div className="flex items-center gap-2">
                         <input
                             className="w-full bg-gray-50/50 hover:bg-gray-100 px-4 py-2.5 rounded-xl transition border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none font-bold text-gray-900"
@@ -286,7 +286,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
             <div className="grid grid-cols-1 xl:grid-cols-[1.4fr,1fr] gap-6">
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Mode Ujian</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Mode Assessment</p>
                         <h4 className="font-bold text-gray-900 mt-2">Sesuaikan format pelaksanaan</h4>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -335,18 +335,18 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
                         <CalendarRange className="w-6 h-6" />
                     </div>
                     <div>
-                        <h4 className="font-bold text-indigo-950">Jadwal Ujian Akhir untuk Siswa</h4>
+                        <h4 className="font-bold text-indigo-950">Jadwal Assessment Akhir untuk Siswa</h4>
                         <p className="text-sm text-indigo-700 mt-1">
                             {requiresInterview
-                                ? 'Tentukan periode umum ujian akhir, lalu sediakan beberapa slot sesi untuk soal dan/atau wawancara sesuai kebutuhan.'
-                                : 'Tentukan kapan ujian soal dibuka. Bila perlu pengawasan, Anda juga bisa menambahkan beberapa slot sesi.'}
+                                ? 'Tentukan periode umum assessment akhir, lalu sediakan beberapa slot sesi untuk soal dan/atau wawancara sesuai kebutuhan.'
+                                : 'Tentukan kapan assessment soal dibuka. Bila perlu pengawasan, Anda juga bisa menambahkan beberapa slot sesi.'}
                         </p>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <label className="bg-white rounded-2xl border border-indigo-100 p-4 space-y-2">
-                        <span className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Tanggal Mulai Ujian</span>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Tanggal Mulai Assessment</span>
                         <input
                             type="datetime-local"
                             value={formatApiDateTimeForInput(exam.confirmed_start_at)}
@@ -357,11 +357,11 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
                             onBlur={(e) => handleUpdateExam({ confirmed_start_at: formatInputDateTimeForApi(normalizeDateTimeInputToStartOfDay(e.target.value)) })}
                             className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-bold text-gray-800"
                         />
-                        <p className="text-xs text-gray-500">Mulai dari waktu ini siswa boleh membuka attempt ujian.</p>
+                        <p className="text-xs text-gray-500">Mulai dari waktu ini siswa boleh membuka attempt assessment.</p>
                     </label>
 
                     <label className="bg-white rounded-2xl border border-indigo-100 p-4 space-y-2">
-                        <span className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Tanggal Selesai Ujian</span>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Tanggal Selesai Assessment</span>
                         <input
                             type="datetime-local"
                             value={formatApiDateTimeForInput(exam.confirmed_end_at)}
@@ -372,7 +372,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
                             onBlur={(e) => handleUpdateExam({ confirmed_end_at: formatInputDateTimeForApi(normalizeDateTimeInputToStartOfDay(e.target.value)) })}
                             className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-bold text-gray-800"
                         />
-                        <p className="text-xs text-gray-500">Kosongkan bila ujian cukup punya satu waktu mulai tanpa batas akhir.</p>
+                        <p className="text-xs text-gray-500">Kosongkan bila assessment cukup punya satu waktu mulai tanpa batas akhir.</p>
                     </label>
                 </div>
 
@@ -395,8 +395,8 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h4 className="font-bold text-gray-800">Slot Sesi Ujian</h4>
-                        <p className="text-xs text-gray-500 mt-0.5">Tambahkan beberapa slot bila siswa perlu memilih sesi ujian yang diawasi instruktur.</p>
+                        <h4 className="font-bold text-gray-800">Slot Sesi Assessment</h4>
+                        <p className="text-xs text-gray-500 mt-0.5">Tambahkan beberapa slot bila siswa perlu memilih sesi assessment yang diawasi trainer.</p>
                     </div>
                     <button
                         onClick={addSlot}
@@ -481,11 +481,11 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
                         <p className="text-xs opacity-80 mt-1">
                             {exam.instructor_confirmed
                                 ? (requiresInterview
-                                    ? 'Admin dan siswa sekarang akan mengikuti periode ujian akhir yang Anda konfirmasi beserta slot sesi yang tersedia.'
-                                    : 'Admin dan siswa sekarang akan mengikuti rentang tanggal ujian yang sudah Anda konfirmasi.')
+                                    ? 'Admin dan siswa sekarang akan mengikuti periode assessment akhir yang Anda konfirmasi beserta slot sesi yang tersedia.'
+                                    : 'Admin dan siswa sekarang akan mengikuti rentang tanggal assessment yang sudah Anda konfirmasi.')
                                 : (requiresInterview
-                                    ? 'Isi tanggal umum ujian akhir, tambahkan beberapa slot sesi, lalu konfirmasikan agar siswa bisa memilih jadwal.'
-                                    : 'Isi tanggal mulai dan selesai ujian, lalu tambahkan slot sesi jika pengawasan instruktur dibutuhkan.')}
+                                    ? 'Isi tanggal umum assessment akhir, tambahkan beberapa slot sesi, lalu konfirmasikan agar siswa bisa memilih jadwal.'
+                                    : 'Isi tanggal mulai dan selesai assessment, lalu tambahkan slot sesi jika pengawasan trainer dibutuhkan.')}
                         </p>
                     </div>
                 </div>

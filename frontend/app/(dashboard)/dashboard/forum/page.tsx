@@ -21,7 +21,7 @@ export default function DashboardForumPage() {
                 }
 
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-                const response = await fetch(`${apiUrl}/api/my-courses/`, {
+                const response = await fetch(`${apiUrl}/api/my-courses/?include_public=1`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
 
@@ -93,7 +93,7 @@ export default function DashboardForumPage() {
                                             {enrollment.course.title}
                                         </p>
                                         <p className="mt-2 text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">
-                                            {enrollment.course.instructor?.name || 'Instruktur Akademiso'}
+                                            {enrollment.course.instructor?.name || 'Trainer Akademiso'}
                                         </p>
                                     </div>
                                 </div>

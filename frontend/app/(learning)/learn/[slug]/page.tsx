@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useMemo } from 'react';
 import {
     PlayCircle,
     CheckCircle,
@@ -19,6 +19,7 @@ import {
     CheckCircle2,
     RotateCcw,
     ArrowRight,
+    Sparkles,
     Video
 } from 'lucide-react';
 import Link from 'next/link';
@@ -31,7 +32,10 @@ const LESSON_TABS = [
 ] as const;
 const isAssessmentLesson = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '');
 const getLessonTypeLabel = (type?: string) => {
-    if (isAssessmentLesson(type)) return 'Quiz / Tes';
+    if (type === 'quiz') return 'Quiz';
+    if (type === 'mid_test') return 'Pre-Test';
+    if (type === 'final_test') return 'Post-Test';
+    if (type === 'exam') return 'Ujian Mandiri';
     if (type === 'video') return 'Video';
     if (type === 'article') return 'Artikel';
     return type || 'Materi';
@@ -51,25 +55,98 @@ const getAttachmentLabel = (lesson: { attachment?: string | null; attachment_nam
     return decodeURIComponent(filename.split('?')[0] || '');
 };
 
+const shuffleQuestions = <T,>(items: T[]) => {
+    const shuffled = [...items];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+        const randomIndex = Math.floor(Math.random() * (index + 1));
+        [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+    }
+    return shuffled;
+};
+
 const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => void }) => {
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
     const [answers, setAnswers] = useState<Record<string, string>>({});
     const [submitting, setSubmitting] = useState(false);
     const [result, setResult] = useState<any>(null);
+    const [feedbackForm, setFeedbackForm] = useState({ criticism: '', suggestion: '' });
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [feedbackSaving, setFeedbackSaving] = useState(false);
+    const [feedbackLoaded, setFeedbackLoaded] = useState(false);
+    const [hasFeedback, setHasFeedback] = useState(false);
+    const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+    const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
-    const quiz = lesson.quiz_data;
+    const isPostTestLesson = lesson.type === 'final_test';
+    const quiz = lesson.quiz_data as { questions?: any[]; pass_score?: number; time_limit?: number | null } | undefined;
+    const orderedQuestions = useMemo<any[]>(() => {
+        if (!quiz?.questions?.length) {
+            return [];
+        }
+        return shuffleQuestions(quiz.questions);
+    }, [lesson.id, quiz?.questions]);
+
+    useEffect(() => {
+        if (!result || !isPostTestLesson) {
+            return;
+        }
+
+        const controller = new AbortController();
+
+        const fetchExistingFeedback = async () => {
+            setFeedbackLoading(true);
+            setFeedbackError(null);
+
+            try {
+                const token = localStorage.getItem('access_token');
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${apiUrl}/api/lessons/${lesson.id}/post-test-feedback/`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                    signal: controller.signal,
+                });
+
+                if (!res.ok) {
+                    throw new Error('Gagal memuat feedback post-test.');
+                }
+
+                const data = await res.json();
+                setFeedbackForm({
+                    criticism: data.criticism || '',
+                    suggestion: data.suggestion || '',
+                });
+                setHasFeedback(Boolean(data.has_feedback));
+                setFeedbackLoaded(true);
+            } catch (error) {
+                if ((error as Error).name === 'AbortError') {
+                    return;
+                }
+                console.error('Post-test feedback fetch error:', error);
+                setFeedbackError('Form kritik dan saran belum bisa dimuat. Anda tetap bisa mencoba lagi.');
+            } finally {
+                if (!controller.signal.aborted) {
+                    setFeedbackLoading(false);
+                }
+            }
+        };
+
+        void fetchExistingFeedback();
+        return () => controller.abort();
+    }, [result, lesson.id, isPostTestLesson]);
+
     if (!quiz || !quiz.questions || quiz.questions.length === 0) {
         return (
             <div className="bg-white rounded-[2rem] p-10 text-center border border-gray-100 shadow-sm">
                 <HelpCircle className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Quiz / Tes Kosong</h3>
-                <p className="text-gray-500">Instruktur belum menambahkan pertanyaan untuk materi ini.</p>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">{getLessonTypeLabel(lesson.type)} Kosong</h3>
+                <p className="text-gray-500">Trainer belum menambahkan pertanyaan untuk materi ini.</p>
             </div>
         );
     }
 
-    const currentQuestion = quiz.questions[currentQuestionIdx];
-    const progress = ((currentQuestionIdx + 1) / quiz.questions.length) * 100;
+    const currentQuestion = orderedQuestions[currentQuestionIdx];
+    const progress = ((currentQuestionIdx + 1) / orderedQuestions.length) * 100;
     const currentQuestionId = currentQuestion.id.toString();
     const currentAnswer = answers[currentQuestionId] || '';
     const hasCurrentAnswer = currentAnswer.trim().length > 0;
@@ -109,10 +186,60 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         }
     };
 
+    const handleFeedbackSubmit = async () => {
+        if (!feedbackForm.criticism.trim() && !feedbackForm.suggestion.trim()) {
+            setFeedbackError('Isi kritik, saran, atau keduanya terlebih dahulu.');
+            setFeedbackMessage(null);
+            return;
+        }
+
+        setFeedbackSaving(true);
+        setFeedbackError(null);
+        setFeedbackMessage(null);
+
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/lessons/${lesson.id}/post-test-feedback/`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(feedbackForm),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Gagal menyimpan kritik dan saran.');
+            }
+
+            setFeedbackForm({
+                criticism: data.criticism || '',
+                suggestion: data.suggestion || '',
+            });
+            setHasFeedback(true);
+            setFeedbackLoaded(true);
+            setFeedbackMessage('Kritik dan saran Anda sudah tersimpan dan dapat dilihat admin serta instruktur terkait.');
+        } catch (error) {
+            console.error('Post-test feedback submit error:', error);
+            setFeedbackError(error instanceof Error ? error.message : 'Gagal menyimpan kritik dan saran.');
+        } finally {
+            setFeedbackSaving(false);
+        }
+    };
+
     const resetQuiz = () => {
         setResult(null);
         setCurrentQuestionIdx(0);
         setAnswers({});
+        setFeedbackForm({ criticism: '', suggestion: '' });
+        setFeedbackLoading(false);
+        setFeedbackSaving(false);
+        setFeedbackLoaded(false);
+        setHasFeedback(false);
+        setFeedbackMessage(null);
+        setFeedbackError(null);
     };
 
     if (result) {
@@ -140,12 +267,45 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                         </div>
                     </div>
 
+                    {result.gamification && (
+                        <div className="mx-auto grid max-w-2xl gap-3 text-left md:grid-cols-3">
+                            <div className="rounded-3xl bg-blue-50 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-500">XP Didapat</p>
+                                <p className="mt-2 text-2xl font-black text-blue-700">+{result.gamification.earned_xp || 0}</p>
+                            </div>
+                            <div className="rounded-3xl bg-orange-50 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-orange-500">Streak Aktif</p>
+                                <p className="mt-2 text-2xl font-black text-orange-700">{result.gamification.current_streak || 0} Hari</p>
+                            </div>
+                            <div className="rounded-3xl bg-emerald-50 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Badge Terbuka</p>
+                                <p className="mt-2 text-2xl font-black text-emerald-700">{result.gamification.total_badges || 0}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {result.gamification?.new_badges?.length > 0 && (
+                        <div className="mx-auto max-w-2xl rounded-3xl border border-amber-200 bg-amber-50 p-5 text-left">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Badge Baru</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {result.gamification.new_badges.map((badge: any) => (
+                                    <span
+                                        key={badge.key}
+                                        className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-700 shadow-sm"
+                                    >
+                                        {badge.label}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="pt-6 flex flex-col sm:flex-row gap-4 justify-center">
                         <button
                             onClick={resetQuiz}
                             className="flex items-center justify-center gap-2 px-8 py-4 bg-gray-100 text-gray-700 rounded-2xl font-bold hover:bg-gray-200 transition-all uppercase tracking-widest text-[10px]"
                         >
-                            <RotateCcw className="w-4 h-4" /> Ulangi Quiz / Tes
+                            <RotateCcw className="w-4 h-4" /> Ulangi {getLessonTypeLabel(lesson.type)}
                         </button>
                         {result.is_passed && (
                             <button
@@ -156,6 +316,73 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                             </button>
                         )}
                     </div>
+
+                    {isPostTestLesson && (
+                        <div className="mx-auto mt-6 w-full max-w-3xl rounded-[2rem] border border-amber-100 bg-amber-50/70 p-6 text-left">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-1 rounded-2xl bg-white p-3 text-amber-500 shadow-sm">
+                                    <MessageSquare className="h-5 w-5" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-500">Kritik dan Saran</p>
+                                    <h4 className="mt-2 text-xl font-black text-gray-900">Bantu kami meningkatkan kualitas course ini</h4>
+                                    <p className="mt-2 text-sm leading-6 text-gray-600">
+                                        Masukan ini akan terlihat oleh admin dan instruktur terkait setelah Anda menyelesaikan post-test.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 space-y-4">
+                                <div>
+                                    <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Kritik</label>
+                                    <textarea
+                                        rows={4}
+                                        value={feedbackForm.criticism}
+                                        onChange={(e) => setFeedbackForm((prev) => ({ ...prev, criticism: e.target.value }))}
+                                        placeholder="Apa yang masih kurang dari materi, penyampaian, atau alurnya?"
+                                        className="w-full rounded-3xl border border-amber-100 bg-white px-5 py-4 text-sm text-gray-800 outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Saran</label>
+                                    <textarea
+                                        rows={4}
+                                        value={feedbackForm.suggestion}
+                                        onChange={(e) => setFeedbackForm((prev) => ({ ...prev, suggestion: e.target.value }))}
+                                        placeholder="Apa yang sebaiknya ditambahkan atau diperbaiki untuk peserta berikutnya?"
+                                        className="w-full rounded-3xl border border-amber-100 bg-white px-5 py-4 text-sm text-gray-800 outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
+                                    />
+                                </div>
+
+                                {feedbackLoading && (
+                                    <p className="text-sm text-gray-500">Memuat kritik dan saran yang pernah Anda simpan...</p>
+                                )}
+                                {feedbackError && (
+                                    <p className="text-sm font-medium text-red-500">{feedbackError}</p>
+                                )}
+                                {feedbackMessage && (
+                                    <p className="text-sm font-medium text-emerald-600">{feedbackMessage}</p>
+                                )}
+
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <p className="text-xs text-gray-500">
+                                        {feedbackLoaded && hasFeedback
+                                            ? 'Masukan terakhir Anda sudah tersimpan dan bisa diperbarui kapan saja.'
+                                            : 'Anda bisa mengisi salah satu field saja jika perlu.'}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={handleFeedbackSubmit}
+                                        disabled={feedbackSaving || feedbackLoading}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {feedbackSaving ? 'Menyimpan...' : hasFeedback ? 'Perbarui Masukan' : 'Simpan Kritik & Saran'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -175,7 +402,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                     <div className="space-y-4">
                         <div className="flex items-center gap-3">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            <span className="text-xs font-bold text-gray-600">{quiz.questions.length} Pertanyaan</span>
+                            <span className="text-xs font-bold text-gray-600">{orderedQuestions.length} Pertanyaan</span>
                         </div>
                         <div className="flex items-center gap-3">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
@@ -208,8 +435,18 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
             <div className="flex-1 p-8 md:p-12 flex flex-col">
                 <div className="flex-1">
                     <div className="mb-8">
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pertanyaan {currentQuestionIdx + 1} dari {quiz.questions.length}</span>
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pertanyaan {currentQuestionIdx + 1} dari {orderedQuestions.length}</span>
                         <h4 className="text-2xl font-bold text-gray-900 mt-4 leading-snug">{currentQuestion.text}</h4>
+                        {currentQuestion.image_url && (
+                            <div className="mt-5 overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 p-4">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={currentQuestion.image_url}
+                                    alt={`Gambar pertanyaan ${currentQuestionIdx + 1}`}
+                                    className="max-h-80 w-full rounded-2xl object-contain"
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-3">
@@ -260,7 +497,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                         Sebelumnya
                     </button>
 
-                    {currentQuestionIdx < quiz.questions.length - 1 ? (
+                    {currentQuestionIdx < orderedQuestions.length - 1 ? (
                         <button
                             disabled={!hasCurrentAnswer}
                             onClick={() => setCurrentQuestionIdx(currentQuestionIdx + 1)}
@@ -329,6 +566,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
     const [activeLesson, setActiveLesson] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('deskripsi');
+    const [rewardSummary, setRewardSummary] = useState<any>(null);
 
     const handleNextLesson = async () => {
         if (!activeLesson) return;
@@ -345,6 +583,11 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
             if (!res.ok) {
                 const errorText = await res.text();
                 console.error('Failed to mark lesson complete:', errorText);
+            } else {
+                const payload = await res.json();
+                if (payload?.gamification) {
+                    setRewardSummary(payload.gamification);
+                }
             }
 
             // Update local state to show checkmark immediately regardless of error for now,
@@ -480,6 +723,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
     const openLessonView = (lesson: any) => {
         setActiveLesson(lesson);
     };
+    const isActiveAssessmentLesson = isAssessmentLesson(activeLesson?.type);
 
     // Calculate real progress dynamically from the lessons' is_completed status
     const allLessons = sections.flatMap((s: any) => s.lessons || []);
@@ -494,7 +738,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         <div className="flex flex-col h-[calc(100vh-6rem)]">
             {/* Header Navigation specific to Learning */}
             <div className="flex items-center gap-4 mb-6 px-6 pt-6">
-                <Link href="/dashboard" className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
+                <Link href="/dashboard/courses" className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
                     <ChevronLeft className="w-4 h-4" />
                     Kembali ke Kursus
                 </Link>
@@ -561,8 +805,73 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                         </div>
                     )}
 
+                    {rewardSummary && (rewardSummary.earned_xp > 0 || rewardSummary.new_badges?.length > 0) && (
+                        <div className="mb-6 overflow-hidden rounded-3xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-cyan-50 p-5 shadow-sm">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                    <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                                        <Sparkles className="w-4 h-4" />
+                                        Reward Terkumpul
+                                    </div>
+                                    <h3 className="text-lg font-black text-gray-900">
+                                        +{rewardSummary.earned_xp || 0} XP didapat dari progres terbaru Anda
+                                    </h3>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        Streak aktif {rewardSummary.current_streak || 0} hari
+                                        {rewardSummary.level?.label ? ` · Level ${rewardSummary.level.current} ${rewardSummary.level.label}` : ''}
+                                    </p>
+                                </div>
+                                {rewardSummary.new_badges?.length > 0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {rewardSummary.new_badges.map((badge: any) => (
+                                            <span
+                                                key={badge.key}
+                                                className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 shadow-sm"
+                                            >
+                                                {badge.label}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {activeLesson ? (
                         <>
+                            <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                    <div className="mb-3 flex flex-wrap items-center gap-3 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                        <span className={`rounded-full px-3 py-1 text-white ${isActiveAssessmentLesson ? 'bg-amber-500' : 'bg-blue-600'}`}>
+                                            {isActiveAssessmentLesson ? 'Sesi Test' : 'Materi Sekarang'}
+                                        </span>
+                                        <span className="flex items-center gap-1.5">
+                                            <Clock className="w-3 h-3" /> {activeLesson.duration || '-'}
+                                        </span>
+                                        <span className="flex items-center gap-1.5">
+                                            <MessageSquare className="w-3 h-3" /> {getLessonTypeLabel(activeLesson.type)}
+                                        </span>
+                                    </div>
+                                    <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">{activeLesson.title}</h2>
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        onClick={handlePrevLesson}
+                                        className="flex items-center gap-2 rounded-2xl border border-gray-100 bg-white px-5 py-3 text-xs font-bold text-gray-600 transition-all shadow-sm hover:bg-gray-50"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" /> Sebelumnya
+                                    </button>
+                                    {!isActiveAssessmentLesson && (
+                                        <button
+                                            onClick={handleNextLesson}
+                                            className="flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-bold text-white transition-all shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95"
+                                        >
+                                            Materi Selanjutnya <ChevronRight className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
                             {activeLesson.type === 'video' && (
                                 <div className="w-full min-h-[280px] sm:min-h-[360px] lg:min-h-[460px] aspect-[4/3] md:aspect-[16/10] xl:aspect-[16/9] bg-black rounded-[2.5rem] relative shadow-2xl border-4 border-white overflow-hidden">
                                     {activeLesson.is_locked ? (
@@ -604,36 +913,8 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                 />
                             )}
 
-                            <div className="mt-8">
-                                <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                    <div>
-                                        <div className="mb-3 flex flex-wrap items-center gap-3 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                                            <span className="rounded-full bg-blue-600 px-3 py-1 text-white">Materi Sekarang</span>
-                                            <span className="flex items-center gap-1.5">
-                                                <Clock className="w-3 h-3" /> {activeLesson.duration || '-'}
-                                            </span>
-                                            <span className="flex items-center gap-1.5">
-                                                <MessageSquare className="w-3 h-3" /> {getLessonTypeLabel(activeLesson.type)}
-                                            </span>
-                                        </div>
-                                        <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">{activeLesson.title}</h2>
-                                    </div>
-                                    <div className="flex flex-wrap gap-3">
-                                        <button
-                                            onClick={handlePrevLesson}
-                                            className="flex items-center gap-2 rounded-2xl border border-gray-100 bg-white px-5 py-3 text-xs font-bold text-gray-600 transition-all shadow-sm hover:bg-gray-50"
-                                        >
-                                            <ChevronLeft className="w-4 h-4" /> Sebelumnya
-                                        </button>
-                                        <button
-                                            onClick={handleNextLesson}
-                                            className="flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-bold text-white transition-all shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95"
-                                        >
-                                            Materi Selanjutnya <ChevronRight className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-
+                            {!isActiveAssessmentLesson && (
+                                <div className="mt-8">
                                 <div className="mb-8 overflow-x-auto border-b border-gray-100">
                                     <div className="flex min-w-max gap-10">
                                         {LESSON_TABS.map((tab) => (
@@ -682,7 +963,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                                         <div>
                                                             <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Lampiran Materi</p>
                                                             <p className="mt-2 text-lg font-bold text-gray-900">{getAttachmentLabel(activeLesson) || 'Dokumen Materi'}</p>
-                                                            <p className="mt-2 text-sm text-gray-500">Unduh file pendukung yang dibagikan instruktur untuk materi ini.</p>
+                                                            <p className="mt-2 text-sm text-gray-500">Unduh file pendukung yang dibagikan trainer untuk materi ini.</p>
                                                         </div>
                                                     </div>
                                                     <a
@@ -702,12 +983,13 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                                     <Download className="h-6 w-6" />
                                                 </div>
                                                 <p className="mt-5 font-semibold text-gray-700">Belum ada sumber daya yang dapat diunduh.</p>
-                                                <p className="mt-2 text-sm text-gray-400">Jika instruktur menambahkan lampiran atau bahan pendukung, file-nya akan muncul di tab ini.</p>
+                                                <p className="mt-2 text-sm text-gray-400">Jika trainer menambahkan lampiran atau bahan pendukung, file-nya akan muncul di tab ini.</p>
                                             </div>
                                         )
                                     )}
                                 </div>
-                            </div>
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="flex-1 flex items-center justify-center rounded-3xl border-2 border-dashed border-gray-200 bg-gray-50">

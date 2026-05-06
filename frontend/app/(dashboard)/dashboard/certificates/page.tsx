@@ -24,8 +24,8 @@ function getStatusMeta(certificate: Certificate) {
             label: 'Siap Dicetak',
             badgeClass: 'bg-emerald-100 text-emerald-700',
             helper: certificate.approved_at
-                ? `Disetujui admin pada ${formatDate(certificate.approved_at)}`
-                : 'Sertifikat sudah divalidasi admin.',
+                ? `Sertifikat siap diunduh sejak ${formatDate(certificate.approved_at)}`
+                : 'Sertifikat sudah siap diunduh.',
         };
     }
 
@@ -38,9 +38,9 @@ function getStatusMeta(certificate: Certificate) {
     }
 
     return {
-        label: 'Menunggu Validasi',
+        label: 'Menunggu Penilaian',
         badgeClass: 'bg-amber-100 text-amber-700',
-        helper: 'Sertifikat Anda sudah lulus ujian dan sedang menunggu validasi admin.',
+        helper: 'Sertifikat akan otomatis tersedia setelah hasil assessment dinyatakan siap.',
     };
 }
 
@@ -48,6 +48,7 @@ export default function CertificatesPage() {
     const [search, setSearch] = useState('');
     const [certificates, setCertificates] = useState<Certificate[]>([]);
     const [loading, setLoading] = useState(true);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'pending'>('all');
 
     useEffect(() => {
         const fetchCertificates = async () => {
@@ -76,13 +77,47 @@ export default function CertificatesPage() {
         fetchCertificates();
     }, []);
 
+    const certificateStats = useMemo(() => ([
+        {
+            key: 'all' as const,
+            label: 'Total Sertifikat',
+            value: loading ? '...' : certificates.length,
+            icon: Award,
+            color: 'bg-blue-50 text-blue-600',
+            activeClass: 'border-blue-200 ring-2 ring-blue-100 bg-blue-50/70',
+        },
+        {
+            key: 'ready' as const,
+            label: 'Siap Diunduh',
+            value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'APPROVED' && !!cert.certificate_url).length,
+            icon: CheckCircle2,
+            color: 'bg-green-50 text-green-600',
+            activeClass: 'border-emerald-200 ring-2 ring-emerald-100 bg-emerald-50/70',
+        },
+        {
+            key: 'pending' as const,
+            label: 'Menunggu Penilaian',
+            value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'PENDING').length,
+            icon: Clock3,
+            color: 'bg-amber-50 text-amber-600',
+            activeClass: 'border-amber-200 ring-2 ring-amber-100 bg-amber-50/70',
+        },
+    ]), [certificates, loading]);
+
     const filteredCertificates = useMemo(() => (
-        certificates.filter(cert =>
-            (cert.course_title || '').toLowerCase().includes(search.toLowerCase()) ||
-            (cert.exam_title || '').toLowerCase().includes(search.toLowerCase()) ||
-            (cert.certificate_number || '').toLowerCase().includes(search.toLowerCase())
-        )
-    ), [certificates, search]);
+        certificates.filter(cert => {
+            const matchesSearch =
+                (cert.course_title || '').toLowerCase().includes(search.toLowerCase()) ||
+                (cert.exam_title || '').toLowerCase().includes(search.toLowerCase()) ||
+                (cert.certificate_number || '').toLowerCase().includes(search.toLowerCase());
+
+            const matchesStatus = statusFilter === 'all'
+                || (statusFilter === 'ready' && cert.approval_status === 'APPROVED' && !!cert.certificate_url)
+                || (statusFilter === 'pending' && cert.approval_status === 'PENDING');
+
+            return matchesSearch && matchesStatus;
+        })
+    ), [certificates, search, statusFilter]);
 
     const handleDownload = (certificate: Certificate) => {
         if (!certificate.certificate_url) return;
@@ -93,25 +128,39 @@ export default function CertificatesPage() {
         <div className="max-w-6xl mx-auto space-y-6">
             <div>
                 <h1 className="text-2xl font-bold text-gray-900">Sertifikat Saya</h1>
-                <p className="text-gray-500 mt-1">Pantau status validasi admin dan unduh sertifikat resmi yang sudah disetujui.</p>
+                <p className="text-gray-500 mt-1">Unduh sertifikat resmi yang sudah siap tanpa menunggu validasi manual.</p>
             </div>
 
             <div className="grid md:grid-cols-3 gap-4">
-                {[
-                    { label: 'Total Sertifikat', value: loading ? '...' : certificates.length, icon: Award, color: 'bg-blue-50 text-blue-600' },
-                    { label: 'Siap Diunduh', value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'APPROVED' && !!cert.certificate_url).length, icon: CheckCircle2, color: 'bg-green-50 text-green-600' },
-                    { label: 'Menunggu Validasi', value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'PENDING').length, icon: Clock3, color: 'bg-amber-50 text-amber-600' },
-                ].map((stat, index) => (
-                    <div key={index} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${stat.color}`}>
-                            <stat.icon className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <p className="text-xl font-extrabold text-gray-900">{stat.value}</p>
-                            <p className="text-xs text-gray-500">{stat.label}</p>
-                        </div>
-                    </div>
-                ))}
+                {certificateStats.map((stat) => {
+                    const isActive = statusFilter === stat.key;
+
+                    return (
+                        <button
+                            key={stat.key}
+                            type="button"
+                            onClick={() => setStatusFilter(stat.key)}
+                            className={`rounded-2xl border shadow-sm p-4 flex items-center gap-3 text-left transition-all ${
+                                isActive
+                                    ? stat.activeClass
+                                    : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-md'
+                            }`}
+                        >
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${stat.color}`}>
+                                <stat.icon className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-xl font-extrabold text-gray-900">{stat.value}</p>
+                                <p className="text-xs text-gray-500">{stat.label}</p>
+                            </div>
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                isActive ? 'bg-white text-gray-700 shadow-sm' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                                {isActive ? 'Aktif' : 'Filter'}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
 
             <div className="relative">
@@ -119,7 +168,7 @@ export default function CertificatesPage() {
                 <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Cari sertifikat, ujian, atau nomor sertifikat..."
+                    placeholder="Cari sertifikat, assessment, atau nomor sertifikat..."
                     className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
                 />
             </div>
@@ -195,7 +244,7 @@ export default function CertificatesPage() {
                     <div className="col-span-2 text-center py-20 bg-white rounded-2xl border border-dashed border-gray-200">
                         <Award className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                         <p className="text-gray-500 font-medium">Belum ada sertifikat yang tersedia</p>
-                        <p className="text-sm text-gray-400 mt-1">Sertifikat akan muncul setelah ujian sertifikasi Anda dinyatakan lulus dan divalidasi admin.</p>
+                        <p className="text-sm text-gray-400 mt-1">Sertifikat akan muncul setelah assessment Anda dinyatakan siap dan PDF berhasil dibuat.</p>
                     </div>
                 )}
             </div>

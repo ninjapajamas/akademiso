@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
 import { Award, Copy, Eye, Expand, FileImage, ImagePlus, Plus, Save, Signature, Trash2, X } from 'lucide-react';
 import { CertificateTemplate, CertificateTemplateLayout, Course } from '@/types';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 type Align = 'left' | 'center' | 'right';
 type DraggingElement = { key: keyof CertificateTemplateLayout; kind: 'text' | 'image' } | null;
@@ -199,12 +200,12 @@ export default function AdminCertificateTemplatesPage() {
     const [form, setForm] = useState<TemplateFormState>(createEmptyForm);
     const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null);
     const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
-    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
     const [draggingElement, setDraggingElement] = useState<DraggingElement>(null);
     const [editorReady, setEditorReady] = useState(false);
     const previewCanvasRef = useRef<HTMLDivElement | null>(null);
     const templatesRef = useRef<CertificateTemplate[]>([]);
+    const { confirmAction, showAlert, showError, showSuccess } = useFeedbackModal();
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const token = () => localStorage.getItem('access_token');
@@ -217,11 +218,6 @@ export default function AdminCertificateTemplatesPage() {
         certificate_number: 'CERT-AKD-2026-001',
         signer_name: form.signer_name || 'Nama Penandatangan',
         signer_title: form.signer_title || 'Jabatan Penandatangan',
-    };
-
-    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-        setToast({ message, type });
-        window.setTimeout(() => setToast(null), 3200);
     };
 
     useEffect(() => {
@@ -271,7 +267,12 @@ export default function AdminCertificateTemplatesPage() {
         setForm(createEmptyForm());
         setDraggingElement(null);
         setIsPreviewFullscreen(false);
-        showToast('Editor siap untuk template baru.');
+        void showAlert({
+            title: 'Editor Siap',
+            message: 'Editor siap untuk template baru.',
+            tone: 'info',
+            confirmLabel: 'Lanjut Edit',
+        });
     };
 
     const handleDuplicateTemplate = () => {
@@ -286,7 +287,7 @@ export default function AdminCertificateTemplatesPage() {
         }));
         setDraggingElement(null);
         setIsPreviewFullscreen(false);
-        showToast('Template berhasil diduplikat. Simpan untuk membuat template baru.');
+        void showSuccess('Template berhasil diduplikat. Simpan untuk membuat template baru.', 'Duplikasi Berhasil');
     };
 
     useEffect(() => {
@@ -337,15 +338,15 @@ export default function AdminCertificateTemplatesPage() {
                 }
             } catch (error) {
                 console.error('Failed to fetch certificate template data:', error);
-                showToast('Gagal memuat data template sertifikat.', 'error');
+                await showError('Gagal memuat data template sertifikat.', 'Pemanggilan Data Gagal');
             } finally {
                 setEditorReady(true);
                 setLoading(false);
             }
         };
 
-        fetchData();
-    }, [apiUrl]);
+        void fetchData();
+    }, [apiUrl, showError]);
 
     useEffect(() => {
         let backgroundUrl: string | null = null;
@@ -540,7 +541,7 @@ export default function AdminCertificateTemplatesPage() {
                 signer_title: { ...prev.layout_config.signer_title, color: '#000000' },
             },
         }));
-        showToast('Semua font field sertifikat diubah menjadi hitam.');
+        void showSuccess('Semua font field sertifikat diubah menjadi hitam.', 'Preset Diterapkan');
     };
 
     const handleSave = async (event: FormEvent) => {
@@ -609,10 +610,13 @@ export default function AdminCertificateTemplatesPage() {
                 mergeWithExisting: true,
                 preserveCurrentOnEmpty: true,
             });
-            showToast(form.id ? 'Template sertifikat berhasil diperbarui.' : 'Template sertifikat berhasil dibuat.');
+            await showSuccess(
+                form.id ? 'Template sertifikat berhasil diperbarui.' : 'Template sertifikat berhasil dibuat.',
+                form.id ? 'Perubahan Tersimpan' : 'Template Berhasil Dibuat'
+            );
         } catch (error) {
             console.error('Failed to save certificate template:', error);
-            showToast(error instanceof Error ? error.message : 'Gagal menyimpan template sertifikat.', 'error');
+            await showError(error instanceof Error ? error.message : 'Gagal menyimpan template sertifikat.', 'Penyimpanan Gagal');
         } finally {
             setSaving(false);
         }
@@ -620,7 +624,14 @@ export default function AdminCertificateTemplatesPage() {
 
     const handleDelete = async () => {
         if (!form.id) return;
-        if (!confirm(`Hapus template "${form.name}"?`)) return;
+        const shouldDelete = await confirmAction({
+            title: `Hapus Template "${form.name}"?`,
+            message: 'Template sertifikat ini akan dihapus dari daftar admin.',
+            confirmLabel: 'Ya, Hapus',
+            cancelLabel: 'Batal',
+            tone: 'warning',
+        });
+        if (!shouldDelete) return;
 
         try {
             const res = await fetch(`${apiUrl}/api/certificate-templates/${form.id}/`, {
@@ -630,16 +641,16 @@ export default function AdminCertificateTemplatesPage() {
 
             if (!res.ok) throw new Error('Delete failed');
 
-            showToast('Template sertifikat dihapus.');
             setIsCreatingNewTemplate(false);
             setForm(createEmptyForm());
             setBackgroundPreview(null);
             setSignaturePreview(null);
             setTemplates(prev => prev.filter(template => template.id !== form.id));
             await fetchTemplates();
+            await showSuccess('Template sertifikat berhasil dihapus.', 'Penghapusan Berhasil');
         } catch (error) {
             console.error('Failed to delete certificate template:', error);
-            showToast('Gagal menghapus template sertifikat.', 'error');
+            await showError('Gagal menghapus template sertifikat.', 'Penghapusan Gagal');
         }
     };
 
@@ -788,12 +799,6 @@ export default function AdminCertificateTemplatesPage() {
 
     return (
         <div className="space-y-6">
-            {toast && (
-                <div className={`pointer-events-none fixed right-5 top-5 z-[100] rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-                    {toast.message}
-                </div>
-            )}
-
             <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Template Sertifikat</h1>

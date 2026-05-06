@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { Course } from '@/types';
 import { getProfileDisplayName, getRequiredProfileMissingFields, isRequiredProfileComplete, type UserProfilePayload } from '@/utils/profile';
+import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
 
 type CheckoutOffer = 'elearning' | 'public';
 
@@ -97,14 +98,18 @@ function CheckoutContent() {
     if (!course) return null;
 
     const selectedPublicSession = offer === 'public' ? getSelectedPublicSession(course, publicSessionId, offerMode) : null;
-    const selectedPrice = offer === 'public'
-        ? Number(selectedPublicSession?.price || 0)
-        : Number(course.discount_price || course.price || 0);
-    const price = Number.isFinite(selectedPrice) ? selectedPrice : 0;
+    const resolvedPublicMode = offerMode === 'offline' || selectedPublicSession?.delivery_mode === 'offline' ? 'offline' : 'online';
+    const publicPriceSummary = resolvedPublicMode === 'offline'
+        ? getPublicModePriceSummary(course, 'offline', selectedPublicSession)
+        : getPublicModePriceSummary(course, 'online', selectedPublicSession);
+    const elearningPriceSummary = getElearningPriceSummary(course);
+    const selectedPriceSummary = offer === 'public' ? publicPriceSummary : elearningPriceSummary;
+    const isPriceUnavailable = offer === 'public' && selectedPriceSummary.finalPrice === null;
+    const price = selectedPriceSummary.finalPrice ?? 0;
     const isFreeWebinar = course.type === 'webinar' && course.is_free;
-    const isFreeOffering = price <= 0;
+    const isFreeOffering = !isPriceUnavailable && (isFreeWebinar || selectedPriceSummary.isFree);
     const offerTitle = offer === 'public'
-        ? `Public Training${offerMode ? ` ${offerMode === 'online' ? 'Online' : 'Offline'}` : ''}`
+        ? `Public Training ${resolvedPublicMode === 'online' ? 'Online' : 'Offline'}`
         : 'Paket E-Learning';
     const offerSchedule = offer === 'public'
         ? selectedPublicSession?.schedule || 'Jadwal akan diinformasikan'
@@ -179,6 +184,21 @@ function CheckoutContent() {
                                                 <p>Data yang masih kurang: {missingFields.join(', ')}.</p>
                                                 <Link href="/dashboard/settings?welcome=1" className="inline-flex items-center rounded-full bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700 transition">
                                                     Buka Pengaturan
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {isPriceUnavailable && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
+                                        <div className="flex items-start gap-3">
+                                            <CircleAlert className="w-5 h-5 mt-0.5 shrink-0" />
+                                            <div className="space-y-2 text-sm">
+                                                <p className="font-bold">Harga sesi public ini belum tersedia.</p>
+                                                <p>Silakan kembali ke halaman course untuk memilih sesi lain atau hubungi tim Akademiso.</p>
+                                                <Link href={`/courses/${course.slug}`} className="inline-flex items-center rounded-full bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700 transition">
+                                                    Kembali ke Halaman Course
                                                 </Link>
                                             </div>
                                         </div>
@@ -279,12 +299,12 @@ function CheckoutContent() {
                                 <div className="space-y-3 mb-6 pb-6 border-b border-gray-100 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Harga Pelatihan</span>
-                                        <span className="font-medium text-gray-900">{isFreeWebinar || isFreeOffering ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
+                                        <span className="font-medium text-gray-900">{isPriceUnavailable ? 'Harga belum tersedia' : isFreeWebinar || isFreeOffering ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                     </div>
-                                    {offer === 'elearning' && course.discount_price && !isFreeWebinar && !isFreeOffering && (
+                                    {selectedPriceSummary.hasDiscount && selectedPriceSummary.originalPrice != null && selectedPriceSummary.discountPrice != null && !isFreeWebinar && (
                                         <div className="flex justify-between text-green-600">
                                             <span className="text-gray-500">Potongan Harga</span>
-                                            <span className="font-medium">- Rp {(parseInt(course.price) - parseInt(course.discount_price)).toLocaleString('id-ID')}</span>
+                                            <span className="font-medium">- Rp {(selectedPriceSummary.originalPrice - selectedPriceSummary.discountPrice).toLocaleString('id-ID')}</span>
                                         </div>
                                     )}
                                     <div className="flex justify-between">
@@ -299,10 +319,10 @@ function CheckoutContent() {
 
                                 <div className="flex justify-between items-center mb-6">
                                     <span className="font-bold text-gray-900">Total Bayar</span>
-                                    <span className="font-bold text-xl text-blue-600">{isFreeWebinar || isFreeOffering ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
+                                    <span className="font-bold text-xl text-blue-600">{isPriceUnavailable ? 'Hubungi Tim' : isFreeWebinar || isFreeOffering ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                 </div>
 
-                                {canProceed ? (
+                                {canProceed && !isPriceUnavailable ? (
                                     <button
                                         type="button"
                                         disabled={!agreed}
@@ -311,6 +331,10 @@ function CheckoutContent() {
                                     >
                                         Lanjut ke Pembayaran
                                     </button>
+                                ) : isPriceUnavailable ? (
+                                    <Link href={`/courses/${course.slug}`} className="block w-full text-center bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-colors shadow-lg shadow-amber-600/20">
+                                        Pilih Sesi Lain
+                                    </Link>
                                 ) : (
                                     <Link href="/dashboard/settings?welcome=1" className="block w-full text-center bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-colors shadow-lg shadow-amber-600/20">
                                         Lengkapi Profil Dulu

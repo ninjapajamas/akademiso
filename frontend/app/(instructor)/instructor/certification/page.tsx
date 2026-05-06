@@ -236,6 +236,9 @@ export default function InstructorCertificationPage() {
     const [feedbackModal, setFeedbackModal] = useState<FeedbackModalState>(null);
     const [slotToDelete, setSlotToDelete] = useState<CertificationInstructorSlot | null>(null);
     const [deletingSlotId, setDeletingSlotId] = useState<number | null>(null);
+    const [reviewingAttemptId, setReviewingAttemptId] = useState<number | null>(null);
+    const [exportingExamKey, setExportingExamKey] = useState<string | null>(null);
+    const [interviewDrafts, setInterviewDrafts] = useState<Record<number, { reason: string; feedback: string }>>({});
 
     // New slot form
     const [newSlot, setNewSlot] = useState({
@@ -272,15 +275,15 @@ export default function InstructorCertificationPage() {
             const attemptData = await readJsonSafely<ApiListPayload<CertificationAttempt> | ApiErrorPayload>(attemptRes);
 
             if (!examRes.ok) {
-                throw new Error(getApiErrorMessage(examData as ApiErrorPayload | null, 'Data ujian akhir belum bisa dimuat.'));
+                throw new Error(getApiErrorMessage(examData as ApiErrorPayload | null, 'Data assessment akhir belum bisa dimuat.'));
             }
 
             if (!slotRes.ok) {
-                throw new Error(getApiErrorMessage(slotData as ApiErrorPayload | null, 'Data slot ujian belum bisa dimuat.'));
+                throw new Error(getApiErrorMessage(slotData as ApiErrorPayload | null, 'Data slot assessment belum bisa dimuat.'));
             }
 
             if (!attemptRes.ok) {
-                throw new Error(getApiErrorMessage(attemptData as ApiErrorPayload | null, 'Data peserta ujian belum bisa dimuat.'));
+                throw new Error(getApiErrorMessage(attemptData as ApiErrorPayload | null, 'Data peserta assessment belum bisa dimuat.'));
             }
 
             setExams(getListPayload(examData as ApiListPayload<CertificationExam> | null));
@@ -294,7 +297,7 @@ export default function InstructorCertificationPage() {
             setFeedbackModal({
                 tone: 'error',
                 title: 'Data Belum Bisa Dimuat',
-                message: error instanceof Error ? error.message : 'Data ujian akhir belum bisa dimuat.',
+                message: error instanceof Error ? error.message : 'Data assessment akhir belum bisa dimuat.',
             });
         } finally {
             setLoading(false);
@@ -361,7 +364,7 @@ export default function InstructorCertificationPage() {
                 setFeedbackModal({
                     tone: 'error',
                     title: 'Slot Belum Bisa Dihapus',
-                    message: getApiErrorMessage(errorData, 'Slot sesi ujian belum bisa dihapus.'),
+                    message: getApiErrorMessage(errorData, 'Slot sesi assessment belum bisa dihapus.'),
                 });
                 return;
             }
@@ -370,7 +373,7 @@ export default function InstructorCertificationPage() {
             setFeedbackModal({
                 tone: 'success',
                 title: 'Slot Berhasil Dihapus',
-                message: `Jadwal ${slotToDelete.exam_title || 'ujian'} sudah dihapus dari daftar slot Anda.`,
+                message: `Jadwal ${slotToDelete.exam_title || 'assessment'} sudah dihapus dari daftar slot Anda.`,
             });
             setSlotToDelete(null);
         } catch (error) {
@@ -378,20 +381,149 @@ export default function InstructorCertificationPage() {
             setFeedbackModal({
                 tone: 'error',
                 title: 'Penghapusan Gagal',
-                message: error instanceof Error ? error.message : 'Slot sesi ujian belum bisa dihapus.',
+                message: error instanceof Error ? error.message : 'Slot sesi assessment belum bisa dihapus.',
             });
         } finally {
             setDeletingSlotId(null);
         }
     };
 
-    if (loading) return <div>Memuat data ujian akhir...</div>;
+    const getInterviewDraft = (attempt: CertificationAttempt) => (
+        interviewDrafts[attempt.id] || {
+            reason: attempt.interview_reason || '',
+            feedback: attempt.interview_feedback || '',
+        }
+    );
+
+    const handleInterviewDraftChange = (
+        attemptId: number,
+        field: 'reason' | 'feedback',
+        value: string,
+    ) => {
+        setInterviewDrafts((prev) => {
+            const current = prev[attemptId] || { reason: '', feedback: '' };
+            return {
+                ...prev,
+                [attemptId]: {
+                    ...current,
+                    [field]: value,
+                },
+            };
+        });
+    };
+
+    const handleInterviewReview = async (
+        attempt: CertificationAttempt,
+        result: 'PASSED' | 'FAILED',
+    ) => {
+        const draft = getInterviewDraft(attempt);
+        try {
+            setReviewingAttemptId(attempt.id);
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/certification-attempts/${attempt.id}/review_interview/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    interview_result: result,
+                    interview_reason: draft.reason,
+                    interview_feedback: draft.feedback,
+                }),
+            });
+
+            if (!res.ok) {
+                const errorData = await readJsonSafely<ApiErrorPayload>(res);
+                setFeedbackModal({
+                    tone: 'error',
+                    title: 'Review Belum Bisa Disimpan',
+                    message: getApiErrorMessage(errorData, 'Hasil wawancara belum bisa disimpan.'),
+                });
+                return;
+            }
+
+            await fetchData();
+            setFeedbackModal({
+                tone: 'success',
+                title: result === 'PASSED' ? 'Peserta Dinyatakan Lolos' : 'Keputusan Interview Tersimpan',
+                message: result === 'PASSED'
+                    ? 'Hasil wawancara berhasil disimpan sebagai lolos.'
+                    : 'Hasil wawancara berhasil disimpan sebagai tidak lolos.',
+            });
+        } catch (error) {
+            console.error('Error reviewing interview attempt:', error);
+            setFeedbackModal({
+                tone: 'error',
+                title: 'Koneksi Bermasalah',
+                message: error instanceof Error ? error.message : 'Hasil wawancara belum bisa disimpan.',
+            });
+        } finally {
+            setReviewingAttemptId(null);
+        }
+    };
+
+    const handleExportExamData = async (
+        examId: number,
+        dataset: 'questions' | 'attempts',
+        format: 'xlsx' | 'pdf',
+    ) => {
+        const exportKey = `${examId}-${dataset}-${format}`;
+        setExportingExamKey(exportKey);
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const endpoint = dataset === 'questions' ? 'export_questions' : 'export_attempts';
+            const res = await fetch(`${apiUrl}/api/certification-exams/${examId}/${endpoint}/?format=${format}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!res.ok) {
+                const errorData = await readJsonSafely<ApiErrorPayload>(res);
+                throw new Error(getApiErrorMessage(errorData, 'Data assessment belum bisa diekspor.'));
+            }
+
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = `${dataset === 'questions' ? 'bank-soal' : 'hasil-assessment'}-${examId}.${format}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            console.error('Error exporting assessment data:', error);
+            setFeedbackModal({
+                tone: 'error',
+                title: 'Export Gagal',
+                message: error instanceof Error ? error.message : 'Data assessment belum bisa diekspor.',
+            });
+        } finally {
+            setExportingExamKey(null);
+        }
+    };
+
+    if (loading) return <div>Memuat data assessment...</div>;
+
+    const examsById = new Map(exams.map((exam) => [exam.id, exam]));
+    const interviewAttempts = attempts
+        .filter((attempt) => {
+            const exam = examsById.get(attempt.exam);
+            return Boolean(attempt.interview_slot || exam?.exam_mode !== 'QUESTIONS_ONLY');
+        })
+        .sort((left, right) => {
+            const leftTime = new Date(left.started_at).getTime();
+            const rightTime = new Date(right.started_at).getTime();
+            return rightTime - leftTime;
+        });
 
     return (
         <div className="max-w-6xl mx-auto space-y-8">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900">Ujian Akhir</h1>
-                <p className="text-gray-500">Kelola permintaan ujian dan atur slot sesi yang diawasi instruktur untuk siswa.</p>
+                <h1 className="text-2xl font-bold text-gray-900">Assessment</h1>
+                <p className="text-gray-500">Kelola permintaan assessment dan atur slot sesi yang diawasi trainer untuk siswa.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -399,13 +531,13 @@ export default function InstructorCertificationPage() {
                 <div className="lg:col-span-2 space-y-6">
                     <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                         <Award className="w-5 h-5 text-indigo-600" />
-                        Permintaan Ujian Aktif
+                        Permintaan Assessment Aktif
                     </h2>
 
                     {exams.length === 0 ? (
                         <div className="bg-white p-12 rounded-2xl border border-gray-100 text-center">
                             <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-4" />
-                            <p className="text-gray-500 font-medium">Belum ada permintaan ujian baru.</p>
+                            <p className="text-gray-500 font-medium">Belum ada permintaan assessment baru.</p>
                         </div>
                     ) : (
                         <div className="grid gap-4">
@@ -433,6 +565,40 @@ export default function InstructorCertificationPage() {
                                                 </div>
                                             </div>
                                         </div>
+                                        <div className="mt-5 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleExportExamData(exam.id, 'questions', 'xlsx')}
+                                                disabled={exportingExamKey === `${exam.id}-questions-xlsx`}
+                                                className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                {exportingExamKey === `${exam.id}-questions-xlsx` ? 'Mengekspor...' : 'Bank Soal Excel'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleExportExamData(exam.id, 'questions', 'pdf')}
+                                                disabled={exportingExamKey === `${exam.id}-questions-pdf`}
+                                                className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                {exportingExamKey === `${exam.id}-questions-pdf` ? 'Mengekspor...' : 'Bank Soal PDF'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleExportExamData(exam.id, 'attempts', 'xlsx')}
+                                                disabled={exportingExamKey === `${exam.id}-attempts-xlsx`}
+                                                className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                {exportingExamKey === `${exam.id}-attempts-xlsx` ? 'Mengekspor...' : 'Peserta Excel'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleExportExamData(exam.id, 'attempts', 'pdf')}
+                                                disabled={exportingExamKey === `${exam.id}-attempts-pdf`}
+                                                className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                {exportingExamKey === `${exam.id}-attempts-pdf` ? 'Mengekspor...' : 'Peserta PDF'}
+                                            </button>
+                                        </div>
                                         <div className="mt-6 pt-6 border-t border-gray-50 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
                                                 <span className="flex items-center gap-1">
@@ -446,7 +612,7 @@ export default function InstructorCertificationPage() {
                                                 href={`/instructor/courses/${exam.course}`}
                                                 className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all"
                                             >
-                                                Kelola Ujian <ChevronRight className="w-4 h-4" />
+                                                Kelola Assessment <ChevronRight className="w-4 h-4" />
                                             </Link>
                                         </div>
                                     </div>
@@ -460,7 +626,7 @@ export default function InstructorCertificationPage() {
                 <div className="space-y-6">
                     <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                         <Calendar className="w-5 h-5 text-indigo-600" />
-                        Slot Sesi Ujian
+                        Slot Sesi Assessment
                     </h2>
 
                     {/* Add Slot Form */}
@@ -473,7 +639,7 @@ export default function InstructorCertificationPage() {
                                 onChange={e => setNewSlot({ ...newSlot, exam: e.target.value })}
                                 className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                             >
-                                <option value="">Pilih Ujian</option>
+                                <option value="">Pilih Assessment</option>
                                 {exams.map(e => (
                                     <option key={e.id} value={e.id}>{e.title}</option>
                                 ))}
@@ -549,11 +715,119 @@ export default function InstructorCertificationPage() {
                     </div>
                 </div>
             </div>
+
+            <section className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-900">Review Wawancara Peserta</h2>
+                        <p className="text-sm text-gray-500">Tentukan hasil interview, tambahkan alasan, dan beri feedback yang nanti bisa dibaca peserta.</p>
+                    </div>
+                    <div className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-widest text-indigo-700">
+                        {interviewAttempts.length} Peserta
+                    </div>
+                </div>
+
+                {interviewAttempts.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-500">
+                        Belum ada peserta dengan sesi wawancara yang perlu direview.
+                    </div>
+                ) : (
+                    <div className="grid gap-4">
+                        {interviewAttempts.map((attempt) => {
+                            const exam = examsById.get(attempt.exam);
+                            const draft = getInterviewDraft(attempt);
+                            const slot = attempt.interview_slot_detail;
+                            const isPending = attempt.interview_result === 'PENDING' || !attempt.interview_result;
+                            const resultLabel = attempt.interview_result === 'PASSED'
+                                ? 'Lolos'
+                                : attempt.interview_result === 'FAILED'
+                                    ? 'Tidak Lolos'
+                                    : 'Menunggu Review';
+                            const resultClassName = attempt.interview_result === 'PASSED'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : attempt.interview_result === 'FAILED'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : 'bg-amber-100 text-amber-700';
+
+                            return (
+                                <div key={attempt.id} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">
+                                                    {exam?.course_title || 'Pelatihan'}
+                                                </span>
+                                                <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${resultClassName}`}>
+                                                    {resultLabel}
+                                                </span>
+                                            </div>
+                                            <h3 className="text-lg font-bold text-gray-900">{attempt.user_name || 'Peserta'}</h3>
+                                            <p className="text-sm text-gray-500">{attempt.exam_title || exam?.title}</p>
+                                            <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+                                                <span>Status assessment: {attempt.status}</span>
+                                                <span>Skor tertulis: {attempt.score || '0'}</span>
+                                                {slot && <span>Sesi: {slot.date} {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</span>}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-600 lg:max-w-sm">
+                                            {isPending
+                                                ? 'Peserta belum mendapat keputusan interview. Isi alasan dan feedback bila diperlukan, lalu pilih Lolos atau Tidak Lolos.'
+                                                : `Review terakhir oleh ${attempt.interview_reviewed_by_name || 'trainer'}${attempt.interview_reviewed_at ? ` pada ${new Date(attempt.interview_reviewed_at).toLocaleString('id-ID')}` : ''}.`}
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                                        <label className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Alasan Keputusan</span>
+                                            <textarea
+                                                value={draft.reason}
+                                                onChange={(e) => handleInterviewDraftChange(attempt.id, 'reason', e.target.value)}
+                                                rows={4}
+                                                placeholder="Jelaskan alasan peserta dinyatakan lolos atau tidak lolos."
+                                                className="mt-3 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                            />
+                                        </label>
+                                        <label className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Feedback untuk Peserta</span>
+                                            <textarea
+                                                value={draft.feedback}
+                                                onChange={(e) => handleInterviewDraftChange(attempt.id, 'feedback', e.target.value)}
+                                                rows={4}
+                                                placeholder="Tambahkan masukan, catatan perbaikan, atau apresiasi untuk peserta."
+                                                className="mt-3 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <div className="mt-5 flex flex-wrap gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleInterviewReview(attempt, 'PASSED')}
+                                            disabled={reviewingAttemptId === attempt.id}
+                                            className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {reviewingAttemptId === attempt.id ? 'Menyimpan...' : 'Lolos'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleInterviewReview(attempt, 'FAILED')}
+                                            disabled={reviewingAttemptId === attempt.id}
+                                            className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {reviewingAttemptId === attempt.id ? 'Menyimpan...' : 'Tidak Lolos'}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </section>
             <FeedbackModal modal={feedbackModal} onClose={() => setFeedbackModal(null)} />
             <ConfirmModal
                 open={Boolean(slotToDelete)}
                 title="Hapus Slot Sesi?"
-                message={slotToDelete ? `Slot ${slotToDelete.exam_title || 'ujian'} pada ${slotToDelete.date} ${slotToDelete.start_time.slice(0, 5)} akan dihapus dari jadwal instruktur.` : ''}
+                message={slotToDelete ? `Slot ${slotToDelete.exam_title || 'assessment'} pada ${slotToDelete.date} ${slotToDelete.start_time.slice(0, 5)} akan dihapus dari jadwal trainer.` : ''}
                 confirmLabel="Ya, Hapus"
                 cancelLabel="Batal"
                 busy={Boolean(slotToDelete && deletingSlotId === slotToDelete.id)}

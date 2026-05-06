@@ -5,11 +5,13 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useCart } from '@/context/CartContext';
 import { Trash2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 interface CartItem {
     id: number;
     course: {
         id: number;
+        slug: string;
         title: string;
         price: string;
         thumbnail: string | null;
@@ -17,6 +19,19 @@ interface CartItem {
             name: string;
         };
     };
+    offer_type: 'elearning' | 'public';
+    offer_mode: 'online' | 'offline' | '';
+    public_session_id: string;
+    public_session?: {
+        id: string;
+        title?: string;
+        delivery_mode?: 'online' | 'offline';
+        schedule?: string;
+        location?: string;
+        duration?: string;
+        price?: string;
+    } | null;
+    total_amount: string;
     added_at: string;
 }
 
@@ -24,6 +39,7 @@ export default function CartPage() {
     const [items, setItems] = useState<CartItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { refreshCart } = useCart();
+    const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
     const fetchCart = async () => {
         try {
@@ -52,8 +68,15 @@ export default function CartPage() {
         fetchCart();
     }, []);
 
-    const removeItem = async (courseId: number) => {
-        if (!confirm('Hapus kursus ini dari keranjang?')) return;
+    const removeItem = async (itemId: number) => {
+        const shouldDelete = await confirmAction({
+            title: 'Hapus Item dari Keranjang?',
+            message: 'Item transaksi ini akan dihapus dari keranjang belanja Anda.',
+            confirmLabel: 'Ya, Hapus',
+            cancelLabel: 'Batal',
+            tone: 'warning',
+        });
+        if (!shouldDelete) return;
 
         try {
             const token = localStorage.getItem('access_token');
@@ -65,20 +88,46 @@ export default function CartPage() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ course_id: courseId })
+                body: JSON.stringify({ item_id: itemId })
             });
 
             if (res.ok) {
-                fetchCart();
+                await fetchCart();
                 refreshCart();
+                await showSuccess('Kursus berhasil dihapus dari keranjang.', 'Keranjang Diperbarui');
+            } else {
+                await showError('Kursus belum bisa dihapus dari keranjang.', 'Penghapusan Gagal');
             }
         } catch (error) {
             console.error('Error removing item:', error);
-            alert('Gagal menghapus item');
+            await showError('Terjadi kesalahan saat menghapus item dari keranjang.', 'Koneksi Bermasalah');
         }
     };
 
-    const totalPrice = items.reduce((sum, item) => sum + Number(item.course.price), 0);
+    const totalPrice = items.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+
+    const getOfferLabel = (item: CartItem) => {
+        if (item.offer_type === 'public') {
+            return `Public Training${item.offer_mode ? ` ${item.offer_mode === 'online' ? 'Online' : 'Offline'}` : ''}`;
+        }
+        return 'E-Learning';
+    };
+
+    const getCheckoutHref = (item: CartItem) => {
+        const query = new URLSearchParams({
+            slug: item.course.slug,
+            offer: item.offer_type,
+        });
+
+        if (item.offer_mode) {
+            query.set('mode', item.offer_mode);
+        }
+        if (item.public_session_id) {
+            query.set('session', item.public_session_id);
+        }
+
+        return `/checkout?${query.toString()}`;
+    };
 
     const formatPrice = (price: number) => {
         return new Intl.NumberFormat('id-ID', {
@@ -104,7 +153,7 @@ export default function CartPage() {
                             <ShieldCheck className="w-10 h-10" />
                         </div>
                         <h2 className="text-xl font-bold text-gray-900 mb-2">Keranjang Anda Kosong</h2>
-                        <p className="text-gray-500 mb-8">Belum ada kursus yang ditambahkan.</p>
+                        <p className="text-gray-500 mb-8">Belum ada transaksi yang ditambahkan.</p>
                         <Link href="/courses" className="inline-flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-xl hover:bg-blue-700 transition-colors font-bold shadow-lg shadow-blue-600/20">
                             Jelajahi Kursus
                             <ArrowRight className="w-5 h-5" />
@@ -125,15 +174,39 @@ export default function CartPage() {
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="mb-1 text-base font-bold text-gray-900 sm:text-lg">{item.course.title}</h3>
-                                        <p className="text-sm text-gray-500 mb-2">Instructor: {item.course.instructor.name}</p>
-                                        <div className="flex items-center justify-between gap-3">
-                                            <span className="text-blue-600 font-bold">{formatPrice(Number(item.course.price))}</span>
-                                            <button
-                                                onClick={() => removeItem(item.course.id)}
-                                                className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors"
-                                            >
-                                                <Trash2 className="w-5 h-5" />
-                                            </button>
+                                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                                            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                                                {getOfferLabel(item)}
+                                            </span>
+                                            {item.public_session?.title && (
+                                                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                                                    {item.public_session.title}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-gray-500 mb-1">Instructor: {item.course.instructor.name}</p>
+                                        {item.offer_type === 'public' && item.public_session && (
+                                            <div className="mb-3 space-y-1 text-xs text-gray-500">
+                                                <p>{item.public_session.schedule || 'Jadwal akan diinformasikan'}</p>
+                                                <p>{item.public_session.location || 'Lokasi / platform akan diinformasikan'}</p>
+                                            </div>
+                                        )}
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <span className="font-bold text-blue-600">{formatPrice(Number(item.total_amount || 0))}</span>
+                                            <div className="flex items-center gap-2">
+                                                <Link
+                                                    href={getCheckoutHref(item)}
+                                                    className="rounded-full bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 transition-colors"
+                                                >
+                                                    Checkout
+                                                </Link>
+                                                <button
+                                                    onClick={() => removeItem(item.id)}
+                                                    className="rounded-full p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-700"
+                                                >
+                                                    <Trash2 className="w-5 h-5" />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -147,17 +220,27 @@ export default function CartPage() {
                                 <div className="space-y-4 mb-6">
                                     <div className="flex justify-between text-gray-600">
                                         <span>Total Item</span>
-                                        <span>{items.length} kursus</span>
+                                        <span>{items.length} item</span>
                                     </div>
                                     <div className="border-t border-gray-100 pt-4 flex justify-between items-center">
                                         <span className="font-bold text-gray-900">Total Harga</span>
                                         <span className="font-bold text-2xl text-blue-600">{formatPrice(totalPrice)}</span>
                                     </div>
                                 </div>
-                                <button className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 flex justify-center items-center gap-2">
-                                    Checkout Sekarang
-                                    <ArrowRight className="w-5 h-5" />
-                                </button>
+                                <p className="mb-4 text-sm text-gray-500">
+                                    Checkout dilakukan per item agar paket e-learning dan public training tetap mengikuti sesi yang dipilih.
+                                </p>
+                                {items.length === 1 ? (
+                                    <Link href={getCheckoutHref(items[0])} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 font-bold text-white transition-colors hover:bg-blue-700 shadow-lg shadow-blue-600/20">
+                                        Checkout Sekarang
+                                        <ArrowRight className="w-5 h-5" />
+                                    </Link>
+                                ) : (
+                                    <button disabled className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-200 py-3.5 font-bold text-gray-500 cursor-not-allowed">
+                                        Pilih Item untuk Checkout
+                                        <ArrowRight className="w-5 h-5" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>

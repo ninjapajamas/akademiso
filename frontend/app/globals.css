@@ -51,3 +51,205 @@ canvas,
 svg {
   max-width: 100%;
 }
+
+.login-cta {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-image: linear-gradient(135deg, #0b6bff 0%, #0056d2 55%, #0047b0 100%);
+  transition:
+    transform 180ms ease,
+    box-shadow 220ms ease,
+    filter 220ms ease,
+    background-position 260ms ease;
+}
+
+.login-cta::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04));
+  opacity: 0.9;
+  z-index: 0;
+}
+
+.login-cta::after {
+  content: "";
+  position: absolute;
+  top: -35%;
+  bottom: -35%;
+  left: -30%;
+  width: 38%;
+  transform: translateX(-180%) rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.36), transparent);
+  transition: transform 520ms ease;
+  z-index: 1;
+}
+
+.login-cta:hover,
+.login-cta:focus-visible {
+  transform: translateY(-1px);
+  box-shadow:
+    0 18px 32px rgba(0, 86, 210, 0.26),
+    0 6px 14px rgba(0, 86, 210, 0.18);
+  filter: saturate(1.05);
+}
+
+.login-cta:hover::after,
+.login-cta:focus-visible::after {
+  transform: translateX(430%) rotate(18deg);
+}
+
+.login-cta:focus-visible {
+  outline: 3px solid rgba(0, 86, 210, 0.16);
+  outline-offset: 3px;
+}
+
+.login-cta__icon-wrap {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 0.35rem;
+  transition:
+    transform 220ms ease,
+    background-color 220ms ease;
+}
+
+.login-cta__icon {
+  position: relative;
+  z-index: 2;
+  transition: transform 220ms ease;
+}
+
+.login-cta:hover .login-cta__icon-wrap,
+.login-cta:focus-visible .login-cta__icon-wrap {
+  transform: translateX(1px) scale(1.04);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.login-cta:hover .login-cta__icon,
+.login-cta:focus-visible .login-cta__icon {
+  transform: translateX(1px);
+}
+
+.login-cta--mobile:hover,
+.login-cta--mobile:focus-visible {
+  transform: none;
+}
+
+.hero-chip-marquee {
+  position: relative;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+
+.hero-chip-track {
+  display: flex;
+  width: max-content;
+  gap: 0.75rem;
+  padding: 0.125rem 0;
+  will-change: transform;
+}
+
+.hero-chip-track--right {
+  animation: hero-chip-slide-right 24s linear infinite;
+}
+
+.hero-chip-track--left {
+  animation: hero-chip-slide-left 28s linear infinite;
+}
+
+.hero-chip-marquee:hover .hero-chip-track,
+.hero-chip-marquee:focus-within .hero-chip-track {
+  animation-play-state: paused;
+}
+
+.hero-chip-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border-radius: 9999px;
+  border: 1px solid rgb(229 231 235);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92));
+  padding: 0.55rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgb(75 85 99);
+  box-shadow:
+    0 10px 25px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease,
+    box-shadow 220ms ease;
+}
+
+.hero-chip-pill:hover,
+.hero-chip-pill:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(147, 197, 253, 0.9);
+  color: rgb(37 99 235);
+  box-shadow:
+    0 14px 30px rgba(37, 99, 235, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.hero-chip-pill--soft {
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.92));
+}
+
+@keyframes hero-chip-slide-left {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(calc(-50% - 0.375rem));
+  }
+}
+
+@keyframes hero-chip-slide-right {
+  from {
+    transform: translateX(calc(-50% - 0.375rem));
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (min-width: 640px) {
+  .hero-chip-track {
+    gap: 1rem;
+  }
+
+  .hero-chip-pill {
+    padding: 0.7rem 1.15rem;
+    font-size: 0.875rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-chip-marquee {
+    overflow: visible;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+
+  .hero-chip-track,
+  .hero-chip-track--right,
+  .hero-chip-track--left {
+    width: auto;
+    flex-wrap: wrap;
+    animation: none;
+    transform: none;
+  }
+}

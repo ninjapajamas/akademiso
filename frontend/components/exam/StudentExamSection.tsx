@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Award, CalendarCheck2, CalendarRange, CheckCircle2, ChevronRight, Clock, Lock } from 'lucide-react';
+import { Award, CalendarCheck2, CalendarRange, CheckCircle2, ChevronRight, Clock, Lock, RefreshCw, XCircle } from 'lucide-react';
 import { CertificationAttempt, CertificationExam, CertificationInstructorSlot, Course } from '@/types';
 import { formatApiDateTimeRangeForDisplay, formatSlotDateForDisplay, formatSlotTimeRangeForDisplay } from '@/types/datetime';
 
@@ -18,7 +18,7 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'slate',
             label: 'Belum Diaktifkan',
-            message: 'Ujian akhir ini belum diaktifkan.',
+            message: 'Assessment ini belum diaktifkan.',
         };
     }
 
@@ -26,7 +26,7 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'amber',
             label: 'Menunggu Jadwal',
-            message: 'Instruktur belum mengonfirmasi jadwal pelaksanaan ujian akhir.',
+            message: 'Trainer belum mengonfirmasi jadwal pelaksanaan assessment.',
         };
     }
 
@@ -34,7 +34,7 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'rose',
             label: 'Jadwal Berakhir',
-            message: 'Rentang waktu ujian akhir ini sudah selesai.',
+            message: 'Rentang waktu assessment ini sudah selesai.',
         };
     }
 
@@ -42,35 +42,35 @@ function getExamAvailability(exam: CertificationExam) {
         return {
             tone: 'emerald',
             label: 'Sedang Dibuka',
-            message: 'Ujian akhir sedang berada pada periode aktif.',
+            message: 'Assessment sedang berada pada periode aktif.',
         };
     }
 
     return {
         tone: 'blue',
         label: 'Akan Dibuka',
-        message: 'Periode ujian akhir sudah dijadwalkan, tetapi belum mulai.',
+        message: 'Periode assessment sudah dijadwalkan, tetapi belum mulai.',
     };
 }
 
 function getExamModeCopy(exam: CertificationExam) {
     if (exam.exam_mode === 'INTERVIEW_ONLY') {
         return {
-            title: 'Wawancara Ujian Akhir',
-            description: 'Pilih salah satu slot sesi yang tersedia, lalu ikuti wawancara sesuai jadwal yang Anda konfirmasi.',
+            title: 'Wawancara Assessment',
+            description: 'Pilih salah satu slot sesi yang tersedia, lalu ikuti wawancara sesuai jadwal assessment yang Anda konfirmasi.',
         };
     }
 
     if (exam.exam_mode === 'HYBRID') {
         return {
-            title: 'Ujian Akhir & Wawancara',
-            description: 'Kerjakan soal ujian akhir pada sesi yang diawasi instruktur, lalu lanjutkan dengan wawancara bila diperlukan.',
+            title: 'Assessment & Wawancara',
+            description: 'Kerjakan assessment tertulis pada sesi yang diawasi trainer, lalu lanjutkan dengan wawancara bila diperlukan.',
         };
     }
 
     return {
-        title: 'Ujian Akhir',
-        description: 'Pilih slot sesi yang tersedia bila ujian diawasi instruktur, atau mulai ujian saat periode dibuka.',
+        title: 'Assessment Akhir',
+        description: 'Pilih slot sesi yang tersedia bila assessment diawasi trainer, atau mulai assessment saat periode dibuka.',
     };
 }
 
@@ -113,7 +113,7 @@ function getSlotState(slot?: CertificationInstructorSlot) {
     if (now > window.end) {
         return {
             canEnter: false,
-            message: 'Jadwal yang dipilih sudah lewat. Hubungi admin atau instruktur untuk penjadwalan ulang.',
+            message: 'Jadwal yang dipilih sudah lewat. Hubungi admin atau trainer untuk penjadwalan ulang.',
             label: 'Jadwal Terlewat',
             tone: 'rose',
         };
@@ -152,6 +152,8 @@ export default function StudentExamSection({
     const [errorMessage, setErrorMessage] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [submittingExamId, setSubmittingExamId] = useState<number | null>(null);
+    const [cancellingExamId, setCancellingExamId] = useState<number | null>(null);
+    const [rescheduleExamId, setRescheduleExamId] = useState<number | null>(null);
     const [selectedSlots, setSelectedSlots] = useState<Record<number, number>>({});
     const usesExternalAttempts = typeof controlledAttempts !== 'undefined';
     const attempts = controlledAttempts ?? internalAttempts;
@@ -257,7 +259,7 @@ export default function StudentExamSection({
 
             const data = await res.json();
             if (!res.ok) {
-                setErrorMessage(data.error || 'Jadwal ujian belum bisa dikonfirmasi.');
+                setErrorMessage(data.error || 'Jadwal assessment belum bisa dikonfirmasi.');
                 return;
             }
 
@@ -271,14 +273,56 @@ export default function StudentExamSection({
 
             setSuccessMessage(
                 chosenSlot
-                    ? `Jadwal ujian berhasil dikonfirmasi untuk ${formatSlotDateForDisplay(chosenSlot.date)} pukul ${formatSlotTimeRangeForDisplay(chosenSlot.start_time, chosenSlot.end_time)}.`
-                    : 'Jadwal ujian berhasil dikonfirmasi.'
+                    ? `Jadwal assessment berhasil dikonfirmasi untuk ${formatSlotDateForDisplay(chosenSlot.date)} pukul ${formatSlotTimeRangeForDisplay(chosenSlot.start_time, chosenSlot.end_time)}.`
+                    : 'Jadwal assessment berhasil dikonfirmasi.'
             );
+            setRescheduleExamId(null);
         } catch (error) {
             console.error('Error starting exam:', error);
-            setErrorMessage('Terjadi kendala saat menyimpan jadwal ujian akhir.');
+            setErrorMessage('Terjadi kendala saat menyimpan jadwal assessment.');
         } finally {
             setSubmittingExamId(null);
+        }
+    };
+
+    const handleCancelExam = async (examId: number) => {
+        const attempt = attempts.find((item) => item.exam === examId);
+        if (!attempt || cancellingExamId === examId) return;
+        if (!window.confirm('Batalkan jadwal assessment ini? Slot yang sudah dipilih akan dibuka kembali.')) return;
+
+        setCancellingExamId(examId);
+        setErrorMessage('');
+        setSuccessMessage('');
+
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/certification-attempts/${attempt.id}/cancel_schedule/`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            const data = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                setErrorMessage(data?.error || 'Jadwal assessment belum bisa dibatalkan.');
+                return;
+            }
+
+            await fetchAttempts();
+            setSelectedSlots((prev) => {
+                const next = { ...prev };
+                delete next[examId];
+                return next;
+            });
+            setRescheduleExamId(null);
+            setSuccessMessage('Jadwal assessment berhasil dibatalkan. Anda bisa memilih ulang slot yang tersedia.');
+        } catch (error) {
+            console.error('Error cancelling exam:', error);
+            setErrorMessage('Terjadi kendala saat membatalkan jadwal assessment.');
+        } finally {
+            setCancellingExamId(null);
         }
     };
 
@@ -305,7 +349,7 @@ export default function StudentExamSection({
                         <div>
                             <h4 className="font-bold text-amber-900">Ujian Terkunci</h4>
                             <p className="text-sm text-amber-700 mt-1">
-                                Anda baru menyelesaikan {progress}% materi. Selesaikan hingga 100% untuk dapat mengikuti ujian akhir.
+                                Anda baru menyelesaikan {progress}% materi. Selesaikan hingga 100% untuk dapat mengikuti assessment.
                             </p>
                         </div>
                     </div>
@@ -315,7 +359,7 @@ export default function StudentExamSection({
                         <div>
                             <h4 className="font-bold text-green-900">Syarat Materi Sudah Lengkap</h4>
                             <p className="text-sm text-green-700 mt-1">
-                                Anda sudah menyelesaikan seluruh materi. Langkah berikutnya adalah mengikuti ujian akhir sesuai mode yang ditetapkan.
+                                Anda sudah menyelesaikan seluruh materi. Langkah berikutnya adalah mengikuti assessment sesuai mode yang ditetapkan.
                             </p>
                         </div>
                     </div>
@@ -358,10 +402,13 @@ export default function StudentExamSection({
                         const canEnterAttempt = Boolean(hasContinuableAttempt && (!selectedSlot || slotState.canEnter));
                         const canSavePendingSlotChange = Boolean(
                             canChangePendingSlot
+                            && rescheduleExamId === exam.id
                             && selectedSlotId
                             && selectedSlotId !== selectedSlot?.id
                         );
                         const isProcessing = submittingExamId === exam.id;
+                        const isCancelling = cancellingExamId === exam.id;
+                        const isRescheduleOpen = rescheduleExamId === exam.id;
 
                         return (
                             <div key={exam.id} className={`border rounded-xl p-5 transition-all ${isLocked ? 'opacity-60 grayscale' : 'hover:border-indigo-200'}`}>
@@ -401,7 +448,7 @@ export default function StudentExamSection({
                                                                 ? 'Sudah Dikirim'
                                                                 : selectedSlot
                                                                     ? slotState.label
-                                                                    : 'Lanjutkan Ujian'}
+                                                                    : 'Lanjutkan Assessment'}
                                                     </span>
                                                 )}
                                             </div>
@@ -419,7 +466,7 @@ export default function StudentExamSection({
                                                 <div className="flex items-start gap-3 bg-gray-50 rounded-xl px-4 py-3">
                                                     <CalendarRange className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" />
                                                     <div>
-                                                        <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Periode Ujian Akhir</p>
+                                                        <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Periode Assessment</p>
                                                         <p className="text-sm font-semibold text-gray-800 mt-1">
                                                             {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
                                                         </p>
@@ -447,34 +494,61 @@ export default function StudentExamSection({
                                                             : 'Jawaban Anda sudah dikirim dan sedang menunggu proses berikutnya.'}
                                                     </div>
                                                 ) : (
-                                                    <button
-                                                        onClick={() => handleExamAction(exam, attempt)}
-                                                        disabled={
-                                                            isProcessing
-                                                            || isLocked
-                                                            || (
-                                                                !attempt
-                                                                    ? !canCreateAttempt
-                                                                    : !(canEnterAttempt || canSavePendingSlotChange)
-                                                            )
-                                                        }
-                                                        className={`font-bold py-2.5 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-lg ${
-                                                            (attempt ? (canEnterAttempt || canSavePendingSlotChange) : canCreateAttempt)
-                                                                ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100'
-                                                                : 'bg-gray-200 text-gray-500 shadow-transparent cursor-not-allowed'
-                                                        }`}
-                                                    >
-                                                        {isProcessing
-                                                            ? 'Menyimpan Jadwal...'
-                                                            : attempt
-                                                                ? (
-                                                                    canSavePendingSlotChange
-                                                                        ? 'Pilih Slot Ini'
-                                                                        : (canEnterAttempt ? 'Masuk ke Ujian' : 'Menunggu Jadwal')
+                                                    <div className="flex flex-col gap-2">
+                                                        <button
+                                                            onClick={() => handleExamAction(exam, attempt)}
+                                                            disabled={
+                                                                isProcessing
+                                                                || isLocked
+                                                                || (
+                                                                    !attempt
+                                                                        ? !canCreateAttempt
+                                                                        : !(canEnterAttempt || canSavePendingSlotChange)
                                                                 )
-                                                                : (requiresSlotSelection ? 'Konfirmasi Jadwal' : 'Mulai Ujian')}
-                                                        <ChevronRight className="w-4 h-4" />
-                                                    </button>
+                                                            }
+                                                            className={`font-bold py-2.5 rounded-lg transition flex items-center justify-center gap-2 text-sm shadow-lg ${
+                                                                (attempt ? (canEnterAttempt || canSavePendingSlotChange) : canCreateAttempt)
+                                                                    ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100'
+                                                                    : 'bg-gray-200 text-gray-500 shadow-transparent cursor-not-allowed'
+                                                            }`}
+                                                        >
+                                                            {isProcessing
+                                                                ? 'Menyimpan Jadwal...'
+                                                                : attempt
+                                                                    ? (
+                                                                        canSavePendingSlotChange
+                                                                            ? 'Simpan Jadwal Baru'
+                                                                            : (canEnterAttempt ? 'Masuk ke Assessment' : 'Menunggu Jadwal')
+                                                                    )
+                                                                    : (requiresSlotSelection ? 'Konfirmasi Jadwal Assessment' : 'Mulai Assessment')}
+                                                            <ChevronRight className="w-4 h-4" />
+                                                        </button>
+                                                        {canChangePendingSlot && (
+                                                            <div className="grid gap-2 sm:grid-cols-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRescheduleExamId((current) => current === exam.id ? null : exam.id)}
+                                                                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold transition ${
+                                                                        isRescheduleOpen
+                                                                            ? 'border-amber-300 bg-amber-50 text-amber-700'
+                                                                            : 'border-slate-200 bg-white text-slate-700 hover:border-amber-200 hover:bg-amber-50'
+                                                                    }`}
+                                                                >
+                                                                    <RefreshCw className="h-4 w-4" />
+                                                                    {isRescheduleOpen ? 'Tutup Reschedule' : 'Reschedule'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleCancelExam(exam.id)}
+                                                                    disabled={isCancelling}
+                                                                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    <XCircle className="h-4 w-4" />
+                                                                    {isCancelling ? 'Membatalkan...' : 'Batalkan Jadwal'}
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
@@ -485,7 +559,7 @@ export default function StudentExamSection({
                                             <div className="flex items-start gap-3">
                                                 <CalendarCheck2 className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
                                                 <div>
-                                                    <p className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Jadwal yang Sudah Anda Pilih</p>
+                                                    <p className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Jadwal Assessment Terpilih</p>
                                                     <p className="text-sm font-semibold text-gray-900 mt-1">{formatSlotDateForDisplay(selectedSlot.date)}</p>
                                                     <p className="text-sm text-gray-600">{formatSlotTimeRangeForDisplay(selectedSlot.start_time, selectedSlot.end_time)}</p>
                                                     {selectedSlot.zoom_link && (
@@ -498,13 +572,13 @@ export default function StudentExamSection({
                                         </div>
                                     )}
 
-                                    {(!attempt || canChangePendingSlot) && availableSlots.length > 0 && (
+                                    {(!attempt || (canChangePendingSlot && isRescheduleOpen)) && availableSlots.length > 0 && (
                                         <div className="space-y-3">
                                             <div>
-                                                <h4 className="text-sm font-bold text-gray-900">Pilih Slot Sesi dari Instruktur</h4>
+                                                <h4 className="text-sm font-bold text-gray-900">Pilih Slot Assessment dari Trainer</h4>
                                                 <p className="text-xs text-gray-500 mt-1">
                                                     {canChangePendingSlot
-                                                        ? 'Sesi Anda belum dimulai, jadi Anda masih bisa memilih slot lain sebelum waktu mulai.'
+                                                        ? 'Sesi Anda belum dimulai, jadi Anda masih bisa menjadwalkan ulang ke slot lain sebelum waktu mulai.'
                                                         : 'Pilih satu sesi yang paling sesuai. Setelah dikonfirmasi, slot tersebut akan terkunci untuk Anda.'}
                                                 </p>
                                             </div>
@@ -541,9 +615,9 @@ export default function StudentExamSection({
                                         </div>
                                     )}
 
-                                    {(!attempt || canChangePendingSlot) && requiresSlotSelection && availableSlots.length === 0 && (
+                                    {(!attempt || (canChangePendingSlot && isRescheduleOpen)) && requiresSlotSelection && availableSlots.length === 0 && (
                                         <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-500">
-                                            Semua slot dari instruktur saat ini sudah terisi. Silakan tunggu pembaruan jadwal berikutnya.
+                                            Semua slot dari trainer saat ini sudah terisi. Silakan tunggu pembaruan jadwal berikutnya.
                                         </div>
                                     )}
                                 </div>

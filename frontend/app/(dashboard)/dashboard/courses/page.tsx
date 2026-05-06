@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BookOpen, ArrowRight, Search, Filter, BarChart, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
+import { BookOpen, ArrowRight, Search, Filter, BarChart, CreditCard, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { CertificationAttempt, EnrolledCourse } from '@/types';
 import { ParticipantIdentity } from '@/components/dashboard/ParticipantCard';
 import ParticipantCardModal from '@/components/dashboard/ParticipantCardModal';
@@ -49,12 +49,51 @@ function mapParticipantIdentity(data: ProfileResponse): ParticipantIdentity {
     };
 }
 
+function getLearningActionLabel(progress?: number | null) {
+    const normalizedProgress = progress || 0;
+
+    if (normalizedProgress >= 100) return 'Lihat Lagi';
+    if (normalizedProgress > 0) return 'Lanjutkan Belajar';
+    return 'Mulai Belajar';
+}
+
+function formatAssessmentScore(score?: number | null) {
+    if (score === null || score === undefined) {
+        return 'Belum';
+    }
+
+    const normalizedScore = Number(score);
+    if (Number.isNaN(normalizedScore)) {
+        return 'Belum';
+    }
+
+    return `${Math.round(normalizedScore)}%`;
+}
+
+function formatScheduleDate(value?: string | null) {
+    if (!value) {
+        return '-';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return '-';
+    }
+
+    return date.toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
 export default function MyCoursesPage() {
     const [enrollments, setEnrollments] = useState<EnrolledCourse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isAttemptsLoading, setIsAttemptsLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'Pending' | 'Completed' | 'Cancelled'>('all');
+    const [progressFilter, setProgressFilter] = useState<'all' | 'completed' | 'in_progress'>('all');
     const [participant, setParticipant] = useState<ParticipantIdentity | null>(null);
     const [activeEnrollment, setActiveEnrollment] = useState<EnrolledCourse | null>(null);
     const [attempts, setAttempts] = useState<CertificationAttempt[]>([]);
@@ -139,8 +178,18 @@ export default function MyCoursesPage() {
         const matchSearch = e.course.title.toLowerCase().includes(search.toLowerCase()) ||
             e.course.instructor?.name?.toLowerCase().includes(search.toLowerCase());
         const matchStatus = statusFilter === 'all' || e.status === statusFilter;
-        return matchSearch && matchStatus;
+        const progress = e.progress_percentage || 0;
+        const matchProgress = progressFilter === 'all'
+            || (progressFilter === 'completed' && progress >= 100)
+            || (progressFilter === 'in_progress' && progress < 100);
+        return matchSearch && matchStatus && matchProgress;
     });
+
+    const courseSummary = [
+        { key: 'all' as const, label: 'Total Kursus', helper: 'Semua enrollment Anda', value: enrollments.length, color: 'text-blue-600', accent: 'from-blue-500/10 to-indigo-500/10', ring: 'ring-blue-200', iconBg: 'bg-blue-100 text-blue-600' },
+        { key: 'completed' as const, label: 'Selesai', helper: 'Progress sudah 100%', value: enrollments.filter(e => (e.progress_percentage || 0) >= 100).length, color: 'text-green-600', accent: 'from-emerald-500/10 to-green-500/10', ring: 'ring-emerald-200', iconBg: 'bg-emerald-100 text-emerald-600' },
+        { key: 'in_progress' as const, label: 'Berlangsung', helper: 'Masih aktif dipelajari', value: enrollments.filter(e => (e.progress_percentage || 0) < 100).length, color: 'text-amber-600', accent: 'from-amber-500/10 to-orange-500/10', ring: 'ring-amber-200', iconBg: 'bg-amber-100 text-amber-600' },
+    ];
 
     const statusBadge = (status: string) => {
         const map: Record<string, string> = {
@@ -266,6 +315,37 @@ export default function MyCoursesPage() {
                 <p className="text-gray-500 mt-1">Semua pelatihan ISO yang telah Anda daftarkan.</p>
             </div>
 
+            {!isLoading && enrollments.length > 0 && (
+                <div className="grid gap-3 md:grid-cols-3">
+                    {courseSummary.map((summary) => {
+                        const isActive = progressFilter === summary.key;
+
+                        return (
+                            <button
+                                key={summary.key}
+                                type="button"
+                                onClick={() => setProgressFilter(summary.key)}
+                                className={`rounded-2xl border p-4 text-left transition-all ${isActive
+                                    ? `bg-gradient-to-br ${summary.accent} ring-2 ${summary.ring} border-white shadow-sm`
+                                    : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                                    }`}
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400">{summary.label}</p>
+                                        <p className={`mt-2 text-3xl font-extrabold ${summary.color}`}>{summary.value}</p>
+                                        <p className="mt-1 text-sm text-gray-500">{summary.helper}</p>
+                                    </div>
+                                    <div className={`rounded-2xl px-3 py-2 text-xs font-bold ${summary.iconBg}`}>
+                                        {isActive ? 'Aktif' : 'Filter'}
+                                    </div>
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             {/* Toolbar */}
             <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
@@ -329,31 +409,72 @@ export default function MyCoursesPage() {
                                             {enrollment.course.instructor?.name} &bull; {enrollment.course.level} &bull; {enrollment.course.duration}
                                         </p>
 
-                                        <div className="grid gap-3 sm:grid-cols-3 mt-4">
-                                            <div className="rounded-2xl border border-gray-100 bg-slate-50 px-4 py-3">
-                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Progres</p>
-                                                <p className="mt-1 text-xl font-bold text-gray-900">{enrollment.progress_percentage || 0}%</p>
-                                            </div>
-                                            <div className="rounded-2xl border border-gray-100 bg-slate-50 px-4 py-3">
-                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Tipe</p>
-                                                <p className="mt-1 text-sm font-semibold text-gray-900 capitalize">{enrollment.course.type || 'course'}</p>
-                                            </div>
-                                            <div className="rounded-2xl border border-gray-100 bg-slate-50 px-4 py-3">
-                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Durasi</p>
-                                                <p className="mt-1 text-sm font-semibold text-gray-900">{enrollment.course.duration}</p>
-                                            </div>
-                                        </div>
+                                        <div className="mt-4 grid gap-3 xl:grid-cols-[1.15fr_0.85fr]">
+                                            <div className="rounded-[1.6rem] border border-blue-100 bg-[linear-gradient(135deg,rgba(239,246,255,0.92),rgba(255,255,255,1))] p-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">Performa Belajar</p>
+                                                        <p className="mt-1 text-sm text-gray-600">Ringkasan progres dan hasil evaluasi Anda saat ini.</p>
+                                                    </div>
+                                                    <div className="rounded-2xl bg-white px-3 py-2 text-right shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Progres</p>
+                                                        <p className="mt-1 text-xl font-bold text-gray-900">{enrollment.progress_percentage || 0}%</p>
+                                                    </div>
+                                                </div>
 
-                                        <div className="mt-5">
-                                            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-gray-500 mb-2">
-                                                <span className="flex items-center gap-2">
-                                                    <BarChart className="w-3.5 h-3.5 text-blue-500" />
-                                                    Perkembangan belajar
-                                                </span>
-                                                <span>{enrollment.progress_percentage || 0}%</span>
+                                                <div className="mt-4">
+                                                    <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-gray-500">
+                                                        <span className="flex items-center gap-2">
+                                                            <BarChart className="w-3.5 h-3.5 text-blue-500" />
+                                                            Perkembangan belajar
+                                                        </span>
+                                                        <span>{enrollment.progress_percentage || 0}%</span>
+                                                    </div>
+                                                    <div className="h-2.5 overflow-hidden rounded-full bg-white shadow-inner">
+                                                        <div className="h-full rounded-full bg-blue-600" style={{ width: `${enrollment.progress_percentage || 0}%` }} />
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                                                    <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Pre-Test</p>
+                                                        <p className="mt-1 text-xl font-bold text-gray-900">{formatAssessmentScore(enrollment.pre_test_score)}</p>
+                                                    </div>
+                                                    <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Post-Test</p>
+                                                        <p className="mt-1 text-xl font-bold text-gray-900">{formatAssessmentScore(enrollment.post_test_score)}</p>
+                                                    </div>
+                                                    <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Tipe</p>
+                                                        <p className="mt-1 text-sm font-semibold text-gray-900 capitalize">{enrollment.course.type || 'course'}</p>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div className="h-full bg-blue-600 rounded-full" style={{ width: `${enrollment.progress_percentage || 0}%` }} />
+
+                                            <div className="rounded-[1.6rem] border border-gray-100 bg-slate-50/80 p-4">
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Info Jadwal</p>
+                                                <p className="mt-1 text-sm text-gray-600">Waktu pelatihan yang terkait dengan course ini.</p>
+
+                                                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                                                    <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Mulai</p>
+                                                        <p className="mt-1 text-sm font-semibold text-gray-900">{formatScheduleDate(enrollment.course.scheduled_at)}</p>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Selesai</p>
+                                                        <p className="mt-1 text-sm font-semibold text-gray-900">{formatScheduleDate(enrollment.course.scheduled_end_at)}</p>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Durasi</p>
+                                                        <p className="mt-1 text-sm font-semibold text-gray-900">{enrollment.course.duration}</p>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Catatan</p>
+                                                        <p className="mt-1 text-sm font-semibold text-gray-900">
+                                                            {enrollment.course.scheduled_at || enrollment.course.scheduled_end_at ? 'Jadwal tersedia' : 'Jadwal belum diatur'}
+                                                        </p>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -364,7 +485,7 @@ export default function MyCoursesPage() {
                                         href={enrollment.course.last_accessed_lesson_id ? `/learn/${enrollment.course.slug}?lesson=${enrollment.course.last_accessed_lesson_id}` : `/learn/${enrollment.course.slug}`}
                                         className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
                                     >
-                                        {(enrollment.progress_percentage || 0) === 100 ? 'Pelajari Lagi' : (enrollment.course.last_accessed_lesson_id || (enrollment.progress_percentage || 0) > 0 ? 'Lanjut Belajar' : 'Mulai Belajar')}
+                                        {getLearningActionLabel(enrollment.progress_percentage)}
                                         <ArrowRight className="w-4 h-4" />
                                     </Link>
                                     <button
@@ -375,8 +496,15 @@ export default function MyCoursesPage() {
                                         <CreditCard className="w-4 h-4" />
                                         Kartu Peserta
                                     </button>
+                                    <Link
+                                        href={`/dashboard/forum/${enrollment.course.slug}`}
+                                        className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-700 hover:bg-amber-100"
+                                    >
+                                        <MessageSquare className="w-4 h-4" />
+                                        Forum Diskusi
+                                    </Link>
                                     <span className="text-xs text-gray-500">
-                                        Klik tombol untuk melihat kartu peserta dan mencetaknya.
+                                        Kartu peserta bisa dilihat dan forum diskusi bisa dibuka langsung dari sini.
                                     </span>
                                 </div>
 
@@ -475,12 +603,12 @@ export default function MyCoursesPage() {
                                             className="flex w-full items-center justify-between gap-4 text-left"
                                         >
                                             <div>
-                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-500">Ujian Akhir</p>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-500">Assessment Akhir</p>
                                                 <p className="mt-1 text-sm font-semibold text-gray-900">
-                                                    {(enrollment.course.certification_exams || []).length} sesi ujian tersedia untuk course ini.
+                                                    {(enrollment.course.certification_exams || []).length} sesi assessment tersedia untuk course ini.
                                                 </p>
                                                 <p className="mt-1 text-xs text-gray-500">
-                                                    Klik untuk {expandedExamCourses[enrollment.course.id] ? 'menutup' : 'membuka'} detail ujian akhir agar tampilan lebih rapi.
+                                                    Klik untuk {expandedExamCourses[enrollment.course.id] ? 'menutup' : 'membuka'} detail assessment agar tampilan lebih rapi.
                                                 </p>
                                             </div>
                                             <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm">
@@ -519,30 +647,14 @@ export default function MyCoursesPage() {
                         <BookOpen className="w-7 h-7 text-blue-400" />
                     </div>
                     <p className="font-semibold text-gray-700 mb-1">
-                        {search || statusFilter !== 'all' ? 'Tidak ada kursus yang cocok' : 'Belum ada kursus'}
+                        {search || statusFilter !== 'all' || progressFilter !== 'all' ? 'Tidak ada kursus yang cocok' : 'Belum ada kursus'}
                     </p>
                     <p className="text-sm text-gray-400 mb-5">
-                        {search || statusFilter !== 'all' ? 'Coba ubah filter pencarian.' : 'Jelajahi dan daftar ke program pelatihan ISO.'}
+                        {search || statusFilter !== 'all' || progressFilter !== 'all' ? 'Coba ubah filter pencarian.' : 'Jelajahi dan daftar ke program pelatihan ISO.'}
                     </p>
                     <Link href="/courses" className="inline-flex items-center gap-2 bg-blue-600 text-white font-bold px-6 py-2.5 rounded-xl hover:bg-blue-700 text-sm">
                         Jelajahi Kursus <ArrowRight className="w-4 h-4" />
                     </Link>
-                </div>
-            )}
-
-            {/* Summary */}
-            {!isLoading && enrollments.length > 0 && (
-                <div className="grid grid-cols-3 gap-4 pt-2">
-                    {[
-                        { label: 'Total Kursus', value: enrollments.length, color: 'text-blue-600' },
-                        { label: 'Selesai', value: enrollments.filter(e => (e.progress_percentage || 0) === 100).length, color: 'text-green-600' },
-                        { label: 'Berlangsung', value: enrollments.filter(e => (e.progress_percentage || 0) < 100).length, color: 'text-yellow-600' },
-                    ].map((s, i) => (
-                        <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-                            <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
-                            <p className="text-xs text-gray-500 font-medium mt-1">{s.label}</p>
-                        </div>
-                    ))}
                 </div>
             )}
 

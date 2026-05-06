@@ -1,7 +1,8 @@
-export type AppRole = 'admin' | 'akuntan' | 'instructor' | 'student' | 'guest';
+export type AppRole = 'admin' | 'akuntan' | 'project_manager' | 'instructor' | 'student' | 'guest';
 
 export type AuthTokenPayload = {
     email?: string;
+    exp?: number;
     is_instructor?: boolean;
     is_staff?: boolean;
     is_superuser?: boolean;
@@ -34,6 +35,8 @@ export function getPortalPathForRole(role: AppRole) {
             return '/admin';
         case 'akuntan':
             return '/akuntan';
+        case 'project_manager':
+            return '/project-manager';
         case 'instructor':
             return '/instructor';
         case 'student':
@@ -41,4 +44,37 @@ export function getPortalPathForRole(role: AppRole) {
         default:
             return '/login';
     }
+}
+
+export function isTokenExpired(payload: AuthTokenPayload | null | undefined, now = Date.now()) {
+    if (!payload?.exp) return true;
+    return payload.exp * 1000 <= now;
+}
+
+export function getTokenExpiryMs(token: string | null | undefined) {
+    const payload = decodeJwtPayload(token);
+    if (!payload?.exp) return null;
+    return payload.exp * 1000;
+}
+
+export function clearStoredAuth() {
+    if (typeof window === 'undefined') return;
+
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('admin_original_access');
+    localStorage.removeItem('admin_original_refresh');
+    localStorage.removeItem('admin_hijack_user');
+
+    const events = [
+        'auth-change',
+        'dashboard-auth-changed',
+        'instructor-auth-changed',
+        'accountant-auth-changed',
+        'project-manager-auth-changed',
+    ];
+
+    events.forEach((eventName) => {
+        window.dispatchEvent(new Event(eventName));
+    });
 }

@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Award, ChevronLeft, ChevronRight, Clock, AlertCircle, Calendar, CalendarCheck2 } from 'lucide-react';
 import { CertificationAnswer, CertificationAlternative, CertificationAttempt, CertificationExam, CertificationInstructorSlot } from '@/types';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 import {
     formatApiDateTimeRangeForDisplay,
     formatSlotDateForDisplay,
@@ -25,6 +26,30 @@ function getSlotWindow(slot?: CertificationInstructorSlot | null) {
     return { start, end };
 }
 
+function getInterviewResultMeta(result?: CertificationAttempt['interview_result']) {
+    if (result === 'PASSED') {
+        return {
+            label: 'Lolos Wawancara',
+            badgeClassName: 'bg-emerald-100 text-emerald-700',
+            panelClassName: 'border-emerald-100 bg-emerald-50',
+        };
+    }
+
+    if (result === 'FAILED') {
+        return {
+            label: 'Belum Lolos Wawancara',
+            badgeClassName: 'bg-rose-100 text-rose-700',
+            panelClassName: 'border-rose-100 bg-rose-50',
+        };
+    }
+
+    return {
+        label: 'Menunggu Review Wawancara',
+        badgeClassName: 'bg-amber-100 text-amber-700',
+        panelClassName: 'border-amber-100 bg-amber-50',
+    };
+}
+
 export default function CertificationExamPage({ params }: { params: Promise<{ attemptId: string }> }) {
     const { attemptId } = use(params);
     const router = useRouter();
@@ -33,6 +58,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
     const [exam, setExam] = useState<CertificationExam | null>(null);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
     const [answers, setAnswers] = useState<Record<number, string | number>>({});
@@ -73,11 +99,11 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
             setAnswers(existingAnswers);
         } catch (error) {
             console.error('Error fetching exam data:', error);
-            alert('Gagal memuat data ujian.');
+            await showError('Data assessment belum bisa dimuat. Silakan coba lagi.', 'Gagal Memuat Assessment');
         } finally {
             setLoading(false);
         }
-    }, [attemptId]);
+    }, [attemptId, showError]);
 
     useEffect(() => {
         void fetchAttemptData();
@@ -88,7 +114,14 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
     };
 
     const handleSubmit = async () => {
-        if (!confirm('Apakah Anda yakin ingin mengirim semua jawaban?')) return;
+        const shouldSubmit = await confirmAction({
+            title: 'Kirim Jawaban Assessment?',
+            message: 'Pastikan semua jawaban sudah final sebelum dikirim.',
+            confirmLabel: 'Ya, Kirim',
+            cancelLabel: 'Periksa Lagi',
+            tone: 'warning',
+        });
+        if (!shouldSubmit) return;
         setSubmitting(true);
         try {
             const token = localStorage.getItem('access_token');
@@ -104,23 +137,40 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
             });
 
             if (res.ok) {
-                alert('Ujian berhasil dikirim!');
+                await showSuccess('Jawaban assessment berhasil dikirim.', 'Assessment Terkirim');
                 router.replace('/dashboard');
             } else {
                 const errorData = await res.json();
-                alert(errorData.error || 'Ujian belum bisa dikirim.');
+                await showError(errorData.error || 'Assessment belum bisa dikirim.', 'Pengiriman Gagal');
             }
         } catch (error) {
             console.error('Error submitting exam:', error);
+            await showError('Terjadi kesalahan saat mengirim jawaban assessment.', 'Koneksi Bermasalah');
         } finally {
             setSubmitting(false);
         }
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Memuat dokumen ujian...</div>;
+    if (loading) return <div className="min-h-screen flex items-center justify-center">Memuat dokumen assessment...</div>;
     if (!exam || !attempt) return <div className="min-h-screen flex items-center justify-center">Data tidak ditemukan.</div>;
 
-    const questions = exam.questions || [];
+    const orderedQuestions = (() => {
+        const rawQuestions = exam.questions || [];
+        const questionMap = new Map(rawQuestions.map((question) => [question.id, question]));
+        const orderedFromAttempt = (attempt.question_order || [])
+            .map((questionId) => questionMap.get(questionId))
+            .filter((question): question is NonNullable<typeof question> => Boolean(question));
+        const includedIds = new Set(orderedFromAttempt.map((question) => question.id));
+        const remainingQuestions = rawQuestions
+            .filter((question) => !includedIds.has(question.id))
+            .sort((left, right) => {
+                const orderDelta = (left.order || 0) - (right.order || 0);
+                if (orderDelta !== 0) return orderDelta;
+                return left.id - right.id;
+            });
+        return [...orderedFromAttempt, ...remainingQuestions];
+    })();
+    const questions = orderedQuestions;
     const currentQuestion = questions[currentQuestionIdx];
     const bookedSlot = attempt.interview_slot_detail || exam.slots?.find((slot) => slot.id === attempt.interview_slot) || null;
     const slotWindow = getSlotWindow(bookedSlot);
@@ -128,6 +178,13 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
     const isBeforeSelectedSlot = Boolean(slotWindow && now < slotWindow.start && attempt.status !== 'SUBMITTED' && attempt.status !== 'GRADED');
     const isAfterSelectedSlot = Boolean(slotWindow && now > slotWindow.end && attempt.status !== 'SUBMITTED' && attempt.status !== 'GRADED');
     const submitLabel = questions.length === 0 ? 'Konfirmasi Sesi' : 'Selesai & Kirim';
+    const interviewReviewMeta = getInterviewResultMeta(attempt.interview_result);
+    const hasInterviewReview = Boolean(
+        attempt.interview_result && attempt.interview_result !== 'PENDING'
+        || attempt.interview_reason
+        || attempt.interview_feedback
+        || attempt.interview_reviewed_at
+    );
 
     if (isBeforeSelectedSlot) {
         return (
@@ -139,13 +196,13 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                         </div>
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900">Jadwal Anda Sudah Terkonfirmasi</h1>
-                            <p className="text-sm text-gray-500">Sesi ujian belum dimulai. Silakan kembali saat waktu yang Anda pilih sudah tiba.</p>
+                            <p className="text-sm text-gray-500">Sesi assessment belum dimulai. Silakan kembali saat waktu yang Anda pilih sudah tiba.</p>
                         </div>
                     </div>
 
                     {bookedSlot && (
                         <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-5 space-y-2">
-                            <p className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Sesi Ujian Anda</p>
+                            <p className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Sesi Assessment Anda</p>
                             <p className="text-lg font-bold text-gray-900">{formatSlotDateForDisplay(bookedSlot.date)}</p>
                             <p className="text-sm text-gray-700">{formatSlotTimeRangeForDisplay(bookedSlot.start_time, bookedSlot.end_time)}</p>
                             {bookedSlot.zoom_link && (
@@ -157,7 +214,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                     )}
 
                     <div className="rounded-2xl bg-gray-50 border border-gray-100 p-5 text-sm text-gray-600">
-                        Periode ujian akhir umum: {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
+                        Periode assessment umum: {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -188,8 +245,8 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                             <AlertCircle className="w-6 h-6" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Jadwal Ujian Sudah Lewat</h1>
-                            <p className="text-sm text-gray-500">Sesi yang Anda pilih telah berakhir. Silakan hubungi admin atau instruktur untuk penjadwalan ulang.</p>
+                            <h1 className="text-2xl font-bold text-gray-900">Jadwal Assessment Sudah Lewat</h1>
+                            <p className="text-sm text-gray-500">Sesi yang Anda pilih telah berakhir. Silakan hubungi admin atau trainer untuk penjadwalan ulang.</p>
                         </div>
                     </div>
 
@@ -214,7 +271,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                         </div>
                         <div>
                             <h1 className="font-bold text-gray-900 leading-tight">{exam.title}</h1>
-                            <p className="text-xs text-gray-500">Percobaan Ujian Akhir</p>
+                            <p className="text-xs text-gray-500">Percobaan Assessment Akhir</p>
                             <p className="text-[11px] text-indigo-600 mt-1">
                                 Periode: {formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at)}
                             </p>
@@ -245,7 +302,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
             <div className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1 order-2 lg:order-1">
                     <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm sticky top-28">
-                        <h3 className="text-sm font-bold text-gray-900 mb-4">{questions.length > 0 ? 'Navigasi Soal' : 'Ringkasan Ujian'}</h3>
+                        <h3 className="text-sm font-bold text-gray-900 mb-4">{questions.length > 0 ? 'Navigasi Soal' : 'Ringkasan Assessment'}</h3>
                         {questions.length > 0 ? (
                             <div className="grid grid-cols-4 gap-2">
                                 {questions.map((q, idx) => (
@@ -264,7 +321,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                             </div>
                         ) : (
                             <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-600">
-                                Ujian ini tidak memiliki soal tertulis. Gunakan halaman ini untuk melihat materi yang diujikan dan menyelesaikan konfirmasi sesi.
+                                Assessment ini tidak memiliki soal tertulis. Gunakan halaman ini untuk melihat materi yang diujikan dan menyelesaikan konfirmasi sesi.
                             </div>
                         )}
                         <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
@@ -286,6 +343,49 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                         </div>
                     )}
 
+                    {(exam.exam_mode !== 'QUESTIONS_ONLY' || hasInterviewReview) && (
+                        <div className={`rounded-2xl border p-6 ${interviewReviewMeta.panelClassName}`}>
+                            <div className="flex flex-wrap items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Hasil Wawancara</p>
+                                    <h3 className="mt-2 text-lg font-bold text-slate-900">{interviewReviewMeta.label}</h3>
+                                    <p className="mt-2 text-sm leading-6 text-slate-700">
+                                        {hasInterviewReview
+                                            ? 'Trainer sudah meninjau hasil wawancara Anda. Ringkasan keputusan dan catatan ditampilkan di bawah ini.'
+                                            : 'Jika assessment ini memerlukan wawancara, hasil review trainer akan muncul di sini setelah sesi dinilai.'}
+                                    </p>
+                                </div>
+                                <div className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${interviewReviewMeta.badgeClassName}`}>
+                                    {interviewReviewMeta.label}
+                                </div>
+                            </div>
+
+                            {(attempt.interview_reason || attempt.interview_feedback || attempt.interview_reviewed_at) && (
+                                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                                    <div className="rounded-2xl bg-white/80 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Alasan Keputusan</p>
+                                        <p className="mt-2 whitespace-pre-line text-sm text-slate-700">
+                                            {attempt.interview_reason || 'Belum ada alasan khusus yang ditambahkan.'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl bg-white/80 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Feedback Trainer</p>
+                                        <p className="mt-2 whitespace-pre-line text-sm text-slate-700">
+                                            {attempt.interview_feedback || 'Belum ada feedback tambahan.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {attempt.interview_reviewed_at && (
+                                <p className="mt-4 text-xs text-slate-500">
+                                    Direview oleh {attempt.interview_reviewed_by_name || 'trainer'} pada{' '}
+                                    {new Date(attempt.interview_reviewed_at).toLocaleString('id-ID')}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     {currentQuestion && (
                         <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm relative">
                             <div className="flex items-center justify-between mb-8">
@@ -295,9 +395,24 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                                 <div className="text-xs font-bold text-gray-400">Poin: {currentQuestion.points}</div>
                             </div>
 
+                            <div className="mb-4 inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                {(currentQuestion.category_label || 'Umum').trim() || 'Umum'}
+                            </div>
+
                             <h2 className="text-xl font-bold text-gray-900 leading-relaxed mb-8">
                                 {currentQuestion.text}
                             </h2>
+
+                            {currentQuestion.image_url && (
+                                <div className="mb-8 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={currentQuestion.image_url}
+                                        alt={`Gambar soal ${currentQuestionIdx + 1}`}
+                                        className="max-h-[420px] w-full object-contain"
+                                    />
+                                </div>
+                            )}
 
                             <div className="space-y-4">
                                 {currentQuestion.question_type === 'MC' && (
@@ -341,7 +456,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                                         <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-start gap-3">
                                             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
                                             <p className="text-sm text-amber-800">
-                                                Jadwal wawancara Anda mengikuti slot yang sudah dipilih saat konfirmasi ujian.
+                                                Jadwal wawancara Anda mengikuti slot yang sudah dipilih saat konfirmasi assessment.
                                             </p>
                                         </div>
 
@@ -433,9 +548,9 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
                     {!currentQuestion && (
                         <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm space-y-5">
                             <div>
-                                <p className="text-[11px] font-black uppercase tracking-widest text-indigo-500">Mode Ujian</p>
+                                <p className="text-[11px] font-black uppercase tracking-widest text-indigo-500">Mode Assessment</p>
                                 <h2 className="text-2xl font-bold text-gray-900 mt-2">
-                                    {exam.exam_mode === 'INTERVIEW_ONLY' ? 'Wawancara Ujian Akhir' : 'Ujian Akhir Tanpa Soal Tertulis'}
+                                    {exam.exam_mode === 'INTERVIEW_ONLY' ? 'Wawancara Assessment Akhir' : 'Assessment Akhir Tanpa Soal Tertulis'}
                                 </h2>
                             </div>
                             <p className="text-sm text-gray-600">

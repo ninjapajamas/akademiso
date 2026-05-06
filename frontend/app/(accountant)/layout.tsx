@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BanknoteArrowDown, LayoutDashboard, LogOut, ReceiptText, ShieldAlert } from 'lucide-react';
 import { useEffect, useSyncExternalStore } from 'react';
-import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
+import { clearStoredAuth, decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
 
 type AccountantAuthSnapshot = {
     hijackUser: string | null;
@@ -50,7 +50,7 @@ function getAccountantAuthSnapshot() {
     }
 
     const payload = decodeJwtPayload(token);
-    if (!payload) {
+    if (!payload || isTokenExpired(payload)) {
         return cacheAccountantAuthSnapshot({
             hijackUser: null,
             redirectTo: '/login',
@@ -81,10 +81,12 @@ function subscribeAccountantAuth(onStoreChange: () => void) {
 
     const handleChange = () => onStoreChange();
     window.addEventListener('storage', handleChange);
+    window.addEventListener('auth-change', handleChange);
     window.addEventListener('accountant-auth-changed', handleChange);
 
     return () => {
         window.removeEventListener('storage', handleChange);
+        window.removeEventListener('auth-change', handleChange);
         window.removeEventListener('accountant-auth-changed', handleChange);
     };
 }
@@ -113,15 +115,11 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
     const menuItems = [
         { label: 'Dashboard', href: '/akuntan', icon: LayoutDashboard },
         { label: 'Transaksi', href: '/akuntan/transaksi', icon: ReceiptText },
+        { label: 'Pencairan', href: '/akuntan/pencairan', icon: BanknoteArrowDown },
     ];
 
     const handleLogout = () => {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('admin_original_access');
-        localStorage.removeItem('admin_original_refresh');
-        localStorage.removeItem('admin_hijack_user');
-        notifyAccountantAuthChanged();
+        clearStoredAuth();
         router.push('/login');
     };
 

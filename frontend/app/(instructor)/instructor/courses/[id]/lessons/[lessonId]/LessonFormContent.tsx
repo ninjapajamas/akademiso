@@ -20,9 +20,49 @@ type LessonFormContentProps = {
 };
 
 const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
-const normalizeLessonType = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '') ? 'quiz' : (type || 'video');
+const normalizeLessonType = (type?: string) => {
+    if (type === 'video' || type === 'article' || ASSESSMENT_LESSON_TYPES.includes(type || '')) {
+        return type || 'video';
+    }
+    return 'video';
+};
 const QUESTION_TYPE_MULTIPLE_CHOICE = 'MC';
 const QUESTION_TYPE_SHORT_ANSWER = 'SHORT_ANSWER';
+const LESSON_TYPE_OPTIONS = [
+    { id: 'video', label: 'Video', icon: Video },
+    { id: 'article', label: 'Artikel', icon: FileText },
+    { id: 'quiz', label: 'Quiz', icon: HelpCircle },
+    { id: 'mid_test', label: 'Pre-Test', icon: Library },
+    { id: 'final_test', label: 'Post-Test', icon: CheckCircle2 },
+    { id: 'exam', label: 'Ujian Mandiri', icon: HelpCircle },
+] as const;
+const getLessonTypeLabel = (type?: string) => {
+    if (type === 'quiz') return 'Quiz';
+    if (type === 'mid_test') return 'Pre-Test';
+    if (type === 'final_test') return 'Post-Test';
+    if (type === 'exam') return 'Ujian Mandiri';
+    if (type === 'video') return 'Video';
+    if (type === 'article') return 'Artikel';
+    return type || 'Materi';
+};
+const QUESTION_BANK_SOURCE_OPTIONS = [
+    { value: 'all', label: 'Semua Kategori Soal' },
+    { value: 'quiz', label: 'Quiz' },
+    { value: 'mid_test', label: 'Pre-Test' },
+    { value: 'final_test', label: 'Post-Test' },
+    { value: 'exam', label: 'Ujian Mandiri' },
+] as const;
+const QUESTION_BANK_TYPE_OPTIONS = [
+    { value: 'all', label: 'Semua Jenis Pertanyaan' },
+    { value: QUESTION_TYPE_MULTIPLE_CHOICE, label: 'Pilihan Ganda' },
+    { value: QUESTION_TYPE_SHORT_ANSWER, label: 'Isian Singkat' },
+] as const;
+const getAssessmentConfigLabel = (type?: string) => {
+    if (type === 'mid_test') return 'Konfigurasi Pre-Test';
+    if (type === 'final_test') return 'Konfigurasi Post-Test';
+    if (type === 'exam') return 'Konfigurasi Ujian Mandiri';
+    return 'Konfigurasi Quiz';
+};
 
 type QuizAlternative = {
     id?: number;
@@ -33,8 +73,12 @@ type QuizAlternative = {
 
 type QuizQuestion = {
     id?: number;
+    client_id: string;
     text: string;
     question_type: string;
+    image_url?: string | null;
+    clear_image?: boolean;
+    source_question_id?: number;
     correct_answer: string;
     order: number;
     alternatives: QuizAlternative[];
@@ -76,8 +120,11 @@ const normalizeQuizData = (quizData?: RawQuizData | null): QuizData => ({
     time_limit: quizData?.time_limit ?? null,
     questions: (quizData?.questions || []).map((question: RawQuizQuestion, index: number) => ({
         ...question,
+        client_id: question.client_id || `question-existing-${question.id || createQuestionClientId()}`,
         text: question.text || '',
         question_type: question.question_type || QUESTION_TYPE_MULTIPLE_CHOICE,
+        image_url: question.image_url || null,
+        clear_image: false,
         correct_answer: question.correct_answer || '',
         order: question.order || index + 1,
         alternatives: question.alternatives?.length ? question.alternatives : defaultAlternatives()
@@ -88,16 +135,24 @@ type QuestionBankItem = {
     id: number;
     question_type: string;
     text: string;
+    image_url?: string | null;
     correct_answer?: string;
     order: number;
     alternatives?: QuizAlternative[];
     source_lesson_title: string;
+    source_lesson_type: string;
     source_course_title: string;
 };
 
 type SectionOption = {
     id: number;
     title: string;
+};
+
+let questionClientCounter = 0;
+const createQuestionClientId = () => {
+    questionClientCounter += 1;
+    return `question-${Date.now()}-${questionClientCounter}`;
 };
 
 export default function LessonFormContent({
@@ -137,6 +192,10 @@ export default function LessonFormContent({
     const [questionBankItems, setQuestionBankItems] = useState<QuestionBankItem[]>([]);
     const [questionBankSearch, setQuestionBankSearch] = useState('');
     const [selectedQuestionIds, setSelectedQuestionIds] = useState<number[]>([]);
+    const [questionImageFiles, setQuestionImageFiles] = useState<Record<string, File | null>>({});
+    const [questionBankSourceFilter, setQuestionBankSourceFilter] = useState<string>('all');
+    const [questionBankTypeFilter, setQuestionBankTypeFilter] = useState<string>('all');
+    const isAssessmentType = ASSESSMENT_LESSON_TYPES.includes(formData.type);
 
     // Quill Configuration
     const quillModules = useMemo(() => ({
@@ -240,8 +299,11 @@ export default function LessonFormContent({
                 questions: [
                     ...formData.quiz_data.questions,
                     {
+                        client_id: createQuestionClientId(),
                         text: '',
                         question_type: QUESTION_TYPE_MULTIPLE_CHOICE,
+                        image_url: null,
+                        clear_image: false,
                         correct_answer: '',
                         order: formData.quiz_data.questions.length + 1,
                         alternatives: defaultAlternatives()
@@ -291,8 +353,12 @@ export default function LessonFormContent({
         setFormData((current) => {
             const startOrder = current.quiz_data.questions.length;
             const copiedQuestions = questions.map((question, index) => ({
+                client_id: createQuestionClientId(),
                 text: question.text,
                 question_type: question.question_type || QUESTION_TYPE_MULTIPLE_CHOICE,
+                image_url: question.image_url || null,
+                clear_image: false,
+                source_question_id: question.id,
                 correct_answer: question.correct_answer || '',
                 order: startOrder + index + 1,
                 alternatives: question.question_type === QUESTION_TYPE_MULTIPLE_CHOICE
@@ -320,18 +386,28 @@ export default function LessonFormContent({
 
     const filteredQuestionBankItems = questionBankItems.filter((question) => {
         const keyword = questionBankSearch.trim().toLowerCase();
-        if (!keyword) return true;
-        return [
+        const matchesKeyword = !keyword || [
             question.text,
             question.source_lesson_title,
             question.source_course_title,
             question.correct_answer || ''
         ].some((value) => value.toLowerCase().includes(keyword));
+        const matchesSource = questionBankSourceFilter === 'all' || question.source_lesson_type === questionBankSourceFilter;
+        const matchesType = questionBankTypeFilter === 'all' || question.question_type === questionBankTypeFilter;
+        return matchesKeyword && matchesSource && matchesType;
     });
 
     const removeQuestion = (index: number) => {
+        const removedQuestion = formData.quiz_data.questions[index];
         const newQuestions = [...formData.quiz_data.questions];
         newQuestions.splice(index, 1);
+        if (removedQuestion) {
+            setQuestionImageFiles((current) => {
+                const next = { ...current };
+                delete next[removedQuestion.client_id];
+                return next;
+            });
+        }
         setFormData({
             ...formData,
             quiz_data: { ...formData.quiz_data, questions: newQuestions }
@@ -341,6 +417,48 @@ export default function LessonFormContent({
     const updateQuestion = (index: number, text: string) => {
         const newQuestions = [...formData.quiz_data.questions];
         newQuestions[index].text = text;
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const handleQuestionImageChange = (index: number, file: File | null) => {
+        const question = formData.quiz_data.questions[index];
+        if (!question) return;
+
+        setQuestionImageFiles((current) => ({
+            ...current,
+            [question.client_id]: file
+        }));
+
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions[index] = {
+            ...newQuestions[index],
+            clear_image: false,
+        };
+        setFormData({
+            ...formData,
+            quiz_data: { ...formData.quiz_data, questions: newQuestions }
+        });
+    };
+
+    const clearQuestionImage = (index: number) => {
+        const question = formData.quiz_data.questions[index];
+        if (!question) return;
+
+        setQuestionImageFiles((current) => {
+            const next = { ...current };
+            delete next[question.client_id];
+            return next;
+        });
+
+        const newQuestions = [...formData.quiz_data.questions];
+        newQuestions[index] = {
+            ...newQuestions[index],
+            image_url: null,
+            clear_image: true,
+        };
         setFormData({
             ...formData,
             quiz_data: { ...formData.quiz_data, questions: newQuestions }
@@ -439,15 +557,34 @@ export default function LessonFormContent({
 
             // Append Quiz data if applicable
             if (ASSESSMENT_LESSON_TYPES.includes(formData.type)) {
-                data.append('quiz_data', JSON.stringify(formData.quiz_data));
+                const sanitizedQuizData = {
+                    ...formData.quiz_data,
+                    questions: formData.quiz_data.questions.map((question) => ({
+                        id: question.id,
+                        client_id: question.client_id,
+                        text: question.text,
+                        question_type: question.question_type,
+                        correct_answer: question.correct_answer,
+                        clear_image: Boolean(question.clear_image),
+                        source_question_id: question.source_question_id,
+                        order: question.order,
+                        alternatives: question.alternatives,
+                    }))
+                };
+                data.append('quiz_data', JSON.stringify(sanitizedQuizData));
+                formData.quiz_data.questions.forEach((question) => {
+                    const imageFile = questionImageFiles[question.client_id];
+                    if (imageFile) {
+                        data.append(`question_image_${question.client_id}`, imageFile);
+                    }
+                });
             }
 
-            // Only append image if it's not an article (per user request)
-            if ((formData.type === 'video' || ASSESSMENT_LESSON_TYPES.includes(formData.type)) && formData.image) {
+            if (formData.type === 'video' && formData.image) {
                 data.append('image', formData.image);
             }
 
-            if (formData.attachment) {
+            if (!isAssessmentType && formData.attachment) {
                 data.append('attachment', formData.attachment);
             }
 
@@ -572,11 +709,7 @@ export default function LessonFormContent({
                     <div>
                         <label className="block font-bold text-gray-700 mb-4 uppercase tracking-widest text-[10px]">Tipe Materi</label>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {[
-                                { id: 'video', label: 'Video', icon: Video },
-                                { id: 'article', label: 'Artikel', icon: FileText },
-                                { id: 'quiz', label: 'Quiz / Tes', icon: HelpCircle },
-                            ].map((type) => (
+                            {LESSON_TYPE_OPTIONS.map((type) => (
                                 <button
                                     key={type.id}
                                     type="button"
@@ -625,7 +758,7 @@ export default function LessonFormContent({
                                 <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100/50">
                                     <h3 className="text-sm font-bold text-indigo-900 mb-4 flex items-center gap-2">
                                         <HelpCircle className="w-4 h-4" />
-                                        Konfigurasi Quiz / Tes
+                                        {getAssessmentConfigLabel(formData.type)}
                                     </h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
@@ -682,7 +815,7 @@ export default function LessonFormContent({
                                     </div>
 
                                     {formData.quiz_data.questions.map((q, qIndex) => (
-                                        <div key={qIndex} className="p-6 bg-gray-50 rounded-3xl border border-gray-100 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                        <div key={q.client_id} className="p-6 bg-gray-50 rounded-3xl border border-gray-100 space-y-4 animate-in fade-in slide-in-from-top-2">
                                             <div className="flex items-start gap-4">
                                                 <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-indigo-600 shadow-sm border border-gray-100 shrink-0">
                                                     {qIndex + 1}
@@ -722,6 +855,53 @@ export default function LessonFormContent({
                                                                 {option.label}
                                                             </button>
                                                         ))}
+                                                    </div>
+
+                                                    <div className="pl-2">
+                                                        <div className="rounded-2xl border border-dashed border-indigo-200 bg-white/80 p-4">
+                                                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                                                <div>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Gambar Pertanyaan</p>
+                                                                    <p className="mt-2 text-xs leading-5 text-gray-500">
+                                                                        Sisipkan gambar jika soal membutuhkan ilustrasi, diagram, tabel, atau contoh visual.
+                                                                    </p>
+                                                                </div>
+                                                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700">
+                                                                    <Upload className="h-3.5 w-3.5" />
+                                                                    Sisipkan Gambar
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        className="hidden"
+                                                                        onChange={(e) => handleQuestionImageChange(qIndex, e.target.files?.[0] || null)}
+                                                                    />
+                                                                </label>
+                                                            </div>
+                                                            {(questionImageFiles[q.client_id] || q.image_url) && (
+                                                                <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                    <img
+                                                                        src={questionImageFiles[q.client_id]
+                                                                            ? URL.createObjectURL(questionImageFiles[q.client_id] as File)
+                                                                            : (q.image_url || '')}
+                                                                        alt={`Gambar pertanyaan ${qIndex + 1}`}
+                                                                        className="max-h-64 w-full rounded-xl object-contain"
+                                                                    />
+                                                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                                                                            {questionImageFiles[q.client_id]?.name || 'Gambar tersimpan'}
+                                                                        </p>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => clearQuestionImage(qIndex)}
+                                                                            className="rounded-xl border border-rose-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-rose-600 hover:bg-rose-50"
+                                                                        >
+                                                                            Hapus Gambar
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
 
                                                     {q.question_type === QUESTION_TYPE_SHORT_ANSWER ? (
@@ -817,7 +997,7 @@ export default function LessonFormContent({
                         />
                     </div>
 
-                    {formData.type !== 'article' && (
+                    {!isAssessmentType && formData.type !== 'article' && (
                         <div>
                             <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Gambar Sampul Materi (Opsional)</label>
                             <div className="group relative border-2 border-dashed border-gray-200 rounded-[2rem] p-10 text-center hover:border-indigo-400 hover:bg-indigo-50/20 transition-all cursor-pointer overflow-hidden">
@@ -848,6 +1028,7 @@ export default function LessonFormContent({
                         </div>
                     )}
 
+                    {!isAssessmentType && (
                     <div>
                         <label className="block font-bold text-gray-700 mb-2 uppercase tracking-widest text-[10px]">Lampiran Materi (Opsional)</label>
                         <div className="group relative border-2 border-dashed border-gray-200 rounded-[2rem] p-8 text-center hover:border-indigo-400 hover:bg-indigo-50/20 transition-all cursor-pointer overflow-hidden">
@@ -878,6 +1059,7 @@ export default function LessonFormContent({
                             </div>
                         )}
                     </div>
+                    )}
                 </div>
 
                 <div className="pt-8 border-t border-gray-50 flex justify-end">
@@ -909,15 +1091,37 @@ export default function LessonFormContent({
                         </div>
 
                         <div className="p-5 border-b border-gray-100">
-                            <div className="flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
-                                <Search className="w-4 h-4 text-gray-400" />
-                                <input
-                                    type="search"
-                                    value={questionBankSearch}
-                                    onChange={(e) => setQuestionBankSearch(e.target.value)}
-                                    placeholder="Cari soal, materi, atau course"
-                                    className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
-                                />
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                                    <Search className="w-4 h-4 text-gray-400" />
+                                    <input
+                                        type="search"
+                                        value={questionBankSearch}
+                                        onChange={(e) => setQuestionBankSearch(e.target.value)}
+                                        placeholder="Cari soal, materi, atau course"
+                                        className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
+                                    />
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <select
+                                        value={questionBankSourceFilter}
+                                        onChange={(e) => setQuestionBankSourceFilter(e.target.value)}
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                    >
+                                        {QUESTION_BANK_SOURCE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={questionBankTypeFilter}
+                                        onChange={(e) => setQuestionBankTypeFilter(e.target.value)}
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                    >
+                                        {QUESTION_BANK_TYPE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
@@ -943,6 +1147,7 @@ export default function LessonFormContent({
                                                     <p className="text-sm font-bold text-gray-900 leading-relaxed">{question.text}</p>
                                                     <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
                                                         <span className="rounded-lg bg-white px-2 py-1 text-indigo-600 border border-indigo-100">{question.question_type === QUESTION_TYPE_SHORT_ANSWER ? 'Isian' : 'Pilihan Ganda'}</span>
+                                                        <span className="rounded-lg bg-indigo-50 px-2 py-1 text-indigo-700 border border-indigo-100">{getLessonTypeLabel(question.source_lesson_type)}</span>
                                                         <span className="rounded-lg bg-white px-2 py-1 text-gray-500 border border-gray-100">{question.source_lesson_title}</span>
                                                         <span className="rounded-lg bg-white px-2 py-1 text-gray-500 border border-gray-100">{question.source_course_title}</span>
                                                     </div>

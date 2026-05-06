@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -9,12 +9,14 @@ import {
     Calendar,
     LayoutDashboard,
     LogOut,
+    Menu,
     MessageSquare,
     Settings,
     ShieldAlert,
     ShieldCheck,
+    X,
 } from 'lucide-react';
-import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
+import { clearStoredAuth, decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
 
 type DashboardUser = {
     name: string;
@@ -72,7 +74,7 @@ function getDashboardAuthSnapshot() {
     try {
         const payload = decodeJwtPayload(token);
         const role = getRoleFromPayload(payload);
-        if (!payload) {
+        if (!payload || isTokenExpired(payload)) {
             return cacheDashboardAuthSnapshot({
                 hijackUser: null,
                 redirectTo: '/login',
@@ -117,10 +119,12 @@ function subscribeDashboardAuth(onStoreChange: () => void) {
     };
 
     window.addEventListener('storage', handleChange);
+    window.addEventListener('auth-change', handleChange);
     window.addEventListener('dashboard-auth-changed', handleChange);
 
     return () => {
         window.removeEventListener('storage', handleChange);
+        window.removeEventListener('auth-change', handleChange);
         window.removeEventListener('dashboard-auth-changed', handleChange);
     };
 }
@@ -137,6 +141,7 @@ export default function DashboardLayout({
     children: React.ReactNode;
 }) {
     const isSidebarOpen = true;
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const pathname = usePathname();
     const router = useRouter();
     const authState = useSyncExternalStore(
@@ -157,18 +162,13 @@ export default function DashboardLayout({
         { icon: LayoutDashboard, label: 'Beranda', href: '/dashboard' },
         { icon: BookOpen, label: 'Kursus Saya', href: '/dashboard/courses' },
         { icon: MessageSquare, label: 'Forum Diskusi', href: '/dashboard/forum' },
-        { icon: Calendar, label: 'Jadwal Ujian', href: '/dashboard/schedule' },
+        { icon: Calendar, label: 'Jadwal Assessment', href: '/dashboard/schedule' },
         { icon: Award, label: 'Sertifikat', href: '/dashboard/certificates' },
         { icon: Settings, label: 'Pengaturan', href: '/dashboard/settings' },
     ];
 
     const handleLogout = () => {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('admin_original_access');
-        localStorage.removeItem('admin_original_refresh');
-        localStorage.removeItem('admin_hijack_user');
-        notifyDashboardAuthChanged();
+        clearStoredAuth();
         router.push('/login');
     };
 
@@ -246,28 +246,90 @@ export default function DashboardLayout({
                 </div>
             </aside>
 
-            <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
-                <div className="flex gap-1 overflow-x-auto">
-                    {menuItems.map((item) => {
-                        const isActive = pathname === item.href;
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`flex min-w-[76px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold ${
-                                    isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-500'
-                                }`}
-                            >
-                                <item.icon className="h-5 w-5" />
-                                <span className="truncate">{item.label}</span>
-                            </Link>
-                        );
-                    })}
+            <div className="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur md:hidden">
+                <div className="flex h-16 items-center justify-between px-4">
+                    <Link href="/dashboard" className="flex items-center gap-2">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
+                            <ShieldCheck className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-gray-900">Akademiso</div>
+                            <div className="text-[10px] text-gray-500">Dashboard Peserta</div>
+                        </div>
+                    </Link>
+
+                    <button
+                        type="button"
+                        onClick={() => setMobileMenuOpen(true)}
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 text-gray-700"
+                        aria-label="Buka menu dashboard"
+                        aria-expanded={mobileMenuOpen}
+                    >
+                        <Menu className="h-5 w-5" />
+                    </button>
                 </div>
-            </nav>
+            </div>
+
+            {mobileMenuOpen && (
+                <div className="fixed inset-0 z-[60] md:hidden">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]"
+                        aria-label="Tutup menu dashboard"
+                        onClick={() => setMobileMenuOpen(false)}
+                    />
+                    <div className="absolute inset-y-0 left-0 flex w-[min(88vw,320px)] flex-col bg-white shadow-2xl">
+                        <div className="flex h-16 items-center justify-between border-b border-gray-100 px-4">
+                            <div>
+                                <div className="text-sm font-bold text-gray-900">{authState.user?.name || 'Peserta'}</div>
+                                <div className="text-xs text-gray-500">{authState.user?.email || 'Dashboard Akademiso'}</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 text-gray-700"
+                                aria-label="Tutup menu"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-3 py-4">
+                            <div className="space-y-1">
+                                {menuItems.map((item) => {
+                                    const isActive = pathname === item.href;
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={item.href}
+                                            onClick={() => setMobileMenuOpen(false)}
+                                            className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${
+                                                isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            <item.icon className="h-5 w-5" />
+                                            <span>{item.label}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="border-t border-gray-100 p-3">
+                            <button
+                                onClick={handleLogout}
+                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-red-600 hover:bg-red-50"
+                            >
+                                <LogOut className="h-5 w-5" />
+                                Keluar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'md:ml-20'}`}>
-                <main className="p-4 pb-24 sm:p-6 md:p-8">
+                <main className="p-4 pt-20 pb-6 sm:p-6 sm:pt-24 md:p-8 md:pt-8">
                     {authState.hijackUser && (
                         <div className="mb-6 flex flex-col gap-3 rounded-2xl bg-orange-500 px-5 py-3 text-white shadow-lg shadow-orange-500/30 sm:flex-row sm:items-center">
                             <ShieldAlert className="w-5 h-5 flex-shrink-0" />

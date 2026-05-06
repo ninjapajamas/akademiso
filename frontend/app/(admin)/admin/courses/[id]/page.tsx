@@ -2,12 +2,15 @@
 
 import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Save, Award, CheckCircle2, Users, Plus, Trash2, LayoutList, BriefcaseBusiness, LaptopMinimal } from 'lucide-react';
+import { ChevronLeft, Save, Award, CheckCircle2, Users, Plus, Trash2, LayoutList, BriefcaseBusiness, LaptopMinimal, ClipboardList, Clock3 } from 'lucide-react';
 import Link from 'next/link';
 import ExamManager from '@/components/exam/ExamManager';
+import CourseFeedbackPanel from '@/components/course/CourseFeedbackPanel';
+import InstructorExamManager from '@/components/exam/InstructorExamManager';
 import { Category, Instructor, PublicTrainingSession, TrainingDetailSection } from '@/types';
-import { formatNumberInput, normalizePriceForApi } from '@/types/currency';
+import { calculateEstimatedPph, calculateInstructorPayout, calculateNetAfterPph, calculatePlatformFee, formatNumberInput, formatRupiah, normalizePriceForApi, parseCurrencyValue } from '@/types/currency';
 import { createTodayDateTimeInputAtStartOfDay, formatApiDateTimeForInput, formatInputDateTimeForApi, normalizeDateTimeInputToStartOfDay } from '@/types/datetime';
+import { buildRundownLine, parseRundownText, serializeRundownText } from '@/utils/rundown';
 
 type CourseType = 'course' | 'webinar' | 'workshop';
 type DeliveryMode = 'online' | 'offline';
@@ -36,6 +39,7 @@ interface CourseFormState {
     price: string;
     level: string;
     duration: string;
+    rundown_items: string;
     instructor_id: string | number;
     category_id: string | number;
     is_featured: boolean;
@@ -54,6 +58,10 @@ interface CourseFormState {
     public_training_enabled: boolean;
     public_training_intro: string;
     public_sessions: PublicTrainingSession[];
+    public_online_price: string;
+    public_online_discount_price: string;
+    public_offline_price: string;
+    public_offline_discount_price: string;
     inhouse_training_enabled: boolean;
     inhouse_training_intro: string;
     inhouse_training_benefits: string[];
@@ -73,6 +81,15 @@ interface RecommendedDetailSectionTemplate {
 function makeClientId(prefix: string) {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+const PRICE_FIELD_NAMES = new Set([
+    'price',
+    'discount_price',
+    'public_online_price',
+    'public_online_discount_price',
+    'public_offline_price',
+    'public_offline_discount_price',
+]);
 
 const RECOMMENDED_DETAIL_SECTION_TEMPLATES: RecommendedDetailSectionTemplate[] = [
     {
@@ -144,6 +161,7 @@ function createEmptyPublicSession(deliveryMode: DeliveryMode = 'online'): Public
         location: '',
         duration: '',
         price: '',
+        discount_price: '',
         badge: '',
         cta_label: 'Daftar Sekarang',
         cta_url: '',
@@ -177,6 +195,7 @@ function normalizePublicSessions(value: unknown): PublicTrainingSession[] {
             location: source.location || '',
             duration: source.duration || '',
             price: formatNumberInput(source.price),
+            discount_price: formatNumberInput(source.discount_price),
             badge: source.badge || '',
             cta_label: source.cta_label || 'Daftar Sekarang',
             cta_url: source.cta_url || '',
@@ -237,6 +256,7 @@ function createInitialFormData(): CourseFormState {
         price: '',
         level: 'Beginner',
         duration: '',
+        rundown_items: '',
         instructor_id: '',
         category_id: '',
         is_featured: false,
@@ -258,6 +278,10 @@ function createInitialFormData(): CourseFormState {
             createEmptyPublicSession('online'),
             createEmptyPublicSession('offline'),
         ],
+        public_online_price: '',
+        public_online_discount_price: '',
+        public_offline_price: '',
+        public_offline_discount_price: '',
         inhouse_training_enabled: false,
         inhouse_training_intro: '',
         inhouse_training_benefits: [],
@@ -266,31 +290,74 @@ function createInitialFormData(): CourseFormState {
     };
 }
 
-export default function CourseFormPage({ params }: { params: Promise<{ id: string }> }) {
+interface SharedCourseFormProps {
+    courseId: string;
+    managedBy?: 'admin' | 'instructor';
+    listHref?: string;
+    lessonsBaseHref?: string;
+}
+
+export function SharedCourseFormPage({
+    courseId,
+    managedBy = 'admin',
+    listHref = '/admin/courses',
+    lessonsBaseHref = '/admin/courses',
+}: SharedCourseFormProps) {
     const router = useRouter();
-    const { id } = use(params);
+    const id = courseId;
     const isNew = id === 'new';
+    const isAdminManaged = managedBy === 'admin';
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
     const [webinarAttendance, setWebinarAttendance] = useState<WebinarAttendanceRow[]>([]);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
     const [markingAttendanceUserId, setMarkingAttendanceUserId] = useState<number | null>(null);
     const [seededDateTimeFields, setSeededDateTimeFields] = useState<Partial<Record<'scheduled_at' | 'scheduled_end_at', string>>>({});
+    const [examRefreshKey, setExamRefreshKey] = useState(0);
+    const [rundownDraft, setRundownDraft] = useState({
+        start_time: '',
+        end_time: '',
+        agenda: '',
+    });
 
     // Dropdown data
     const [instructors, setInstructors] = useState<Instructor[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
 
     const [formData, setFormData] = useState<CourseFormState>(() => createInitialFormData());
+    const supportsDetailSections = ['course', 'webinar', 'workshop'].includes(formData.type);
 
     useEffect(() => {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const fetchDropdowns = async () => {
-            const [instRes, catRes] = await Promise.all([
-                fetch(`${apiUrl}/api/instructors/`),
-                fetch(`${apiUrl}/api/categories/`)
+            const token = localStorage.getItem('access_token');
+            const [instRes, catRes, profileRes] = await Promise.all([
+                fetch(`${apiUrl}/api/instructors/`, token ? {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                } : undefined),
+                fetch(`${apiUrl}/api/categories/`, token ? {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                } : undefined),
+                isAdminManaged
+                    ? Promise.resolve(null)
+                    : fetch(`${apiUrl}/api/profile/`, token ? {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    } : undefined)
             ]);
-            setInstructors(await instRes.json());
+            const instructorPayload = await instRes.json();
+            let nextInstructors = Array.isArray(instructorPayload) ? instructorPayload : [];
+            if (!isAdminManaged && profileRes?.ok) {
+                const profileData = await profileRes.json();
+                const currentInstructorId = profileData?.instructor?.id;
+                if (currentInstructorId) {
+                    nextInstructors = nextInstructors.filter((item: Instructor) => item.id === currentInstructorId);
+                    setFormData(prev => ({
+                        ...prev,
+                        instructor_id: prev.instructor_id || currentInstructorId
+                    }));
+                }
+            }
+            setInstructors(nextInstructors);
             setCategories(await catRes.json());
         };
 
@@ -315,6 +382,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             price: formatNumberInput(data.price),
                             level: data.level,
                             duration: data.duration,
+                            rundown_items: Array.isArray(data.rundown_items) ? serializeRundownText(data.rundown_items) : '',
                             instructor_id: data.instructor?.id || '',
                             category_id: data.category?.id || '',
                             is_featured: data.is_featured,
@@ -333,6 +401,10 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             public_training_enabled: Boolean(data.public_training_enabled),
                             public_training_intro: data.public_training_intro || '',
                             public_sessions: normalizePublicSessions(data.public_sessions),
+                            public_online_price: formatNumberInput(data.public_online_price),
+                            public_online_discount_price: formatNumberInput(data.public_online_discount_price),
+                            public_offline_price: formatNumberInput(data.public_offline_price),
+                            public_offline_discount_price: formatNumberInput(data.public_offline_discount_price),
                             inhouse_training_enabled: Boolean(data.inhouse_training_enabled),
                             inhouse_training_intro: data.inhouse_training_intro || '',
                             inhouse_training_benefits: Array.isArray(data.inhouse_training_benefits) ? data.inhouse_training_benefits.filter(Boolean) : [],
@@ -348,7 +420,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
             };
             fetchData();
         }
-    }, [id, isNew]);
+    }, [id, isNew, isAdminManaged]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -356,7 +428,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
         const isCheckbox = target instanceof HTMLInputElement && target.type === 'checkbox';
         let value: string | boolean = isCheckbox ? target.checked : target.value;
 
-        if (!isCheckbox && (name === 'price' || name === 'discount_price')) {
+        if (!isCheckbox && PRICE_FIELD_NAMES.has(name)) {
             value = formatNumberInput(String(value));
         }
 
@@ -496,6 +568,25 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
         }));
     };
 
+    const handleAppendRundownLine = () => {
+        const line = buildRundownLine(rundownDraft.agenda, rundownDraft.start_time, rundownDraft.end_time);
+        if (!line) {
+            return;
+        }
+
+        setFormData((prev) => ({
+            ...prev,
+            rundown_items: prev.rundown_items.trimEnd()
+                ? `${prev.rundown_items.trimEnd()}\n${line}`
+                : line,
+        }));
+        setRundownDraft({
+            start_time: '',
+            end_time: '',
+            agenda: '',
+        });
+    };
+
     const applyRecommendedDetailSections = () => {
         setFormData(prev => ({
             ...prev,
@@ -589,9 +680,10 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     badge: session.badge?.trim() || '',
                     cta_label: session.cta_label?.trim() || 'Daftar Sekarang',
                     cta_url: session.cta_url?.trim() || '',
-                    price: normalizePriceForApi(session.price) || ''
+                    price: normalizePriceForApi(session.price) || '',
+                    discount_price: normalizePriceForApi(session.discount_price) || ''
                 }))
-                .filter(session => session.title || session.schedule || session.location || session.price || session.cta_url);
+                .filter(session => session.title || session.schedule || session.location || session.price || session.discount_price || session.cta_url);
             const payload = new FormData();
 
             payload.append('title', formData.title);
@@ -600,7 +692,10 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
             payload.append('price', normalizePriceForApi(formData.price));
             payload.append('level', formData.level);
             payload.append('duration', formData.duration);
-            payload.append('instructor_id', String(formData.instructor_id));
+            payload.append('rundown_items', JSON.stringify(parseRundownText(formData.rundown_items)));
+            if (isAdminManaged) {
+                payload.append('instructor_id', String(formData.instructor_id));
+            }
             payload.append('category_id', String(formData.category_id));
             payload.append('is_featured', String(formData.is_featured));
             payload.append('discount_price', normalizePriceForApi(formData.discount_price));
@@ -616,6 +711,10 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
             payload.append('public_training_enabled', String(formData.public_training_enabled));
             payload.append('public_training_intro', formData.public_training_intro);
             payload.append('public_sessions', JSON.stringify(normalizedPublicSessions));
+            payload.append('public_online_price', normalizePriceForApi(formData.public_online_price));
+            payload.append('public_online_discount_price', normalizePriceForApi(formData.public_online_discount_price));
+            payload.append('public_offline_price', normalizePriceForApi(formData.public_offline_price));
+            payload.append('public_offline_discount_price', normalizePriceForApi(formData.public_offline_discount_price));
             payload.append('inhouse_training_enabled', String(formData.inhouse_training_enabled));
             payload.append('inhouse_training_intro', formData.inhouse_training_intro);
             payload.append(
@@ -638,7 +737,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
             });
 
             if (res.ok) {
-                router.push('/admin/courses');
+                router.push(listHref);
             } else {
                 const err = await res.json();
                 alert('Error saving: ' + JSON.stringify(err));
@@ -711,12 +810,20 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
         }
     };
 
+    const effectivePriceInput = formData.discount_price || formData.price;
+    const effectiveCoursePrice = formData.is_free ? 0 : parseCurrencyValue(effectivePriceInput);
+    const platformFeeAmount = calculatePlatformFee(effectiveCoursePrice);
+    const instructorPayoutAmount = calculateInstructorPayout(effectiveCoursePrice);
+    const estimatedPphAmount = calculateEstimatedPph(instructorPayoutAmount);
+    const estimatedNetAfterPph = calculateNetAfterPph(effectiveCoursePrice);
+    const hasPricePreview = effectiveCoursePrice > 0;
+
     if (loading) return <div>Loading...</div>;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 pb-20">
             <div className="flex items-center gap-4">
-                <Link href="/admin/courses" className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+                <Link href={listHref} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
                     <ChevronLeft className="w-5 h-5" />
                 </Link>
                 <h1 className="text-2xl font-bold text-gray-900">
@@ -724,7 +831,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                 </h1>
                 {!isNew && (
                     <Link
-                        href={`/admin/courses/${id}/lessons`}
+                        href={`${lessonsBaseHref}/${id}/lessons`}
                         className="ml-auto bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition"
                     >
                         Kelola Materi
@@ -806,6 +913,55 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Rundown Pelatihan</label>
+                        <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                            <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+                                <Clock3 className="h-4 w-4" />
+                                Tambah Agenda Dengan Jam
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-[120px_120px_minmax(0,1fr)_auto]">
+                                <input
+                                    type="time"
+                                    value={rundownDraft.start_time}
+                                    onChange={(event) => setRundownDraft((prev) => ({ ...prev, start_time: event.target.value }))}
+                                    className="w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <input
+                                    type="time"
+                                    value={rundownDraft.end_time}
+                                    onChange={(event) => setRundownDraft((prev) => ({ ...prev, end_time: event.target.value }))}
+                                    className="w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <input
+                                    type="text"
+                                    value={rundownDraft.agenda}
+                                    onChange={(event) => setRundownDraft((prev) => ({ ...prev, agenda: event.target.value }))}
+                                    placeholder="Contoh: Pembukaan dan orientasi peserta"
+                                    className="w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleAppendRundownLine}
+                                    className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
+                                >
+                                    Tambah
+                                </button>
+                            </div>
+                        </div>
+                        <textarea
+                            rows={5}
+                            placeholder={'Tulis satu agenda per baris\nContoh: Pembukaan dan orientasi peserta\nPengenalan standar ISO\nStudi kasus implementasi\nSesi tanya jawab'}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                            value={formData.rundown_items}
+                            onChange={(event) => setFormData((prev) => ({
+                                ...prev,
+                                rundown_items: event.target.value,
+                            }))}
+                        />
+                        <p className="mt-2 text-xs text-gray-500">Anda bisa mengetik manual satu agenda per baris, atau gunakan pembuat agenda di atas agar format jam otomatis menjadi `08:00 - 09:00 | Agenda`.</p>
+                    </div>
+
+                    <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Gambar Course</label>
                         <p className="mb-2 text-xs leading-5 text-gray-500">
                             Gambar ini dipakai untuk kartu course dan tampilan depan detail course.
@@ -840,15 +996,16 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Instruktur</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Trainer</label>
                         <select
                             name="instructor_id"
                             required
+                            disabled={!isAdminManaged}
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                             value={formData.instructor_id}
                             onChange={handleChange}
                         >
-                            <option value="">Pilih Instruktur</option>
+                            <option value="">{isAdminManaged ? 'Pilih Trainer' : 'Trainer Anda'}</option>
                             {instructors.map((opt) => (
                                 <option key={opt.id} value={opt.id}>{opt.name}</option>
                             ))}
@@ -872,7 +1029,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga E-Learning</label>
                         <input
                             name="price"
                             type="text"
@@ -886,7 +1043,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 text-red-600 font-bold">Harga Diskon (Opsional)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 text-red-600 font-bold">Harga Diskon E-Learning (Opsional)</label>
                         <input
                             name="discount_price"
                             type="text"
@@ -897,6 +1054,44 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             value={formData.discount_price}
                             onChange={handleChange}
                         />
+                    </div>
+
+                    <div className="md:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Preview Pembagian Harga</p>
+                                <p className="mt-1 text-xs text-emerald-700">
+                                    Simulasi ini membantu melihat estimasi bagi hasil trainer, potongan platform, dan PPh saat harga pelatihan diubah.
+                                </p>
+                            </div>
+                            <span className="rounded-full bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 shadow-sm">
+                                Fee 10% + Estimasi PPh
+                            </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-4">
+                            <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Harga Aktif</p>
+                                <p className="mt-1 text-lg font-black text-gray-900">{hasPricePreview ? formatRupiah(effectiveCoursePrice) : '-'}</p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Komisi Akademiso</p>
+                                <p className="mt-1 text-lg font-black text-emerald-700">{hasPricePreview ? formatRupiah(platformFeeAmount) : '-'}</p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Penerimaan Trainer</p>
+                                <p className="mt-1 text-lg font-black text-indigo-700">{hasPricePreview ? formatRupiah(instructorPayoutAmount) : '-'}</p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Estimasi Bersih Setelah PPh</p>
+                                <p className="mt-1 text-lg font-black text-slate-900">{hasPricePreview ? formatRupiah(estimatedNetAfterPph) : '-'}</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 rounded-xl border border-amber-100 bg-white px-4 py-3">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">Estimasi PPh (Simulasi 2,5%)</p>
+                            <p className="mt-1 text-lg font-black text-amber-700">{hasPricePreview ? formatRupiah(estimatedPphAmount) : '-'}</p>
+                        </div>
                     </div>
 
                     <div>
@@ -1056,12 +1251,12 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                                     checked={formData.has_certification_exam}
                                     onChange={handleChange}
                                 />
-                                <span className="text-indigo-900 font-bold">Sediakan Ujian Akhir</span>
+                                <span className="text-indigo-900 font-bold">Sediakan Assessment Akhir</span>
                             </label>
                         </div>
                     )}
 
-                    {formData.type === 'course' && (
+                    {supportsDetailSections && (
                         <>
                             <div className="md:col-span-2 border-t border-gray-100 pt-6">
                                 <div className="flex items-center justify-between gap-4 mb-4">
@@ -1071,7 +1266,7 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                                             Konten Detail & Daftar Isi
                                         </h2>
                                         <p className="text-sm text-gray-500 mt-1">
-                                            Bagian ini akan ditampilkan sebagai anchor section pada halaman detail training.
+                                            Bagian ini akan ditampilkan sebagai anchor section pada halaman detail program.
                                             Gunakan urutan standar agar pengisian lebih rapi dan konsisten.
                                         </p>
                                         <p className="mt-2 text-xs leading-5 text-gray-500">
@@ -1160,40 +1355,105 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                                 </div>
                             </div>
 
-                            <div className="md:col-span-2 border-t border-gray-100 pt-6 space-y-6">
-                                <div>
-                                    <h2 className="text-lg font-bold text-gray-900">Pengaturan Penawaran Training</h2>
-                                    <p className="text-sm text-gray-500 mt-1">Aktifkan kategori yang akan muncul pada halaman detail: public, inhouse, dan e-learning.</p>
-                                </div>
+                            {formData.type === 'course' && (
+                                <div className="md:col-span-2 border-t border-gray-100 pt-6 space-y-6">
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-900">Pengaturan Penawaran Training</h2>
+                                        <p className="text-sm text-gray-500 mt-1">Aktifkan kategori yang akan muncul pada halaman detail: public, inhouse, dan e-learning.</p>
+                                    </div>
 
-                                <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-5 space-y-4">
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            name="public_training_enabled"
-                                            type="checkbox"
-                                            className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
-                                            checked={formData.public_training_enabled}
+                                    <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-5 space-y-4">
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                name="public_training_enabled"
+                                                type="checkbox"
+                                                className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                                checked={formData.public_training_enabled}
+                                                onChange={handleChange}
+                                            />
+                                            <span className="font-bold text-blue-900">Aktifkan Public Training</span>
+                                        </label>
+                                        <textarea
+                                            name="public_training_intro"
+                                            rows={3}
+                                            value={formData.public_training_intro}
                                             onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 bg-white"
+                                            placeholder="Ringkasan public training untuk tab public."
                                         />
-                                        <span className="font-bold text-blue-900">Aktifkan Public Training</span>
-                                    </label>
-                                    <textarea
-                                        name="public_training_intro"
-                                        rows={3}
-                                        value={formData.public_training_intro}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 bg-white"
-                                        placeholder="Ringkasan public training untuk tab public."
-                                    />
 
-                                    {formData.public_training_enabled && (
-                                        <div className="space-y-5">
+                                        {formData.public_training_enabled && (
+                                            <div className="space-y-5">
+                                                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                                    <div className="rounded-2xl border border-blue-100 bg-white p-4 space-y-4">
+                                                    <div>
+                                                        <h3 className="font-bold text-gray-900">Harga Public Online</h3>
+                                                        <p className="text-xs text-gray-500 mt-1">Harga utama untuk semua opsi public online. Jika sesi tidak punya harga sendiri, nilai ini yang dipakai.</p>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga Normal</label>
+                                                        <input
+                                                            name="public_online_price"
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            value={formData.public_online_price}
+                                                            onChange={handleChange}
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                                                            placeholder="Contoh: 2.500.000"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-red-600 mb-1 font-bold">Harga Diskon (Opsional)</label>
+                                                        <input
+                                                            name="public_online_discount_price"
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            value={formData.public_online_discount_price}
+                                                            onChange={handleChange}
+                                                            className="w-full px-4 py-2 border border-red-200 bg-red-50/30 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-gray-900"
+                                                            placeholder="Contoh: 2.150.000"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="rounded-2xl border border-blue-100 bg-white p-4 space-y-4">
+                                                    <div>
+                                                        <h3 className="font-bold text-gray-900">Harga Public Offline</h3>
+                                                        <p className="text-xs text-gray-500 mt-1">Harga utama untuk semua opsi public offline. Jika sesi tidak punya harga sendiri, nilai ini yang dipakai.</p>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga Normal</label>
+                                                        <input
+                                                            name="public_offline_price"
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            value={formData.public_offline_price}
+                                                            onChange={handleChange}
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                                                            placeholder="Contoh: 3.500.000"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-red-600 mb-1 font-bold">Harga Diskon (Opsional)</label>
+                                                        <input
+                                                            name="public_offline_discount_price"
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            value={formData.public_offline_discount_price}
+                                                            onChange={handleChange}
+                                                            className="w-full px-4 py-2 border border-red-200 bg-red-50/30 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-gray-900"
+                                                            placeholder="Contoh: 3.100.000"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             {(['online', 'offline'] as DeliveryMode[]).map(mode => (
                                                 <div key={mode} className="rounded-2xl border border-white/70 bg-white p-4 space-y-4">
                                                     <div className="flex items-center justify-between gap-3">
                                                         <div>
                                                             <h3 className="font-bold text-gray-900">Public {mode === 'online' ? 'Online' : 'Offline'}</h3>
-                                                            <p className="text-xs text-gray-500">Tambahkan satu atau lebih opsi agar user bisa melihat pilihan per mode.</p>
+                                                            <p className="text-xs text-gray-500">Tambahkan satu atau lebih opsi agar user bisa melihat pilihan per mode. Harga sesi bersifat opsional sebagai override.</p>
                                                         </div>
                                                         <button
                                                             type="button"
@@ -1277,14 +1537,14 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                                                                             />
                                                                         </div>
                                                                         <div>
-                                                                            <label className="block text-sm font-medium text-gray-700 mb-1">Harga</label>
+                                                                            <label className="block text-sm font-medium text-gray-700 mb-1">Override Harga Sesi (Opsional)</label>
                                                                             <input
                                                                                 type="text"
                                                                                 inputMode="numeric"
                                                                                 value={session.price}
                                                                                 onChange={(e) => handlePublicSessionChange(session.id, 'price', e.target.value)}
                                                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
-                                                                                placeholder="Contoh: 2.500.000"
+                                                                                placeholder="Kosongkan untuk pakai harga public per mode"
                                                                             />
                                                                         </div>
                                                                         <div>
@@ -1313,68 +1573,69 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                                                     </div>
                                                 </div>
                                             ))}
-                                        </div>
-                                    )}
-                                </div>
+                                            </div>
+                                        )}
+                                    </div>
 
-                                <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 space-y-4">
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            name="inhouse_training_enabled"
-                                            type="checkbox"
-                                            className="w-5 h-5 rounded text-amber-600 focus:ring-amber-500 border-gray-300"
-                                            checked={formData.inhouse_training_enabled}
-                                            onChange={handleChange}
-                                        />
-                                        <span className="font-bold text-amber-900 flex items-center gap-2">
-                                            <BriefcaseBusiness className="w-4 h-4" />
-                                            Aktifkan Inhouse Training
-                                        </span>
-                                    </label>
-                                    <textarea
-                                        name="inhouse_training_intro"
-                                        rows={3}
-                                        value={formData.inhouse_training_intro}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-2 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-gray-900 bg-white"
-                                        placeholder="Ringkasan untuk tab inhouse training."
-                                    />
-                                    <div>
-                                        <label className="block text-sm font-medium text-amber-900 mb-1">Benefit Inhouse</label>
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 space-y-4">
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                name="inhouse_training_enabled"
+                                                type="checkbox"
+                                                className="w-5 h-5 rounded text-amber-600 focus:ring-amber-500 border-gray-300"
+                                                checked={formData.inhouse_training_enabled}
+                                                onChange={handleChange}
+                                            />
+                                            <span className="font-bold text-amber-900 flex items-center gap-2">
+                                                <BriefcaseBusiness className="w-4 h-4" />
+                                                Aktifkan Inhouse Training
+                                            </span>
+                                        </label>
                                         <textarea
-                                            rows={4}
-                                            value={formData.inhouse_training_benefits.join('\n')}
-                                            onChange={(e) => handleInhouseBenefitsChange(e.target.value)}
+                                            name="inhouse_training_intro"
+                                            rows={3}
+                                            value={formData.inhouse_training_intro}
+                                            onChange={handleChange}
                                             className="w-full px-4 py-2 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-gray-900 bg-white"
-                                            placeholder={'Satu benefit per baris\nContoh: Materi dapat disesuaikan dengan kebutuhan perusahaan'}
+                                            placeholder="Ringkasan untuk tab inhouse training."
+                                        />
+                                        <div>
+                                            <label className="block text-sm font-medium text-amber-900 mb-1">Benefit Inhouse</label>
+                                            <textarea
+                                                rows={4}
+                                                value={formData.inhouse_training_benefits.join('\n')}
+                                                onChange={(e) => handleInhouseBenefitsChange(e.target.value)}
+                                                className="w-full px-4 py-2 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-gray-900 bg-white"
+                                                placeholder={'Satu benefit per baris\nContoh: Materi dapat disesuaikan dengan kebutuhan perusahaan'}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 space-y-4">
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                name="elearning_enabled"
+                                                type="checkbox"
+                                                className="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300"
+                                                checked={formData.elearning_enabled}
+                                                onChange={handleChange}
+                                            />
+                                            <span className="font-bold text-emerald-900 flex items-center gap-2">
+                                                <LaptopMinimal className="w-4 h-4" />
+                                                Aktifkan E-Learning
+                                            </span>
+                                        </label>
+                                        <textarea
+                                            name="elearning_intro"
+                                            rows={3}
+                                            value={formData.elearning_intro}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-gray-900 bg-white"
+                                            placeholder="Ringkasan untuk tab e-learning. Jika aktif, CTA checkout akan memakai harga course yang ada saat ini."
                                         />
                                     </div>
                                 </div>
-
-                                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 space-y-4">
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            name="elearning_enabled"
-                                            type="checkbox"
-                                            className="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300"
-                                            checked={formData.elearning_enabled}
-                                            onChange={handleChange}
-                                        />
-                                        <span className="font-bold text-emerald-900 flex items-center gap-2">
-                                            <LaptopMinimal className="w-4 h-4" />
-                                            Aktifkan E-Learning
-                                        </span>
-                                    </label>
-                                    <textarea
-                                        name="elearning_intro"
-                                        rows={3}
-                                        value={formData.elearning_intro}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-2 border border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-gray-900 bg-white"
-                                        placeholder="Ringkasan untuk tab e-learning. Jika aktif, CTA checkout akan memakai harga course yang ada saat ini."
-                                    />
-                                </div>
-                            </div>
+                            )}
                         </>
                     )}
                 </div>
@@ -1391,6 +1652,33 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                 </div>
             </form>
 
+            {!isNew && formData.type === 'course' && (
+                <div className="rounded-3xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                                <ClipboardList className="h-4 w-4" />
+                                Kehadiran Peserta
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-900">Daftar hadir peserta ada di halaman terpisah</h2>
+                            <p className="max-w-2xl text-sm text-gray-600">
+                                Buka halaman kehadiran untuk melihat presensi lengkap, filter status hadir, dan export data peserta.
+                            </p>
+                        </div>
+                        <Link
+                            href={`${lessonsBaseHref}/${id}/attendance`}
+                            className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
+                        >
+                            Buka Daftar Hadir Peserta
+                        </Link>
+                    </div>
+                </div>
+            )}
+
+            {!isNew && formData.type === 'course' && (
+                <CourseFeedbackPanel courseId={parseInt(id)} managedBy={managedBy} />
+            )}
+
             {!isNew && formData.type === 'course' && formData.has_certification_exam && (
                 <div className="space-y-6">
                     <div className="flex items-center gap-3 border-t border-gray-100 pt-8 pb-4">
@@ -1398,12 +1686,19 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
                             <Award className="w-6 h-6" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-gray-900">Ujian Akhir</h2>
-                            <p className="text-sm text-gray-500">Kelola ujian akhir dan koordinasi jadwal dengan instruktur.</p>
+                            <h2 className="text-xl font-bold text-gray-900">Assessment Akhir</h2>
+                            <p className="text-sm text-gray-500">Kelola assessment akhir dan koordinasi jadwal dengan trainer.</p>
                         </div>
                     </div>
 
-                    <ExamManager courseId={parseInt(id)} />
+                    <ExamManager
+                        courseId={parseInt(id)}
+                        managedBy={managedBy}
+                        onExamChange={() => setExamRefreshKey((value) => value + 1)}
+                    />
+                    {!isAdminManaged && (
+                        <InstructorExamManager courseId={parseInt(id)} refreshKey={examRefreshKey} />
+                    )}
                 </div>
             )}
 
@@ -1486,4 +1781,9 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
             )}
         </div>
     );
+}
+
+export default function CourseFormPage({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = use(params);
+    return <SharedCourseFormPage courseId={id} />;
 }

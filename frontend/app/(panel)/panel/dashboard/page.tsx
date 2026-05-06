@@ -112,7 +112,7 @@ export default function PanelDashboard() {
                     <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                         <div>
                             <h2 className="text-lg font-bold text-gray-900">Kepatuhan Trainer ISO</h2>
-                            <p className="text-sm text-gray-500">Audit kepatuhan instruktur</p>
+                            <p className="text-sm text-gray-500">Audit kepatuhan trainer</p>
                         </div>
                         <button className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline">
                             Lihat Audit Log

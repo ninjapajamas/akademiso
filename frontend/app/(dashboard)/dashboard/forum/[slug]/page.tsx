@@ -23,7 +23,7 @@ export default function DashboardForumCoursePage({ params }: { params: Promise<{
                 }
 
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-                const response = await fetch(`${apiUrl}/api/my-courses/`, {
+                const response = await fetch(`${apiUrl}/api/my-courses/?include_public=1`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
 

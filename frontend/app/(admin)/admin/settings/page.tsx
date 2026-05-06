@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, Mail, Lock, Shield, Save, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { User, Mail, Lock, Shield, Save, Eye, EyeOff } from 'lucide-react';
 import { getProfileDisplayName, splitFullName } from '@/utils/profile';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
@@ -23,10 +24,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function AdminSettingsPage() {
-    const [saved, setSaved] = useState(false);
-    const [loading, setLoading] = useState(true);
+    const [, setLoading] = useState(true);
     const [showOldPw, setShowOldPw] = useState(false);
     const [showNewPw, setShowNewPw] = useState(false);
+    const [showConfirmPw, setShowConfirmPw] = useState(false);
     const [profile, setProfile] = useState({
         full_name: '',
         email: '',
@@ -40,6 +41,7 @@ export default function AdminSettingsPage() {
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
     const [pwError, setPwError] = useState('');
     const canEditEmail = !profile.email.trim();
+    const { showError, showSuccess } = useFeedbackModal();
 
     const fetchProfile = async () => {
         try {
@@ -101,15 +103,14 @@ export default function AdminSettingsPage() {
             });
 
             if (res.ok) {
-                setSaved(true);
-                fetchProfile();
-                setTimeout(() => setSaved(false), 2500);
+                await fetchProfile();
+                await showSuccess('Profil admin berhasil diperbarui.', 'Profil Tersimpan');
             } else {
-                alert('Gagal menyimpan profil');
+                await showError('Profil admin belum bisa disimpan. Silakan coba lagi.', 'Penyimpanan Gagal');
             }
         } catch (e) {
             console.error('Save error:', e);
-            alert('Terjadi kesalahan koneksi');
+            await showError('Terjadi kesalahan koneksi saat menyimpan profil admin.', 'Koneksi Bermasalah');
         }
     };
 
@@ -142,13 +143,12 @@ export default function AdminSettingsPage() {
             });
 
             if (res.ok) {
-                setSaved(true);
                 setPasswords({ old: '', new: '', confirm: '' });
-                setTimeout(() => setSaved(false), 2500);
+                await showSuccess('Password admin berhasil diperbarui.', 'Password Diperbarui');
             } else {
                 setPwError('Gagal memperbarui password');
             }
-        } catch (e) {
+        } catch {
             setPwError('Kesalahan sistem');
         }
     };
@@ -162,11 +162,6 @@ export default function AdminSettingsPage() {
                     <h1 className="text-2xl font-bold text-gray-900">Pengaturan Admin</h1>
                     <p className="text-gray-500 mt-1">Kelola informasi profil Anda sebagai administrator.</p>
                 </div>
-                {saved && (
-                    <div className="flex items-center gap-2 text-sm font-semibold text-green-700 bg-green-50 border border-green-200 px-4 py-2 rounded-xl">
-                        <CheckCircle className="w-4 h-4" /> Tersimpan!
-                    </div>
-                )}
             </div>
 
             {/* Profile */}
@@ -307,13 +302,19 @@ export default function AdminSettingsPage() {
                             </div>
                         </Field>
                         <Field label="Konfirmasi Password">
-                            <input
-                                type="password"
-                                className={inputClass}
-                                value={passwords.confirm}
-                                onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
-                                placeholder="Ulangi password baru"
-                            />
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                                <input
+                                    type={showConfirmPw ? 'text' : 'password'}
+                                    className={`${inputClass} pl-9 pr-10`}
+                                    value={passwords.confirm}
+                                    onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
+                                    placeholder="Ulangi password baru"
+                                />
+                                <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600" aria-label={showConfirmPw ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'}>
+                                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
                         </Field>
                     </div>
                     {pwError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{pwError}</p>}

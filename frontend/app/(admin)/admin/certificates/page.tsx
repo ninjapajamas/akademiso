@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, ExternalLink, FilePenLine, Search } from 'lucide-react';
 import { Certificate, CertificateTemplate } from '@/types';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -40,14 +41,9 @@ export default function AdminCertificatesPage() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [approvingCertificateId, setApprovingCertificateId] = useState<number | null>(null);
-    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const { showError, showSuccess } = useFeedbackModal();
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-        setToast({ message, type });
-        window.setTimeout(() => setToast(null), 3200);
-    }, []);
 
     const fetchCertificates = useCallback(async () => {
         try {
@@ -88,11 +84,11 @@ export default function AdminCertificatesPage() {
             });
         } catch (error) {
             console.error('Failed to fetch certificates:', error);
-            showToast('Gagal memuat daftar sertifikat.', 'error');
+            await showError('Gagal memuat daftar sertifikat.', 'Pemanggilan Data Gagal');
         } finally {
             setLoading(false);
         }
-    }, [apiUrl, showToast]);
+    }, [apiUrl, showError]);
 
     useEffect(() => {
         fetchCertificates();
@@ -152,10 +148,10 @@ export default function AdminCertificatesPage() {
             }
 
             await fetchCertificates();
-            showToast('Sertifikat berhasil divalidasi.');
+            await showSuccess('Sertifikat berhasil divalidasi.', 'Validasi Berhasil');
         } catch (error) {
             console.error('Failed to approve certificate:', error);
-            showToast(error instanceof Error ? error.message : 'Gagal memvalidasi sertifikat.', 'error');
+            await showError(error instanceof Error ? error.message : 'Gagal memvalidasi sertifikat.', 'Validasi Gagal');
         } finally {
             setApprovingCertificateId(null);
         }
@@ -167,12 +163,6 @@ export default function AdminCertificatesPage() {
 
     return (
         <div className="space-y-6">
-            {toast && (
-                <div className={`fixed right-5 top-5 z-[100] rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-                    {toast.message}
-                </div>
-            )}
-
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Sertifikat</h1>
@@ -207,7 +197,7 @@ export default function AdminCertificatesPage() {
                         <input
                             value={search}
                             onChange={event => setSearch(event.target.value)}
-                            placeholder="Cari peserta, course, ujian, nomor..."
+                            placeholder="Cari peserta, course, assessment, nomor..."
                             className="w-full rounded-xl border border-gray-200 py-2.5 pl-9 pr-4 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                         />
                     </div>

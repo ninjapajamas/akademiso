@@ -10,7 +10,7 @@ import {
 } from '@/types/datetime';
 
 type ScheduleTab = 'upcoming' | 'completed';
-type ScheduleKind = 'training' | 'exam';
+type ScheduleKind = 'training' | 'assessment';
 
 interface ScheduleItem {
     id: string;
@@ -133,14 +133,14 @@ function getExamAction(
         if (window && now >= window.start && now <= window.end) {
             return {
                 actionHref: `/certification/${attempt.id}`,
-                actionLabel: 'Masuk Ujian',
+                actionLabel: 'Masuk Assessment',
             };
         }
 
         if (window && now < window.start) {
             return {
                 actionHref: '/dashboard/courses',
-                actionLabel: 'Pilih Slot',
+                actionLabel: 'Atur Ulang',
             };
         }
     }
@@ -148,21 +148,67 @@ function getExamAction(
     if (attempt) {
         return {
             actionHref: `/certification/${attempt.id}`,
-            actionLabel: 'Buka Ujian',
+            actionLabel: 'Buka Assessment',
         };
     }
 
     if ((exam.slots || []).length > 0) {
         return {
             actionHref: '/dashboard/courses',
-            actionLabel: 'Pilih Slot',
+            actionLabel: 'Pilih Slot Assessment',
         };
     }
 
     return {
         actionHref: '/dashboard/courses',
-        actionLabel: 'Lihat Course',
+        actionLabel: 'Buka Assessment',
     };
+}
+
+function buildLessonAssessmentItems(enrollment: EnrolledCourse, now: Date) {
+    const course = enrollment.course;
+    const lessons = (course.sections || []).flatMap((section) => section.lessons || []);
+    const courseStart = parseApiDate(course.scheduled_at) || new Date();
+    const courseEnd = parseApiDate(course.scheduled_end_at) || courseStart;
+
+    return lessons
+        .filter((lesson) => lesson.type === 'mid_test' || lesson.type === 'final_test')
+        .map((lesson) => {
+            const isPreTest = lesson.type === 'mid_test';
+            const score = isPreTest ? enrollment.pre_test_score : enrollment.post_test_score;
+            const referenceDate = isPreTest ? courseStart : courseEnd;
+            const endDate = new Date(referenceDate.getTime() + 60 * 60 * 1000);
+            const phaseMeta = score != null
+                ? {
+                    phase: 'done' as const,
+                    phaseLabel: 'Sudah Dikerjakan',
+                    phaseClassName: 'bg-emerald-100 text-emerald-700',
+                    cardClassName: 'border-emerald-200 bg-emerald-50/40',
+                }
+                : getPhaseMeta(referenceDate, endDate, now);
+
+            return {
+                id: `lesson-assessment-${enrollment.id}-${lesson.id}`,
+                title: course.title,
+                typeLabel: isPreTest ? 'Pre-Test Assessment' : 'Post-Test Assessment',
+                kind: 'assessment' as const,
+                startAt: referenceDate,
+                endAt: endDate,
+                location: 'Akses online melalui halaman belajar course',
+                instructor: course.instructor?.name || 'Trainer belum ditentukan',
+                notes: score != null
+                    ? `Assessment sudah dikerjakan dengan skor ${Math.round(score)}%. Anda masih bisa membukanya kembali dari halaman belajar.`
+                    : 'Assessment ini bisa dibuka langsung dari jadwal untuk mengikuti pre-test atau post-test.',
+                status: score != null ? ('completed' as const) : ('upcoming' as const),
+                phase: phaseMeta.phase,
+                phaseLabel: phaseMeta.phaseLabel,
+                phaseClassName: phaseMeta.phaseClassName,
+                cardClassName: phaseMeta.cardClassName,
+                timeLabel: isPreTest ? 'Sebelum pelatihan dimulai' : 'Setelah pelatihan selesai',
+                actionHref: `/learn/${course.slug}?lesson=${lesson.id}`,
+                actionLabel: score != null ? 'Buka Lagi' : (isPreTest ? 'Mulai Pre-Test' : 'Mulai Post-Test'),
+            };
+        });
 }
 
 function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAttempt[]) {
@@ -183,21 +229,21 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
 
         const phaseMeta = getPhaseMeta(slotWindow.start, slotWindow.end, now);
         selectedExamIds.add(attempt.exam);
-        items.push({
-            id: `attempt-selected-${attempt.id}-${selectedSlot.id}`,
-            title: attempt.exam_title || 'Ujian Akhir',
-            typeLabel: 'Slot Ujian Terpilih',
-            kind: 'exam',
-            startAt: slotWindow.start,
-            endAt: slotWindow.end,
-            location: selectedSlot.zoom_link ? 'Online / link meeting tersedia' : 'Sesi bersama instruktur',
-            instructor: selectedSlot.instructor_name || 'Instruktur belum ditentukan',
-            notes: phaseMeta.phase === 'pending'
-                ? 'Anda sudah memilih slot ini. Jika belum dimulai, Anda masih bisa memilih slot lain dari halaman course.'
-                : phaseMeta.phase === 'ongoing'
-                    ? 'Sesi pilihan Anda sedang berlangsung sekarang.'
-                    : 'Sesi pilihan ini sudah selesai.',
-            status: phaseMeta.phase === 'done' ? 'completed' : 'upcoming',
+            items.push({
+                id: `attempt-selected-${attempt.id}-${selectedSlot.id}`,
+                title: attempt.exam_title || 'Assessment Akhir',
+                typeLabel: 'Slot Assessment Terpilih',
+                kind: 'assessment',
+                startAt: slotWindow.start,
+                endAt: slotWindow.end,
+                location: selectedSlot.zoom_link ? 'Online / link meeting tersedia' : 'Sesi bersama trainer',
+                instructor: selectedSlot.instructor_name || 'Trainer belum ditentukan',
+                notes: phaseMeta.phase === 'pending'
+                    ? 'Anda sudah memilih slot ini. Jika belum dimulai, Anda masih bisa reschedule atau membatalkannya dari halaman course.'
+                    : phaseMeta.phase === 'ongoing'
+                        ? 'Sesi pilihan Anda sedang berlangsung sekarang.'
+                        : 'Sesi pilihan ini sudah selesai.',
+                status: phaseMeta.phase === 'done' ? ('completed' as const) : ('upcoming' as const),
             phase: phaseMeta.phase,
             phaseLabel: phaseMeta.phaseLabel,
             phaseClassName: phaseMeta.phaseClassName,
@@ -205,7 +251,7 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
             timeLabel: formatSlotTimeRangeForDisplay(selectedSlot.start_time, selectedSlot.end_time),
             isSelectedSlot: true,
             actionHref: phaseMeta.phase === 'ongoing' ? `/certification/${attempt.id}` : '/dashboard/courses',
-            actionLabel: phaseMeta.phase === 'ongoing' ? 'Masuk Ujian' : 'Lihat Slot',
+            actionLabel: phaseMeta.phase === 'ongoing' ? 'Masuk Assessment' : 'Kelola Jadwal',
         });
     });
 
@@ -224,11 +270,11 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
                 startAt: courseStart,
                 endAt: courseEnd,
                 location: course.zoom_link ? 'Online / link meeting tersedia' : (course.location || 'Lokasi akan diinformasikan'),
-                instructor: course.instructor?.name || 'Instruktur belum ditentukan',
+                instructor: course.instructor?.name || 'Trainer belum ditentukan',
                 notes: course.zoom_link
                     ? 'Gunakan link meeting yang tersedia saat sesi dimulai.'
                     : 'Pantau halaman course Anda untuk detail sesi pelatihan.',
-                status: phaseMeta.phase === 'done' ? 'completed' : 'upcoming',
+                status: phaseMeta.phase === 'done' ? ('completed' as const) : ('upcoming' as const),
                 phase: phaseMeta.phase,
                 phaseLabel: phaseMeta.phaseLabel,
                 phaseClassName: phaseMeta.phaseClassName,
@@ -240,6 +286,8 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
                 actionLabel: phaseMeta.phase === 'done' ? 'Buka Materi' : 'Lihat Course',
             });
         }
+
+        items.push(...buildLessonAssessmentItems(enrollment, now));
 
         (course.certification_exams || []).forEach((exam) => {
             if (selectedExamIds.has(exam.id)) {
@@ -260,18 +308,18 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
                 items.push({
                     id: `exam-selected-${exam.id}-${selectedSlot.id}`,
                     title: course.title,
-                    typeLabel: exam.exam_mode === 'INTERVIEW_ONLY' ? 'Sesi Wawancara' : 'Sesi Ujian Akhir',
-                    kind: 'exam',
+                    typeLabel: exam.exam_mode === 'INTERVIEW_ONLY' ? 'Sesi Wawancara Assessment' : 'Sesi Assessment Akhir',
+                    kind: 'assessment',
                     startAt: slotWindow.start,
                     endAt: slotWindow.end,
-                    location: selectedSlot.zoom_link ? 'Online / link meeting tersedia' : 'Sesi bersama instruktur',
-                    instructor: selectedSlot.instructor_name || course.instructor?.name || 'Instruktur belum ditentukan',
+                    location: selectedSlot.zoom_link ? 'Online / link meeting tersedia' : 'Sesi bersama trainer',
+                    instructor: selectedSlot.instructor_name || course.instructor?.name || 'Trainer belum ditentukan',
                     notes: phaseMeta.phase === 'pending'
-                        ? 'Anda sudah memilih slot ini. Jika belum cocok, pilih slot lain dari halaman course.'
+                        ? 'Anda sudah memilih slot ini. Jika belum cocok, reschedule dari halaman course.'
                         : (phaseMeta.phase === 'done'
                             ? 'Sesi ini sudah selesai.'
                             : 'Sesi Anda sedang aktif dan siap dibuka.'),
-                    status: phaseMeta.phase === 'done' ? 'completed' : 'upcoming',
+                    status: phaseMeta.phase === 'done' ? ('completed' as const) : ('upcoming' as const),
                     phase: phaseMeta.phase,
                     phaseLabel: phaseMeta.phaseLabel,
                     phaseClassName: phaseMeta.phaseClassName,
@@ -299,21 +347,21 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
                     items.push({
                         id: `exam-option-${exam.id}-${slot.id}`,
                         title: course.title,
-                        typeLabel: exam.exam_mode === 'INTERVIEW_ONLY' ? 'Pilihan Sesi Wawancara' : 'Pilihan Sesi Ujian',
-                        kind: 'exam',
+                        typeLabel: exam.exam_mode === 'INTERVIEW_ONLY' ? 'Pilihan Sesi Wawancara' : 'Pilihan Sesi Assessment',
+                        kind: 'assessment',
                         startAt: slotWindow.start,
                         endAt: slotWindow.end,
-                        location: slot.zoom_link ? 'Online / link meeting tersedia' : 'Sesi bersama instruktur',
-                        instructor: slot.instructor_name || course.instructor?.name || 'Instruktur belum ditentukan',
-                        notes: 'Slot ini tersedia. Pilih dari halaman course untuk mengonfirmasi jadwal Anda.',
-                        status: phaseMeta.phase === 'done' ? 'completed' : 'upcoming',
+                        location: slot.zoom_link ? 'Online / link meeting tersedia' : 'Sesi bersama trainer',
+                        instructor: slot.instructor_name || course.instructor?.name || 'Trainer belum ditentukan',
+                        notes: 'Slot ini tersedia. Pilih dari halaman course untuk mengonfirmasi jadwal assessment Anda.',
+                        status: phaseMeta.phase === 'done' ? ('completed' as const) : ('upcoming' as const),
                         phase: phaseMeta.phase,
                         phaseLabel: phaseMeta.phaseLabel,
                         phaseClassName: phaseMeta.phaseClassName,
                         cardClassName: phaseMeta.cardClassName,
                         timeLabel: formatSlotTimeRangeForDisplay(slot.start_time, slot.end_time),
                         actionHref: '/dashboard/courses',
-                        actionLabel: 'Pilih Slot',
+                        actionLabel: 'Pilih Slot Assessment',
                     });
                 });
                 return;
@@ -327,23 +375,23 @@ function buildSchedules(enrollments: EnrolledCourse[], attempts: CertificationAt
                 items.push({
                     id: `exam-window-${exam.id}`,
                     title: course.title,
-                    typeLabel: 'Periode Ujian Akhir',
-                    kind: 'exam',
+                    typeLabel: 'Periode Assessment',
+                    kind: 'assessment',
                     startAt: examStart,
                     endAt: examEnd,
                     location: 'Ikuti instruksi pada halaman course Anda',
-                    instructor: course.instructor?.name || 'Instruktur belum ditentukan',
+                    instructor: course.instructor?.name || 'Trainer belum ditentukan',
                     notes: exam.schedule_is_closed
-                        ? 'Periode ujian ini sudah selesai.'
-                        : 'Ujian ini mengikuti periode umum yang sudah dikonfirmasi instruktur.',
-                    status: phaseMeta.phase === 'done' ? 'completed' : 'upcoming',
+                        ? 'Periode assessment ini sudah selesai.'
+                        : 'Assessment ini mengikuti periode umum yang sudah dikonfirmasi trainer.',
+                    status: phaseMeta.phase === 'done' ? ('completed' as const) : ('upcoming' as const),
                     phase: phaseMeta.phase,
                     phaseLabel: phaseMeta.phaseLabel,
                     phaseClassName: phaseMeta.phaseClassName,
                     cardClassName: phaseMeta.cardClassName,
                     timeLabel: formatApiDateTimeRangeForDisplay(exam.confirmed_start_at, exam.confirmed_end_at),
                     actionHref: '/dashboard/courses',
-                    actionLabel: 'Lihat Course',
+                    actionLabel: 'Buka Assessment',
                 });
             }
         });
@@ -378,7 +426,7 @@ export default function SchedulePage() {
 
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
                 const [coursesRes, attemptsRes] = await Promise.all([
-                    fetch(`${apiUrl}/api/my-courses/`, {
+                    fetch(`${apiUrl}/api/my-courses/?include_public=1`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     }),
                     fetch(`${apiUrl}/api/certification-attempts/`, {
@@ -419,8 +467,8 @@ export default function SchedulePage() {
     return (
         <div className="max-w-5xl mx-auto space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900">Jadwal Pelatihan & Ujian</h1>
-                <p className="text-gray-500 mt-1">Pantau jadwal pelatihan, pilihan slot ujian, dan sesi ujian akhir Anda.</p>
+                <h1 className="text-2xl font-bold text-gray-900">Jadwal Pelatihan & Assessment</h1>
+                <p className="text-gray-500 mt-1">Pantau jadwal pelatihan, pre-test, post-test, pilihan slot assessment, dan sesi assessment akhir Anda.</p>
             </div>
 
             {errorMessage && (
@@ -484,7 +532,7 @@ export default function SchedulePage() {
                                     <div className="flex items-start justify-between gap-3 flex-wrap">
                                         <div>
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mr-2 ${
-                                                item.kind === 'exam' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'
+                                                item.kind === 'assessment' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'
                                             }`}>
                                                 {item.typeLabel}
                                             </span>
@@ -512,7 +560,7 @@ export default function SchedulePage() {
                                             <MapPin className="w-3.5 h-3.5" />
                                             {item.location}
                                         </span>
-                                        <span className="flex items-center gap-1">Instruktur: {item.instructor}</span>
+                                        <span className="flex items-center gap-1">Trainer: {item.instructor}</span>
                                     </div>
 
                                     {item.notes && (

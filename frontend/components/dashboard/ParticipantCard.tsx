@@ -137,7 +137,7 @@ export default function ParticipantCard({ enrollment, participant }: Participant
                     <div className="rounded-2xl border border-white/10 bg-white/[0.08] p-3">
                         <div className="flex items-center gap-2 text-sky-100/75">
                             <BriefcaseBusiness className="h-4 w-4" />
-                            <span className="text-[11px] uppercase tracking-[0.18em]">Instruktur</span>
+                            <span className="text-[11px] uppercase tracking-[0.18em]">Trainer</span>
                         </div>
                         <p className="mt-2 line-clamp-2 text-sm font-semibold">
                             {enrollment.course.instructor?.name || 'Tim Akademiso'}

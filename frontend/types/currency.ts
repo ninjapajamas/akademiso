@@ -47,6 +47,16 @@ export function calculateInstructorPayout(value: string | number | null | undefi
     return grossAmount - calculatePlatformFee(grossAmount, rate);
 }
 
+export function calculateEstimatedPph(value: string | number | null | undefined, rate = 0.025) {
+    const grossAmount = parseCurrencyValue(value);
+    return Math.round(grossAmount * rate);
+}
+
+export function calculateNetAfterPph(value: string | number | null | undefined, platformRate = 0.1, pphRate = 0.025) {
+    const payoutAmount = calculateInstructorPayout(value, platformRate);
+    return Math.max(0, payoutAmount - calculateEstimatedPph(payoutAmount, pphRate));
+}
+
 export function normalizePriceForApi(value: string | number | null | undefined) {
     return toDigitString(value);
 }

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 import {
     ArrowLeft,
     Plus,
@@ -20,9 +21,21 @@ import {
 } from 'lucide-react';
 
 const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
+const MATERIAL_BANK_TYPE_OPTIONS = [
+    { value: 'all', label: 'Semua Jenis Materi' },
+    { value: 'video', label: 'Video' },
+    { value: 'article', label: 'Artikel' },
+    { value: 'quiz', label: 'Quiz' },
+    { value: 'mid_test', label: 'Pre-Test' },
+    { value: 'final_test', label: 'Post-Test' },
+    { value: 'exam', label: 'Ujian Mandiri' },
+] as const;
 const isAssessmentLesson = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '');
 const getLessonTypeLabel = (type?: string) => {
-    if (isAssessmentLesson(type)) return 'Quiz / Tes';
+    if (type === 'quiz') return 'Quiz';
+    if (type === 'mid_test') return 'Pre-Test';
+    if (type === 'final_test') return 'Post-Test';
+    if (type === 'exam') return 'Ujian Mandiri';
     if (type === 'video') return 'Video';
     if (type === 'article') return 'Artikel';
     return type || 'Materi';
@@ -63,10 +76,12 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
     const [materialBankLoading, setMaterialBankLoading] = useState(false);
     const [materialBankItems, setMaterialBankItems] = useState<LessonBankItem[]>([]);
     const [materialBankSearch, setMaterialBankSearch] = useState('');
+    const [materialBankTypeFilter, setMaterialBankTypeFilter] = useState<string>('all');
     const [targetSectionId, setTargetSectionId] = useState<number | null>(null);
     const [copyingLessonId, setCopyingLessonId] = useState<number | null>(null);
+    const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
-    const fetchCurriculum = async () => {
+    const fetchCurriculum = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -89,7 +104,7 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
         } finally {
             setLoading(false);
         }
-    };
+    }, [courseId]);
 
     const handleAddSection = async () => {
         if (!newSectionTitle.trim()) return;
@@ -114,17 +129,26 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
             if (res.ok) {
                 setNewSectionTitle('');
                 setIsAddingSection(false);
-                fetchCurriculum();
+                await fetchCurriculum();
+                await showSuccess('Modul berhasil ditambahkan ke kurikulum.', 'Penambahan Berhasil');
             } else {
-                alert('Gagal menambah modul. Periksa izin akses Anda.');
+                await showError('Gagal menambah modul. Periksa izin akses Anda.', 'Penambahan Gagal');
             }
         } catch (error) {
             console.error('Failed to add section:', error);
+            await showError('Gagal menambah modul. Cek koneksi.', 'Koneksi Bermasalah');
         }
     };
 
     const handleDeleteSection = async (sectionId: number) => {
-        if (!confirm('Hapus modul ini beserta seluruh materinya?')) return;
+        const shouldDelete = await confirmAction({
+            title: 'Hapus Modul Ini?',
+            message: 'Seluruh materi di dalam modul ini juga akan ikut terhapus.',
+            confirmLabel: 'Ya, Hapus',
+            cancelLabel: 'Batal',
+            tone: 'warning',
+        });
+        if (!shouldDelete) return;
 
         try {
             const token = localStorage.getItem('access_token');
@@ -135,9 +159,11 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            fetchCurriculum();
+            await fetchCurriculum();
+            await showSuccess('Modul berhasil dihapus.', 'Penghapusan Berhasil');
         } catch (error) {
             console.error('Failed to delete section:', error);
+            await showError('Modul belum bisa dihapus.', 'Penghapusan Gagal');
         }
     };
 
@@ -158,11 +184,11 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
                 const data: LessonBankItem[] = await res.json();
                 setMaterialBankItems(data);
             } else {
-                alert('Gagal memuat bank materi.');
+                await showError('Gagal memuat bank materi.', 'Pemanggilan Data Gagal');
             }
         } catch (error) {
             console.error('Failed to fetch material bank:', error);
-            alert('Gagal memuat bank materi. Cek koneksi.');
+            await showError('Gagal memuat bank materi. Cek koneksi.', 'Koneksi Bermasalah');
         } finally {
             setMaterialBankLoading(false);
         }
@@ -190,12 +216,13 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
             if (res.ok) {
                 await fetchCurriculum();
                 setMaterialBankOpen(false);
+                await showSuccess('Materi berhasil disalin ke modul ini.', 'Penyalinan Berhasil');
             } else {
-                alert('Gagal menyalin materi.');
+                await showError('Gagal menyalin materi.', 'Penyalinan Gagal');
             }
         } catch (error) {
             console.error('Failed to copy material:', error);
-            alert('Gagal menyalin materi. Cek koneksi.');
+            await showError('Gagal menyalin materi. Cek koneksi.', 'Koneksi Bermasalah');
         } finally {
             setCopyingLessonId(null);
         }
@@ -210,18 +237,19 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
 
     const filteredMaterialBankItems = materialBankItems.filter((lesson) => {
         const keyword = materialBankSearch.trim().toLowerCase();
-        if (!keyword) return true;
-        return [
+        const matchesKeyword = !keyword || [
             lesson.title,
             lesson.course_title,
             lesson.section_title || '',
             getLessonTypeLabel(lesson.type)
         ].some((value) => value.toLowerCase().includes(keyword));
+        const matchesType = materialBankTypeFilter === 'all' || lesson.type === materialBankTypeFilter;
+        return matchesKeyword && matchesType;
     });
 
     useEffect(() => {
-        fetchCurriculum();
-    }, [courseId]);
+        void fetchCurriculum();
+    }, [fetchCurriculum]);
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-[400px]">
@@ -387,15 +415,26 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
                         </div>
 
                         <div className="p-5 border-b border-gray-100">
-                            <div className="flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
-                                <Search className="w-4 h-4 text-gray-400" />
-                                <input
-                                    type="search"
-                                    value={materialBankSearch}
-                                    onChange={(e) => setMaterialBankSearch(e.target.value)}
-                                    placeholder="Cari materi, modul, atau course"
-                                    className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
-                                />
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                                    <Search className="w-4 h-4 text-gray-400" />
+                                    <input
+                                        type="search"
+                                        value={materialBankSearch}
+                                        onChange={(e) => setMaterialBankSearch(e.target.value)}
+                                        placeholder="Cari materi, modul, atau course"
+                                        className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
+                                    />
+                                </div>
+                                <select
+                                    value={materialBankTypeFilter}
+                                    onChange={(e) => setMaterialBankTypeFilter(e.target.value)}
+                                    className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                >
+                                    {MATERIAL_BANK_TYPE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
 

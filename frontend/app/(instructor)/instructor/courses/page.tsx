@@ -8,6 +8,7 @@ import {
     Search,
     Edit2,
     Eye,
+    MessageSquare,
     Users,
     Star,
     LayoutGrid,
@@ -159,6 +160,29 @@ export default function InstructorCoursesPage() {
                                     </span>
                                 </div>
 
+                                {course.type === 'course' ? (
+                                    <Link href={`/instructor/courses/${course.id}/attendance`} className="mt-4 block rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 transition hover:border-emerald-200 hover:bg-emerald-50">
+                                        <div className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                                            <span>Kehadiran</span>
+                                            <span>{course.attendance_summary?.percentage ?? 0}%</span>
+                                        </div>
+                                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/90">
+                                            <div
+                                                className="h-full rounded-full bg-emerald-500"
+                                                style={{ width: `${course.attendance_summary?.percentage ?? 0}%` }}
+                                            />
+                                        </div>
+                                        <p className="mt-2 text-xs font-semibold text-emerald-800">
+                                            {course.attendance_summary?.present ?? 0} dari {course.attendance_summary?.total ?? 0} peserta sudah hadir
+                                        </p>
+                                        <p className="mt-2 text-[11px] font-bold text-emerald-700">Klik untuk buka daftar hadir peserta</p>
+                                    </Link>
+                                ) : (
+                                    <div className="mt-4 rounded-2xl border border-dashed border-gray-200 px-4 py-3 text-xs font-semibold text-gray-400">
+                                        Kehadiran peserta hanya tersedia untuk course.
+                                    </div>
+                                )}
+
                                 <div className="mt-6 pt-6 border-t border-gray-50 flex items-center gap-2">
                                     <Link
                                         href={`/instructor/courses/${course.id}`}
@@ -174,6 +198,13 @@ export default function InstructorCoursesPage() {
                                         <BookOpen className="w-3.5 h-3.5" />
                                         Materi
                                     </Link>
+                                    <Link
+                                        href={`/instructor/forum/${course.slug}`}
+                                        className="flex items-center justify-center gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
+                                        title="Buka Forum Diskusi"
+                                    >
+                                        <MessageSquare className="w-3.5 h-3.5" />
+                                    </Link>
                                 </div>
                             </div>
                         </div>
@@ -188,6 +219,7 @@ export default function InstructorCoursesPage() {
                                 <th className="px-6 py-4">Kursus</th>
                                 <th className="px-6 py-4">Info</th>
                                 <th className="px-6 py-4">Harga</th>
+                                <th className="px-6 py-4">Kehadiran</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4 text-right">Aksi</th>
                             </tr>
@@ -228,6 +260,27 @@ export default function InstructorCoursesPage() {
                                         <div className="font-bold text-gray-900 text-sm">{formatRupiah(course.price)}</div>
                                     </td>
                                     <td className="px-6 py-4">
+                                        {course.type === 'course' ? (
+                                            <Link href={`/instructor/courses/${course.id}/attendance`} className="block min-w-[120px] rounded-xl p-2 -m-2 transition hover:bg-emerald-50">
+                                                <div className="flex items-center justify-between gap-2 text-xs font-semibold text-gray-500">
+                                                    <span>{course.attendance_summary?.present ?? 0}/{course.attendance_summary?.total ?? 0}</span>
+                                                    <span>{course.attendance_summary?.percentage ?? 0}%</span>
+                                                </div>
+                                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                                                    <div
+                                                        className="h-full rounded-full bg-emerald-500"
+                                                        style={{ width: `${course.attendance_summary?.percentage ?? 0}%` }}
+                                                    />
+                                                </div>
+                                                <p className="mt-2 text-[11px] font-bold text-emerald-700">Buka daftar hadir</p>
+                                            </Link>
+                                        ) : (
+                                            <div className="min-w-[120px] rounded-xl border border-dashed border-gray-200 px-3 py-3 text-center text-[11px] font-semibold text-gray-400">
+                                                Tidak tersedia
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4">
                                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${course.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
                                             {course.is_active ? 'Aktif' : 'Nonaktif'}
                                         </span>
@@ -254,6 +307,13 @@ export default function InstructorCoursesPage() {
                                                 title="Lihat Detail"
                                             >
                                                 <Eye className="w-4 h-4" />
+                                            </Link>
+                                            <Link
+                                                href={`/instructor/forum/${course.slug}`}
+                                                className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                                                title="Buka Forum Diskusi"
+                                            >
+                                                <MessageSquare className="w-4 h-4" />
                                             </Link>
                                         </div>
                                     </td>

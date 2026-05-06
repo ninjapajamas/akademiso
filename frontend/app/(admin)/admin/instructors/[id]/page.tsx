@@ -2,8 +2,34 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Save } from 'lucide-react';
+import { ChevronLeft, FileText, Save } from 'lucide-react';
 import Link from 'next/link';
+
+type InstructorFormState = {
+    name: string;
+    title: string;
+    bio: string;
+    photo: File | null;
+    signature_image: File | null;
+    cv: File | null;
+    photoUrl: string;
+    signatureImageUrl: string;
+    cvUrl: string;
+};
+
+function createEmptyForm(): InstructorFormState {
+    return {
+        name: '',
+        title: '',
+        bio: '',
+        photo: null,
+        signature_image: null,
+        cv: null,
+        photoUrl: '',
+        signatureImageUrl: '',
+        cvUrl: '',
+    };
+}
 
 export default function InstructorFormPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -12,26 +38,31 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
 
-    const [formData, setFormData] = useState({
-        name: '',
-        title: '',
-        bio: '',
-        // photo: null // Handle file upload later if needed
-    });
+    const [formData, setFormData] = useState<InstructorFormState>(createEmptyForm);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+    const getFileUrl = (url?: string | null) => {
+        if (!url) return '';
+        return url.startsWith('http') ? url : `${apiUrl}${url}`;
+    };
 
     useEffect(() => {
         if (!isNew) {
-            // Fetch existing data
             const fetchData = async () => {
                 try {
-                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
                     const res = await fetch(`${apiUrl}/api/instructors/${id}/`);
                     if (res.ok) {
                         const data = await res.json();
                         setFormData({
                             name: data.name,
                             title: data.title,
-                            bio: data.bio
+                            bio: data.bio,
+                            photo: null,
+                            signature_image: null,
+                            cv: null,
+                            photoUrl: data.photo || '',
+                            signatureImageUrl: data.signature_image || '',
+                            cvUrl: data.cv || '',
                         });
                     }
                 } catch (error) {
@@ -50,20 +81,26 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             const url = isNew
                 ? `${apiUrl}/api/instructors/`
                 : `${apiUrl}/api/instructors/${id}/`;
 
-            const method = isNew ? 'POST' : 'PUT';
+            const method = isNew ? 'POST' : 'PATCH';
+            const payload = new FormData();
+
+            payload.append('name', formData.name);
+            payload.append('title', formData.title);
+            payload.append('bio', formData.bio);
+            if (formData.photo) payload.append('photo', formData.photo);
+            if (formData.signature_image) payload.append('signature_image', formData.signature_image);
+            if (formData.cv) payload.append('cv', formData.cv);
 
             const res = await fetch(url, {
                 method: method,
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(formData)
+                body: payload
             });
 
             if (res.ok) {
@@ -82,6 +119,9 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
 
     if (loading) return <div>Loading...</div>;
 
+    const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 outline-none';
+    const fileInputCls = 'block w-full rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-blue-700';
+
     return (
         <div className="max-w-2xl mx-auto space-y-6">
             <div className="flex items-center gap-4">
@@ -89,7 +129,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                     <ChevronLeft className="w-5 h-5" />
                 </Link>
                 <h1 className="text-2xl font-bold text-gray-900">
-                    {isNew ? 'Tambah Instruktur' : 'Edit Instruktur'}
+                    {isNew ? 'Tambah Trainer' : 'Edit Trainer'}
                 </h1>
             </div>
 
@@ -99,7 +139,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                     <input
                         type="text"
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                        className={inputCls}
                         value={formData.name}
                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                     />
@@ -111,7 +151,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                         type="text"
                         required
                         placeholder="e.g. Senior Software Engineer"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                        className={inputCls}
                         value={formData.title}
                         onChange={e => setFormData({ ...formData, title: e.target.value })}
                     />
@@ -122,10 +162,73 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                     <textarea
                         rows={4}
                         required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
+                        className={inputCls}
                         value={formData.bio}
                         onChange={e => setFormData({ ...formData, bio: e.target.value })}
                     />
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Foto Trainer</label>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className={fileInputCls}
+                            onChange={e => setFormData({ ...formData, photo: e.target.files?.[0] || null })}
+                        />
+                        {formData.photoUrl && (
+                            <a
+                                href={getFileUrl(formData.photoUrl)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-2 inline-flex text-xs font-semibold text-blue-600 hover:text-blue-700"
+                            >
+                                Lihat foto saat ini
+                            </a>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Tanda Tangan Trainer</label>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className={fileInputCls}
+                            onChange={e => setFormData({ ...formData, signature_image: e.target.files?.[0] || null })}
+                        />
+                        {formData.signatureImageUrl && (
+                            <a
+                                href={getFileUrl(formData.signatureImageUrl)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-2 inline-flex text-xs font-semibold text-blue-600 hover:text-blue-700"
+                            >
+                                Lihat tanda tangan saat ini
+                            </a>
+                        )}
+                    </div>
+                </div>
+
+                <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">CV Trainer</label>
+                    <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        className={fileInputCls}
+                        onChange={e => setFormData({ ...formData, cv: e.target.files?.[0] || null })}
+                    />
+                    {formData.cvUrl && (
+                        <a
+                            href={getFileUrl(formData.cvUrl)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                            <FileText className="h-3.5 w-3.5" />
+                            Lihat CV saat ini
+                        </a>
+                    )}
                 </div>
 
                 <div className="pt-4 flex justify-end">
@@ -135,7 +238,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
                         className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-50"
                     >
                         <Save className="w-4 h-4" />
-                        {saving ? 'Menyimpan...' : 'Simpan Instruktur'}
+                        {saving ? 'Menyimpan...' : 'Simpan Trainer'}
                     </button>
                 </div>
             </form>
