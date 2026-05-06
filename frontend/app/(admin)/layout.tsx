@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Award, BookOpen, BriefcaseBusiness, GraduationCap, LayoutDashboard, LogOut, Settings, ShieldCheck, Users } from 'lucide-react';
-import { useEffect, useSyncExternalStore } from 'react';
-import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
+import { Award, BookOpen, BriefcaseBusiness, GraduationCap, KeyRound, LayoutDashboard, LogOut, Menu, Settings, ShieldCheck, Tags, Users, X } from 'lucide-react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { clearStoredAuth, decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
 
 type AuthState = {
     authorized: boolean;
@@ -38,7 +38,7 @@ function getClientAuthState(): AuthState {
         nextState = { authorized: false, redirectTo: '/login', resetToken: false, checking: false };
     } else {
         const payload = decodeJwtPayload(token);
-        if (!payload || payload.is_staff === undefined) {
+        if (!payload || isTokenExpired(payload) || payload.is_staff === undefined) {
             nextState = { authorized: false, redirectTo: '/login', resetToken: true, checking: false };
         } else if (getRoleFromPayload(payload) !== 'admin') {
             nextState = { authorized: false, redirectTo: getPortalPathForRole(getRoleFromPayload(payload)), resetToken: false, checking: false };
@@ -61,16 +61,19 @@ function subscribeAuth(callback: () => void) {
     const handler = () => callback();
     window.addEventListener('storage', handler);
     window.addEventListener('focus', handler);
+    window.addEventListener('auth-change', handler);
 
     return () => {
         window.removeEventListener('storage', handler);
         window.removeEventListener('focus', handler);
+        window.removeEventListener('auth-change', handler);
     };
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const authState = useSyncExternalStore(
         subscribeAuth,
         getClientAuthState,
@@ -79,8 +82,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     useEffect(() => {
         if (authState.resetToken) {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
+            clearStoredAuth();
         }
 
         if (authState.redirectTo) {
@@ -89,8 +91,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }, [authState, router]);
 
     const handleLogout = () => {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        clearStoredAuth();
         router.push('/login');
     };
 
@@ -100,6 +101,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: 'Inhouse Leads', href: '/admin/inhouse-requests', icon: BriefcaseBusiness },
         { name: 'Instructors', href: '/admin/instructors', icon: GraduationCap },
         { name: 'Students', href: '/admin/users', icon: Users },
+        { name: 'Referral', href: '/admin/referrals', icon: Tags },
+        { name: 'Access Links', href: '/admin/access-links', icon: KeyRound },
         { name: 'Sertifikat', href: '/admin/certificates', icon: Award },
         { name: 'Pengaturan', href: '/admin/settings', icon: Settings },
     ];
@@ -159,28 +162,90 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
             </aside>
 
-            <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
-                <div className="flex gap-1 overflow-x-auto">
-                    {menuItems.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`flex min-w-[76px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold ${
-                                    isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-500'
-                                }`}
-                            >
-                                <Icon className="h-5 w-5" />
-                                <span className="truncate">{item.name}</span>
-                            </Link>
-                        );
-                    })}
-                </div>
-            </nav>
+            <div className="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur md:hidden">
+                <div className="flex h-16 items-center justify-between px-4">
+                    <Link href="/admin" className="flex items-center gap-2">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
+                            <ShieldCheck className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-gray-900">Akademiso</div>
+                            <div className="text-[10px] text-gray-500">Admin Portal</div>
+                        </div>
+                    </Link>
 
-            <main className="flex-1 p-4 pb-24 transition-all duration-300 sm:p-6 md:ml-64 md:p-8">
+                    <button
+                        type="button"
+                        onClick={() => setMobileMenuOpen(true)}
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 text-gray-700"
+                        aria-label="Buka menu admin"
+                        aria-expanded={mobileMenuOpen}
+                    >
+                        <Menu className="h-5 w-5" />
+                    </button>
+                </div>
+            </div>
+
+            {mobileMenuOpen && (
+                <div className="fixed inset-0 z-[60] md:hidden">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]"
+                        aria-label="Tutup menu admin"
+                        onClick={() => setMobileMenuOpen(false)}
+                    />
+                    <div className="absolute inset-y-0 left-0 flex w-[min(88vw,320px)] flex-col bg-white shadow-2xl">
+                        <div className="flex h-16 items-center justify-between border-b border-gray-100 px-4">
+                            <div>
+                                <div className="text-sm font-bold text-gray-900">Admin Navigation</div>
+                                <div className="text-xs text-gray-500">Kelola operasional Akademiso</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 text-gray-700"
+                                aria-label="Tutup menu"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-3 py-4">
+                            <div className="space-y-1">
+                                {menuItems.map((item) => {
+                                    const Icon = item.icon;
+                                    const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={item.href}
+                                            onClick={() => setMobileMenuOpen(false)}
+                                            className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${
+                                                isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            <Icon className="h-5 w-5" />
+                                            <span>{item.name}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="border-t border-gray-100 p-3">
+                            <button
+                                onClick={handleLogout}
+                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-red-600 hover:bg-red-50"
+                            >
+                                <LogOut className="h-5 w-5" />
+                                Logout Admin
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <main className="flex-1 p-4 pt-20 pb-6 transition-all duration-300 sm:p-6 sm:pt-24 md:ml-64 md:p-8 md:pt-8">
                 {children}
             </main>
         </div>

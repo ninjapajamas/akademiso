@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Award, BookOpen, BriefcaseBusiness, GraduationCap, LayoutDashboard, Users } from 'lucide-react';
+import { ArrowRight, Award, BookOpen, BriefcaseBusiness, GraduationCap, KeyRound, LayoutDashboard, Tags, Users } from 'lucide-react';
 
 interface AdminStats {
     total_users: number;
@@ -11,6 +11,8 @@ interface AdminStats {
     active_courses: number;
     inhouse_requests: number;
     pending_certificates: number;
+    pending_affiliate_applications?: number;
+    total_referral_codes?: number;
 }
 
 export default function AdminDashboard() {
@@ -41,7 +43,7 @@ export default function AdminDashboard() {
     const statCards = stats ? [
         { label: 'Total Pengguna', value: stats.total_users.toLocaleString('id-ID'), icon: Users, color: 'bg-blue-100 text-blue-600', href: '/admin/users' },
         { label: 'Total Kursus', value: stats.total_courses.toLocaleString('id-ID'), icon: BookOpen, color: 'bg-violet-100 text-violet-600', href: '/admin/courses' },
-        { label: 'Instruktur', value: stats.total_instructors.toLocaleString('id-ID'), icon: GraduationCap, color: 'bg-indigo-100 text-indigo-600', href: '/admin/instructors' },
+        { label: 'Trainer', value: stats.total_instructors.toLocaleString('id-ID'), icon: GraduationCap, color: 'bg-indigo-100 text-indigo-600', href: '/admin/instructors' },
         { label: 'Kursus Aktif', value: stats.active_courses.toLocaleString('id-ID'), icon: LayoutDashboard, color: 'bg-emerald-100 text-emerald-600', href: '/admin/courses' },
     ] : [];
 
@@ -51,18 +53,24 @@ export default function AdminDashboard() {
                 <div className="relative z-10">
                     <h1 className="text-3xl font-bold mb-2">Dashboard Admin</h1>
                     <p className="text-blue-100 text-base leading-relaxed max-w-2xl">
-                        Panel admin sekarang fokus ke operasional Akademiso: kursus, instruktur, pengguna, sertifikat, dan lead inhouse.
+                        Panel admin sekarang fokus ke operasional Akademiso: kursus, trainer, pengguna, sertifikat, dan lead inhouse.
                         Semua transaksi keuangan sudah dipindahkan khusus ke role akuntan.
                     </p>
                     <div className="flex gap-3 mt-5 flex-wrap">
                         <Link href="/admin/courses/new" className="inline-flex items-center gap-2 bg-white text-blue-700 font-bold text-sm px-4 py-2 rounded-xl hover:bg-blue-50">
                             + Tambah Kursus
                         </Link>
+                        <Link href="/admin/referrals" className="inline-flex items-center gap-2 bg-white/20 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-white/30 border border-white/30">
+                            Kelola Referral <Tags className="w-4 h-4" />
+                        </Link>
                         <Link href="/admin/certificates" className="inline-flex items-center gap-2 bg-white/20 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-white/30 border border-white/30">
                             Validasi Sertifikat <Award className="w-4 h-4" />
                         </Link>
                         <Link href="/admin/inhouse-requests" className="inline-flex items-center gap-2 bg-white/20 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-white/30 border border-white/30">
                             Inhouse Leads <ArrowRight className="w-4 h-4" />
+                        </Link>
+                        <Link href="/admin/access-links" className="inline-flex items-center gap-2 bg-white/20 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-white/30 border border-white/30">
+                            Student Access Links <KeyRound className="w-4 h-4" />
                         </Link>
                     </div>
                 </div>
@@ -89,7 +97,7 @@ export default function AdminDashboard() {
                 {stats && [
                     { label: 'Lead Inhouse', value: stats.inhouse_requests, icon: BriefcaseBusiness, color: 'text-amber-600 bg-amber-50' },
                     { label: 'Sertifikat Menunggu', value: stats.pending_certificates, icon: Award, color: 'text-rose-600 bg-rose-50' },
-                    { label: 'Pengguna Aktif Sistem', value: stats.total_users, icon: Users, color: 'text-sky-600 bg-sky-50' },
+                    { label: 'Pengajuan Affiliate', value: stats.pending_affiliate_applications ?? 0, icon: Tags, color: 'text-emerald-600 bg-emerald-50' },
                 ].map((item) => (
                     <div key={item.label} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
                         <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${item.color}`}>
@@ -106,8 +114,10 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                     { href: '/admin/courses', label: 'Kursus', desc: 'Kelola program aktif' },
-                    { href: '/admin/instructors', label: 'Instruktur', desc: 'Atur pengajar & profil' },
+                    { href: '/admin/instructors', label: 'Trainer', desc: 'Atur pengajar & profil' },
                     { href: '/admin/users', label: 'Pengguna', desc: 'Kelola akun dan role' },
+                    { href: '/admin/referrals', label: 'Referral', desc: 'Kode promo & affiliator' },
+                    { href: '/admin/access-links', label: 'Access Link', desc: 'Buat akun student via link' },
                     { href: '/admin/certificates', label: 'Sertifikat', desc: 'Validasi kelulusan' },
                     { href: '/admin/inhouse-requests', label: 'Inhouse', desc: 'Tindak lanjuti lead' },
                 ].map((item) => (

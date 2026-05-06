@@ -1,8 +1,10 @@
 "use client"
+import Image from 'next/image';
 import { Clock, CreditCard, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { Course, PublicTrainingSession } from '@/types';
+import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
 
 type PaymentOffer = 'elearning' | 'public';
 
@@ -22,6 +24,19 @@ declare global {
         };
     }
 }
+
+type ReferralPreview = {
+    valid: boolean;
+    code: string;
+    label?: string;
+    description?: string;
+    discount_type?: 'percent' | 'fixed';
+    discount_value?: string;
+    original_amount: string;
+    discount_amount: string;
+    final_amount: string;
+    owner_name?: string | null;
+};
 
 function getSelectedPublicSession(
     course: Course | null,
@@ -56,6 +71,21 @@ function PaymentContent() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [course, setCourse] = useState<Course | null>(null);
     const [loading, setLoading] = useState(true);
+    const [referralCodeInput, setReferralCodeInput] = useState('');
+    const [referralPreview, setReferralPreview] = useState<ReferralPreview | null>(null);
+    const [referralLoading, setReferralLoading] = useState(false);
+    const [referralMessage, setReferralMessage] = useState('');
+
+    const selectedPublicSession = offer === 'public' ? getSelectedPublicSession(course, publicSessionId, offerMode) : null;
+    const resolvedPublicMode = offerMode === 'offline' || selectedPublicSession?.delivery_mode === 'offline' ? 'offline' : 'online';
+    const publicPriceSummary = resolvedPublicMode === 'offline'
+        ? getPublicModePriceSummary(course, 'offline', selectedPublicSession)
+        : getPublicModePriceSummary(course, 'online', selectedPublicSession);
+    const elearningPriceSummary = getElearningPriceSummary(course);
+    const selectedPriceSummary = offer === 'public' ? publicPriceSummary : elearningPriceSummary;
+    const isPriceUnavailable = offer === 'public' && selectedPriceSummary.finalPrice === null;
+    const price = selectedPriceSummary.finalPrice ?? 0;
+    const payablePrice = referralPreview ? Number(referralPreview.final_amount) : price;
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
@@ -134,6 +164,10 @@ function PaymentContent() {
 
     const handlePayment = async () => {
         if (!course) return;
+        if (isPriceUnavailable) {
+            alert('Harga sesi public ini belum tersedia. Silakan kembali dan pilih sesi lain.');
+            return;
+        }
         setIsProcessing(true);
         try {
             const token = localStorage.getItem('access_token');
@@ -150,9 +184,8 @@ function PaymentContent() {
                     offer_type: offer,
                     offer_mode: offerMode || '',
                     public_session_id: publicSessionId || '',
-                    total_amount: offer === 'public'
-                        ? Number(selectedPublicSession?.price || 0)
-                        : parseInt(course.discount_price || course.price),
+                    referral_code_input: referralPreview?.code || referralCodeInput,
+                    total_amount: payablePrice,
                     status: 'Pending'
                 })
             });
@@ -177,6 +210,54 @@ function PaymentContent() {
         }
     };
 
+    const handleApplyReferral = async () => {
+        if (!course) return;
+        const normalizedCode = referralCodeInput.trim().toUpperCase();
+        if (!normalizedCode) {
+            setReferralPreview(null);
+            setReferralMessage('Masukkan kode referral terlebih dahulu.');
+            return;
+        }
+
+        setReferralLoading(true);
+        setReferralMessage('');
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const params = new URLSearchParams({
+                code: normalizedCode,
+                course: String(course.id),
+                offer_type: offer,
+                offer_mode: offerMode || '',
+                public_session_id: publicSessionId || '',
+            });
+            const res = await fetch(`${apiUrl}/api/referrals/validate/?${params.toString()}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setReferralPreview(data);
+                setReferralCodeInput(data.code || normalizedCode);
+                setReferralMessage('Kode referral berhasil diterapkan.');
+            } else {
+                setReferralPreview(null);
+                setReferralMessage(data.error || data.detail || 'Kode referral tidak bisa digunakan.');
+            }
+        } catch (error) {
+            console.error('Referral validation error:', error);
+            setReferralPreview(null);
+            setReferralMessage('Terjadi masalah saat memvalidasi kode referral.');
+        } finally {
+            setReferralLoading(false);
+        }
+    };
+
+    const handleRemoveReferral = () => {
+        setReferralPreview(null);
+        setReferralCodeInput('');
+        setReferralMessage('');
+    };
+
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -184,13 +265,8 @@ function PaymentContent() {
     }
 
     if (!course) return null;
-
-    const selectedPublicSession = offer === 'public' ? getSelectedPublicSession(course, publicSessionId, offerMode) : null;
-    const price = offer === 'public'
-        ? Number(selectedPublicSession?.price || 0)
-        : Number(course.discount_price || course.price || 0);
     const offerLabel = offer === 'public'
-        ? `Public Training${offerMode ? ` ${offerMode === 'online' ? 'Online' : 'Offline'}` : ''}`
+        ? `Public Training ${resolvedPublicMode === 'online' ? 'Online' : 'Offline'}`
         : 'Paket E-Learning';
 
     return (
@@ -349,7 +425,7 @@ function PaymentContent() {
                                 <div className="flex gap-4 mb-6">
                                     <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0 overflow-hidden">
                                         {course.thumbnail ? (
-                                            <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover" />
+                                            <Image src={course.thumbnail} alt={course.title} width={64} height={64} unoptimized className="w-full h-full object-cover" />
                                         ) : (
                                             'ISO'
                                         )}
@@ -365,14 +441,70 @@ function PaymentContent() {
                                 <div className="space-y-3 mb-6 pb-6 border-b border-gray-100 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Subtotal</span>
-                                        <span className="font-medium text-gray-900">Rp {price.toLocaleString('id-ID')}</span>
+                                        <span className="font-medium text-gray-900">{isPriceUnavailable ? 'Harga belum tersedia' : selectedPriceSummary.isFree ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                     </div>
-                                    {offer === 'elearning' && course.discount_price && (
+                                    {selectedPriceSummary.hasDiscount && selectedPriceSummary.originalPrice != null && selectedPriceSummary.discountPrice != null && (
                                         <div className="flex justify-between text-green-600">
                                             <span className="font-medium flex items-center gap-1">Potongan Harga</span>
-                                            <span className="font-bold">- Rp {(Number(course.price || 0) - Number(course.discount_price || 0)).toLocaleString('id-ID')}</span>
+                                            <span className="font-bold">- Rp {(selectedPriceSummary.originalPrice - selectedPriceSummary.discountPrice).toLocaleString('id-ID')}</span>
                                         </div>
                                     )}
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 space-y-3">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-bold text-blue-900">Kode Referral</p>
+                                                <p className="text-xs text-blue-700">Masukkan kode referral untuk mendapatkan diskon pembayaran.</p>
+                                            </div>
+                                            {referralPreview && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRemoveReferral}
+                                                    className="text-xs font-bold text-blue-700 hover:text-blue-900"
+                                                >
+                                                    Hapus
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                value={referralCodeInput}
+                                                onChange={(event) => {
+                                                    setReferralCodeInput(event.target.value.toUpperCase());
+                                                    if (referralPreview) {
+                                                        setReferralPreview(null);
+                                                    }
+                                                }}
+                                                placeholder="Contoh: AKD123ABC"
+                                                className="flex-1 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold uppercase tracking-wide text-gray-900 outline-none focus:ring-2 focus:ring-blue-200"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleApplyReferral}
+                                                disabled={referralLoading || isPriceUnavailable}
+                                                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                                            >
+                                                {referralLoading ? 'Cek...' : 'Pakai'}
+                                            </button>
+                                        </div>
+                                        {referralPreview && (
+                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+                                                <p className="font-bold">{referralPreview.code} aktif</p>
+                                                <p className="mt-1">Diskon referral: Rp {Number(referralPreview.discount_amount).toLocaleString('id-ID')}</p>
+                                                {referralPreview.owner_name && (
+                                                    <p className="mt-1 text-xs text-emerald-700">Kode milik affiliator: {referralPreview.owner_name}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {referralMessage && !referralPreview && (
+                                            <p className="text-xs font-medium text-amber-700">{referralMessage}</p>
+                                        )}
+                                        {referralPreview && (
+                                            <div className="flex justify-between text-emerald-700">
+                                                <span className="font-medium">Diskon Referral</span>
+                                                <span className="font-bold">- Rp {Number(referralPreview.discount_amount).toLocaleString('id-ID')}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Biaya Admin</span>
                                         <span className="font-medium text-gray-900">Rp 0</span>
@@ -381,12 +513,18 @@ function PaymentContent() {
 
                                 <div className="flex justify-between items-end mb-6">
                                     <span className="font-bold text-gray-900 text-sm">Total Pembayaran</span>
-                                    <span className="font-bold text-2xl text-blue-600">Rp {price.toLocaleString('id-ID')}</span>
+                                    <span className="font-bold text-2xl text-blue-600">{isPriceUnavailable ? 'Hubungi Tim' : selectedPriceSummary.isFree || payablePrice <= 0 ? 'Gratis' : `Rp ${payablePrice.toLocaleString('id-ID')}`}</span>
                                 </div>
+
+                                {isPriceUnavailable && (
+                                    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                        Harga sesi public ini belum tersedia. Kembali ke halaman course untuk memilih sesi lain.
+                                    </div>
+                                )}
 
                                 <button
                                     onClick={handlePayment}
-                                    disabled={isProcessing}
+                                    disabled={isProcessing || isPriceUnavailable}
                                     className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 flex justify-center items-center gap-2 disabled:bg-blue-400 disabled:cursor-not-allowed">
                                     {isProcessing ? (
                                         <div className="w-5 h-5 border-2 border-white rounded-full border-t-transparent animate-spin"></div>

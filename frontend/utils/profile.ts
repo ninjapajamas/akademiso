@@ -3,8 +3,8 @@ export interface UserProfilePayload {
     email?: string;
     first_name?: string;
     last_name?: string;
-    role?: 'admin' | 'akuntan' | 'instructor' | 'student' | 'guest';
-    staff_role?: 'admin' | 'akuntan' | null;
+    role?: 'admin' | 'akuntan' | 'project_manager' | 'instructor' | 'student' | 'guest';
+    staff_role?: 'admin' | 'akuntan' | 'project_manager' | null;
     is_staff?: boolean;
     is_instructor?: boolean;
     profile?: {
@@ -13,6 +13,25 @@ export interface UserProfilePayload {
         company?: string;
         position?: string;
         bio?: string;
+        npwp?: string;
+        bank_name?: string;
+        bank_account_number?: string;
+        bank_account_holder?: string;
+    } | null;
+    affiliate?: {
+        status?: 'none' | 'pending' | 'approved' | 'rejected';
+        requested_at?: string | null;
+        reviewed_at?: string | null;
+        review_notes?: string | null;
+        code?: string | null;
+        code_label?: string | null;
+        discount_type?: 'percent' | 'fixed' | null;
+        discount_value?: string | null;
+        valid_until?: string | null;
+        max_uses?: number | null;
+        usage_count?: number;
+        total_referred_orders?: number;
+        total_commission?: string | null;
     } | null;
 }
 

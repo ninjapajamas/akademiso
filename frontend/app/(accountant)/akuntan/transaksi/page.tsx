@@ -11,9 +11,15 @@ interface Order {
     user: string;
     course: string | number;
     course_title?: string;
+    original_amount?: string;
+    referral_discount_amount?: string;
+    referral_code_snapshot?: string;
     total_amount: string;
     platform_fee_amount?: string;
+    platform_net_amount?: string;
     instructor_earning_amount?: string;
+    affiliate_user?: string;
+    affiliate_commission_amount?: string;
     status: OrderStatus;
     created_at: string;
 }
@@ -101,9 +107,9 @@ export default function AccountantTransactionsPage() {
 
     const completedOrders = orders.filter((order) => order.status === 'Completed');
     const totalPlatformRevenue = completedOrders
-        .reduce((sum, order) => sum + Number(order.platform_fee_amount ?? Math.round(Number(order.total_amount) * 0.1)), 0);
-    const totalInstructorPayout = completedOrders
-        .reduce((sum, order) => sum + Number(order.instructor_earning_amount ?? Math.round(Number(order.total_amount) * 0.9)), 0);
+        .reduce((sum, order) => sum + Number(order.platform_net_amount ?? order.platform_fee_amount ?? Math.round(Number(order.total_amount) * 0.1)), 0);
+    const totalAffiliateCommission = completedOrders
+        .reduce((sum, order) => sum + Number(order.affiliate_commission_amount ?? 0), 0);
 
     return (
         <div className="space-y-6">
@@ -124,8 +130,8 @@ export default function AccountantTransactionsPage() {
                 {[
                     { label: 'Total Transaksi', value: orders.length, cls: 'text-slate-900' },
                     { label: 'Selesai', value: orders.filter((order) => order.status === 'Completed').length, cls: 'text-emerald-600' },
-                    { label: 'Komisi Platform', value: `Rp ${(totalPlatformRevenue / 1e6).toFixed(1)}Jt`, cls: 'text-teal-600' },
-                    { label: 'Payout Instruktur', value: `Rp ${(totalInstructorPayout / 1e6).toFixed(1)}Jt`, cls: 'text-indigo-600' },
+                    { label: 'Net Platform', value: `Rp ${(totalPlatformRevenue / 1e6).toFixed(1)}Jt`, cls: 'text-teal-600' },
+                    { label: 'Komisi Affiliate', value: `Rp ${(totalAffiliateCommission / 1e6).toFixed(1)}Jt`, cls: 'text-amber-600' },
                 ].map((item) => (
                     <div key={item.label} className="bg-white rounded-xl border border-slate-200 p-4">
                         <p className="text-xs text-slate-500 font-medium mb-1">{item.label}</p>
@@ -167,22 +173,23 @@ export default function AccountantTransactionsPage() {
                                 <th className="px-5 py-3 text-left">Pengguna</th>
                                 <th className="px-5 py-3 text-left">Kursus</th>
                                 <th className="px-5 py-3 text-right">Jumlah</th>
-                                <th className="px-5 py-3 text-right">Komisi 10%</th>
-                                <th className="px-5 py-3 text-right">Untuk Instruktur</th>
+                                <th className="px-5 py-3 text-right">Net Platform</th>
+                                <th className="px-5 py-3 text-right">Untuk Trainer</th>
+                                <th className="px-5 py-3 text-right">Affiliate</th>
                                 <th className="px-5 py-3 text-center">Status</th>
                                 <th className="px-5 py-3 text-center">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
-                                <tr><td colSpan={8} className="py-10 text-center text-slate-400">Memuat...</td></tr>
+                                <tr><td colSpan={9} className="py-10 text-center text-slate-400">Memuat...</td></tr>
                             ) : filtered.length === 0 ? (
-                                <tr><td colSpan={8} className="py-10 text-center text-slate-400">Tidak ada transaksi yang cocok.</td></tr>
+                                <tr><td colSpan={9} className="py-10 text-center text-slate-400">Tidak ada transaksi yang cocok.</td></tr>
                             ) : filtered.map((order) => {
                                 const status = STATUS_MAP[order.status] || { label: order.status, cls: 'bg-slate-100 text-slate-600', icon: null };
                                 const Icon = status.icon;
                                 const courseName = order.course_title || String(order.course);
-                                const platformFee = order.platform_fee_amount ?? String(Math.round(Number(order.total_amount) * 0.1));
+                                const platformFee = order.platform_net_amount ?? order.platform_fee_amount ?? String(Math.round(Number(order.total_amount) * 0.1));
                                 const instructorPayout = order.instructor_earning_amount ?? String(Number(order.total_amount) - Number(platformFee));
                                 return (
                                     <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
@@ -197,6 +204,9 @@ export default function AccountantTransactionsPage() {
                                         </td>
                                         <td className="px-5 py-3 text-sm font-bold text-indigo-700 text-right">
                                             {formatRupiah(instructorPayout)}
+                                        </td>
+                                        <td className="px-5 py-3 text-sm font-bold text-amber-700 text-right">
+                                            {formatRupiah(order.affiliate_commission_amount ?? 0)}
                                         </td>
                                         <td className="px-5 py-3 text-center">
                                             <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${status.cls}`}>

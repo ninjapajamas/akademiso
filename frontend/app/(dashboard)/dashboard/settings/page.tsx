@@ -1,9 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { User, Mail, Lock, Shield, Save, Eye, EyeOff, CheckCircle, TriangleAlert } from 'lucide-react';
-import { getProfileDisplayName, getRequiredProfileMissingFields, splitFullName } from '@/utils/profile';
+import { User, Mail, Lock, Shield, Save, Eye, EyeOff, TriangleAlert, Share2 } from 'lucide-react';
+import { getProfileDisplayName, getRequiredProfileMissingFields, splitFullName, type UserProfilePayload } from '@/utils/profile';
+import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
@@ -25,10 +27,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function SettingsPage() {
     const searchParams = useSearchParams();
-    const [saved, setSaved] = useState(false);
     const [loading, setLoading] = useState(true);
     const [showOldPw, setShowOldPw] = useState(false);
     const [showNewPw, setShowNewPw] = useState(false);
+    const [showConfirmPw, setShowConfirmPw] = useState(false);
     const [profile, setProfile] = useState({
         full_name: '',
         email: '',
@@ -38,6 +40,7 @@ export default function SettingsPage() {
         bio: '',
         avatar: null as string | null
     });
+    const [affiliate, setAffiliate] = useState<UserProfilePayload['affiliate'] | null>(null);
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [notifs, setNotifs] = useState({ email_schedule: true, email_cert: true, email_promo: false, sms: false });
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
@@ -59,6 +62,7 @@ export default function SettingsPage() {
     });
     const profileIncomplete = !loading && missingFields.length > 0;
     const showProfileBanner = !loading && (welcomeMode || profileIncomplete);
+    const { showError, showSuccess } = useFeedbackModal();
 
     const fetchProfile = async () => {
         try {
@@ -68,16 +72,17 @@ export default function SettingsPage() {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
-                const data = await res.json();
+                const data: UserProfilePayload = await res.json();
                 setProfile({
                     full_name: getProfileDisplayName(data),
-                    email: data.email,
+                    email: data.email || '',
                     phone: data.profile?.phone || '',
                     company: data.profile?.company || '',
                     position: data.profile?.position || '',
                     bio: data.profile?.bio || '',
                     avatar: data.profile?.avatar || null
                 });
+                setAffiliate(data.affiliate || null);
             }
         } catch (e) {
             console.error('Failed to fetch profile:', e);
@@ -120,15 +125,14 @@ export default function SettingsPage() {
             });
 
             if (res.ok) {
-                setSaved(true);
-                fetchProfile();
-                setTimeout(() => setSaved(false), 2500);
+                await fetchProfile();
+                await showSuccess('Profil Anda berhasil diperbarui.', 'Profil Tersimpan');
             } else {
-                alert('Gagal menyimpan profil');
+                await showError('Profil belum bisa disimpan. Silakan coba lagi.', 'Penyimpanan Gagal');
             }
         } catch (e) {
             console.error('Save error:', e);
-            alert('Terjadi kesalahan koneksi');
+            await showError('Terjadi kesalahan koneksi saat menyimpan profil.', 'Koneksi Bermasalah');
         }
     };
 
@@ -163,9 +167,8 @@ export default function SettingsPage() {
             });
 
             if (res.ok) {
-                setSaved(true);
                 setPasswords({ old: '', new: '', confirm: '' });
-                setTimeout(() => setSaved(false), 2500);
+                await showSuccess('Password Anda berhasil diperbarui.', 'Password Diperbarui');
             } else {
                 setPwError('Gagal memperbarui password');
             }
@@ -175,6 +178,12 @@ export default function SettingsPage() {
     };
 
     const inputClass = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all';
+    const affiliateStatusMap: Record<string, string> = {
+        none: 'Belum Mengajukan',
+        pending: 'Menunggu Review',
+        approved: 'Disetujui',
+        rejected: 'Belum Disetujui',
+    };
 
     return (
         <div className="max-w-3xl mx-auto space-y-6">
@@ -183,11 +192,6 @@ export default function SettingsPage() {
                     <h1 className="text-2xl font-bold text-gray-900">Pengaturan Akun</h1>
                     <p className="text-gray-500 mt-1">Kelola informasi profil dan preferensi akun Anda.</p>
                 </div>
-                {saved && (
-                    <div className="flex items-center gap-2 text-sm font-semibold text-green-700 bg-green-50 border border-green-200 px-4 py-2 rounded-xl">
-                        <CheckCircle className="w-4 h-4" /> Tersimpan!
-                    </div>
-                )}
             </div>
 
             {showProfileBanner && (
@@ -221,7 +225,7 @@ export default function SettingsPage() {
                         <div className="relative group">
                             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg overflow-hidden border-4 border-white">
                                 {profile.avatar ? (
-                                    <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                                    <Image src={profile.avatar} alt="Avatar" width={96} height={96} unoptimized className="w-full h-full object-cover" />
                                 ) : (
                                     (profile.full_name?.trim().charAt(0) || 'U').toUpperCase()
                                 )}
@@ -332,6 +336,56 @@ export default function SettingsPage() {
                 </form>
             </Section>
 
+            <Section title="Affiliate & Referral">
+                <div className="space-y-4">
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5">
+                        <div className="flex items-start gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm">
+                                <Share2 className="h-5 w-5" />
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-sm font-bold text-emerald-900">
+                                    Status affiliator: {affiliateStatusMap[affiliate?.status || 'none'] || 'Belum Mengajukan'}
+                                </p>
+                                <p className="text-sm text-emerald-800">
+                                    {affiliate?.status === 'approved'
+                                        ? 'Anda sudah bisa membagikan kode referral pribadi ke calon peserta.'
+                                        : affiliate?.status === 'pending'
+                                            ? 'Pengajuan affiliator Anda sedang ditinjau admin.'
+                                            : 'Centang pengajuan affiliator saat pendaftaran akun baru, atau hubungi admin jika ingin diaktifkan untuk akun ini.'}
+                                </p>
+                                {affiliate?.review_notes && (
+                                    <p className="text-xs text-emerald-700">Catatan admin: {affiliate.review_notes}</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {affiliate?.code ? (
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Kode Referral</p>
+                                <p className="mt-2 text-lg font-black tracking-[0.16em] text-gray-900">{affiliate.code}</p>
+                            </div>
+                            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Order Berhasil</p>
+                                <p className="mt-2 text-2xl font-black text-gray-900">{affiliate.total_referred_orders || 0}</p>
+                            </div>
+                            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Komisi Terkumpul</p>
+                                <p className="mt-2 text-lg font-black text-emerald-700">
+                                    Rp {Number(affiliate.total_commission || 0).toLocaleString('id-ID')}
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-sm text-gray-500">
+                            Kode referral pribadi akan muncul di sini setelah pengajuan affiliator Anda disetujui admin.
+                        </div>
+                    )}
+                </div>
+            </Section>
+
             {/* Password */}
             <Section title="Keamanan & Password">
                 <form onSubmit={handleChangePassword} className="space-y-4">
@@ -367,13 +421,19 @@ export default function SettingsPage() {
                             </div>
                         </Field>
                         <Field label="Konfirmasi Password">
-                            <input
-                                type="password"
-                                className={inputClass}
-                                value={passwords.confirm}
-                                onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
-                                placeholder="Ulangi password baru"
-                            />
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                                <input
+                                    type={showConfirmPw ? 'text' : 'password'}
+                                    className={`${inputClass} pl-9 pr-10`}
+                                    value={passwords.confirm}
+                                    onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
+                                    placeholder="Ulangi password baru"
+                                />
+                                <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600" aria-label={showConfirmPw ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'}>
+                                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
                         </Field>
                     </div>
                     {pwError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{pwError}</p>}
@@ -397,10 +457,10 @@ export default function SettingsPage() {
             <Section title="Preferensi Notifikasi">
                 <div className="space-y-4">
                     {[
-                        { key: 'email_schedule', label: 'Pengingat jadwal pelatihan & ujian', desc: 'Dapatkan email H-3 dan H-1 sebelum jadwal.' },
+                        { key: 'email_schedule', label: 'Pengingat jadwal pelatihan & assessment', desc: 'Dapatkan email H-3 dan H-1 sebelum jadwal.' },
                         { key: 'email_cert', label: 'Notifikasi sertifikat baru', desc: 'Email saat sertifikat Anda siap diunduh.' },
                         { key: 'email_promo', label: 'Penawaran & program baru', desc: 'Informasi diskon dan kursus ISO terbaru.' },
-                        { key: 'sms', label: 'Notifikasi SMS', desc: 'Pengingat ujian via pesan teks.' },
+                        { key: 'sms', label: 'Notifikasi SMS', desc: 'Pengingat assessment via pesan teks.' },
                     ].map(item => (
                         <div key={item.key} className="flex items-start justify-between gap-4">
                             <div>
@@ -418,7 +478,7 @@ export default function SettingsPage() {
                     ))}
                 </div>
                 <button
-                    onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2500); }}
+                    onClick={() => void showSuccess('Preferensi notifikasi berhasil disimpan.', 'Preferensi Tersimpan')}
                     className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 mt-2"
                 >
                     <Save className="w-4 h-4" /> Simpan Preferensi
