@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Category, Instructor, Course, Lesson, Order, InhouseTrainingRequest, Certificate, CertificateTemplate,
-    CourseDiscussionTopic, CourseDiscussionComment
+    CourseDiscussionTopic, CourseDiscussionComment, CourseFeedback, StudentAccessLink, StudentAccessLinkClaim,
+    Project, ProjectAssignment, ReferralCode,
 )
 
 class LessonInline(admin.TabularInline):
@@ -33,8 +34,16 @@ class InstructorAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'course', 'status', 'total_amount', 'created_at')
+    list_display = ('id', 'user', 'course', 'status', 'total_amount', 'referral_code_snapshot', 'affiliate_user', 'created_at')
     list_filter = ('status', 'created_at')
+
+
+@admin.register(ReferralCode)
+class ReferralCodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'label', 'owner', 'discount_type', 'discount_value', 'is_active', 'max_uses', 'valid_until')
+    list_filter = ('discount_type', 'is_active', 'created_at', 'valid_until')
+    search_fields = ('code', 'label', 'description', 'owner__username', 'owner__email')
+    autocomplete_fields = ('owner', 'created_by')
 
 
 @admin.register(CertificateTemplate)
@@ -56,6 +65,14 @@ class InhouseTrainingRequestAdmin(admin.ModelAdmin):
     list_display = ('course', 'company_name', 'contact_name', 'preferred_mode', 'participants_count', 'status', 'created_at')
     list_filter = ('status', 'preferred_mode', 'created_at')
     search_fields = ('course__title', 'company_name', 'contact_name', 'email', 'phone')
+
+
+@admin.register(CourseFeedback)
+class CourseFeedbackAdmin(admin.ModelAdmin):
+    list_display = ('course', 'user', 'lesson', 'updated_at')
+    list_filter = ('course', 'lesson', 'updated_at')
+    search_fields = ('course__title', 'user__username', 'user__email', 'criticism', 'suggestion')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 class CourseDiscussionCommentInline(admin.TabularInline):
@@ -84,3 +101,33 @@ class CartAdmin(admin.ModelAdmin):
 
     def total_items(self, obj):
         return obj.items.count()
+
+
+class StudentAccessLinkClaimInline(admin.TabularInline):
+    model = StudentAccessLinkClaim
+    extra = 0
+    readonly_fields = ('user', 'created_at')
+
+
+@admin.register(StudentAccessLink)
+class StudentAccessLinkAdmin(admin.ModelAdmin):
+    list_display = ('name', 'used_count', 'max_uses', 'expires_at', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at', 'expires_at')
+    search_fields = ('name', 'token', 'description')
+    readonly_fields = ('token', 'used_count', 'created_at', 'updated_at')
+    inlines = [StudentAccessLinkClaimInline]
+
+
+class ProjectAssignmentInline(admin.TabularInline):
+    model = ProjectAssignment
+    extra = 0
+    autocomplete_fields = ('instructor', 'assigned_by')
+
+
+@admin.register(Project)
+class ProjectAdmin(admin.ModelAdmin):
+    list_display = ('title', 'client_name', 'status', 'priority', 'created_by', 'due_date', 'updated_at')
+    list_filter = ('status', 'priority', 'created_at', 'due_date')
+    search_fields = ('title', 'client_name', 'description', 'deliverables', 'created_by__username')
+    autocomplete_fields = ('created_by', 'related_course')
+    inlines = [ProjectAssignmentInline]
