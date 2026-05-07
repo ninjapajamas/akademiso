@@ -7,3 +7,4 @@ openpyxl
 reportlab
 gunicorn
 whitenoise
+psycopg[binary]

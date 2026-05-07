@@ -1,10 +1,31 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: akademiso-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-akademiso}"
+      POSTGRES_USER: "${POSTGRES_USER:-akademiso}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-akademiso}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-akademiso} -d ${POSTGRES_DB:-akademiso}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: akademiso-backend
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8000:8000"
     environment:
@@ -21,7 +42,20 @@ services:
       DJANGO_SECURE_HSTS_SECONDS: "${DJANGO_SECURE_HSTS_SECONDS:-0}"
       DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "${DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS:-0}"
       DJANGO_SECURE_HSTS_PRELOAD: "${DJANGO_SECURE_HSTS_PRELOAD:-0}"
-      DJANGO_DB_PATH: "/app/data/db.sqlite3"
+      DJANGO_DB_ENGINE: "${DJANGO_DB_ENGINE:-postgresql}"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "${POSTGRES_DB:-akademiso}"
+      POSTGRES_USER: "${POSTGRES_USER:-akademiso}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-akademiso}"
+      DJANGO_DB_PATH: "${DJANGO_DB_PATH:-/app/data/db.sqlite3}"
+      DJANGO_CREATE_SUPERUSER: "${DJANGO_CREATE_SUPERUSER:-0}"
+      DJANGO_SUPERUSER_USERNAME: "${DJANGO_SUPERUSER_USERNAME:-admin}"
+      DJANGO_SUPERUSER_EMAIL: "${DJANGO_SUPERUSER_EMAIL:-admin@example.com}"
+      DJANGO_SUPERUSER_PASSWORD: "${DJANGO_SUPERUSER_PASSWORD:-admin12345}"
+      DJANGO_SUPERUSER_FIRST_NAME: "${DJANGO_SUPERUSER_FIRST_NAME:-Admin}"
+      DJANGO_SUPERUSER_LAST_NAME: "${DJANGO_SUPERUSER_LAST_NAME:-Akademiso}"
+      DJANGO_LOAD_DEMO_DATA: "${DJANGO_LOAD_DEMO_DATA:-0}"
       GUNICORN_WORKERS: "${GUNICORN_WORKERS:-3}"
       GUNICORN_TIMEOUT: "${GUNICORN_TIMEOUT:-120}"
     volumes:
@@ -48,6 +82,7 @@ services:
       BACKEND_INTERNAL_URL: "http://backend:8000"
 
 volumes:
+  postgres_data:
   backend_data:
   backend_media:
   backend_static:

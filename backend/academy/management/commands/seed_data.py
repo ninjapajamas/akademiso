@@ -1,343 +1,446 @@
-"""
-Management command: seed_data
-Creates realistic dummy data for all roles.
-
-Usage:
-    python manage.py seed_data
-    python manage.py seed_data --reset   # clears existing non-admin data first
-"""
-from django.core.management.base import BaseCommand
-from django.contrib.auth.models import User
-from academy.models import Category, Instructor, Course, Section, Lesson, Order, Cart, CartItem
-from django.utils.text import slugify
 from decimal import Decimal
-import random
+
+from django.contrib.auth.models import User
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
+from academy.models import (
+    AFFILIATE_STATUS_APPROVED,
+    Category,
+    Course,
+    Instructor,
+    InstructorWithdrawalRequest,
+    Lesson,
+    Order,
+    Project,
+    ProjectAssignment,
+    ReferralCode,
+    Section,
+    UserProfile,
+    WITHDRAWAL_STATUS_PENDING,
+    STAFF_ROLE_ACCOUNTANT,
+    STAFF_ROLE_ADMIN,
+    STAFF_ROLE_PROJECT_MANAGER,
+)
 
 
-CATEGORIES = [
-    {'name': 'Mutu (Quality)',          'slug': 'mutu-quality',          'icon': 'shield'},
-    {'name': 'Keamanan (Security)',      'slug': 'keamanan-security',     'icon': 'lock'},
-    {'name': 'Lingkungan (Environment)', 'slug': 'lingkungan-environment','icon': 'leaf'},
-    {'name': 'K3 (Safety)',              'slug': 'k3-safety',             'icon': 'hard-hat'},
-    {'name': 'Pangan (Food Safety)',     'slug': 'pangan-food-safety',    'icon': 'utensils'},
-]
-
-INSTRUCTORS = [
+DEMO_ACCOUNTS = [
     {
-        'name': 'Dr. Budi Santoso',
-        'title': 'Lead Auditor ISO 9001 & 14001',
-        'bio': 'Dr. Budi adalah konsultan manajemen mutu berpengalaman 15 tahun. Beliau telah membantu lebih dari 200 perusahaan mendapatkan sertifikasi ISO 9001 di berbagai industri manufaktur dan jasa.',
-        'username': 'budi.santoso',
-        'email': 'budi.santoso@akademiso.id',
-        'first_name': 'Budi',
-        'last_name': 'Santoso',
+        "username": "admin",
+        "email": "admin@example.com",
+        "password": "admin12345",
+        "first_name": "Admin",
+        "last_name": "Akademiso",
+        "is_staff": True,
+        "is_superuser": True,
+        "staff_role": STAFF_ROLE_ADMIN,
+        "phone": "081200000001",
+        "company": "Akademiso",
+        "position": "Administrator Sistem",
     },
     {
-        'name': 'Sarah Wijaya, CISA',
-        'title': 'Certified Information Security Auditor',
-        'bio': 'Sarah adalah pakar keamanan informasi dengan sertifikasi CISA dan CISSP. Memiliki pengalaman implementasi ISO 27001 di sektor perbankan dan fintech selama lebih dari 10 tahun.',
-        'username': 'sarah.wijaya',
-        'email': 'sarah.wijaya@akademiso.id',
-        'first_name': 'Sarah',
-        'last_name': 'Wijaya',
+        "username": "akuntan.demo",
+        "email": "akuntan.demo@example.com",
+        "password": "Demo12345!",
+        "first_name": "Akun",
+        "last_name": "Akuntan",
+        "is_staff": True,
+        "is_superuser": False,
+        "staff_role": STAFF_ROLE_ACCOUNTANT,
+        "phone": "081200000002",
+        "company": "Akademiso",
+        "position": "Akuntan",
     },
     {
-        'name': 'Ir. Hendra Gunawan',
-        'title': 'HSE Specialist & ISO 45001 Auditor',
-        'bio': 'Ir. Hendra adalah spesialis Kesehatan dan Keselamatan Kerja (K3) dengan pengalaman di industri minyak bumi dan konstruksi. Tersertifikasi sebagai Lead Auditor ISO 45001 oleh IRCA.',
-        'username': 'hendra.gunawan',
-        'email': 'hendra.gunawan@akademiso.id',
-        'first_name': 'Hendra',
-        'last_name': 'Gunawan',
-    },
-]
-
-COURSES = [
-    {
-        'title': 'ISO 9001:2015 Manajemen Mutu — Awareness',
-        'slug': 'iso-9001-awareness',
-        'description': 'Pelajari dasar-dasar Sistem Manajemen Mutu berdasarkan standar ISO 9001:2015. Cocok untuk semua level jabatan yang ingin memahami prinsip-prinsip mutu dan penerapannya di organisasi.',
-        'price': Decimal('1500000'),
-        'level': 'Beginner',
-        'duration': '1 Hari',
-        'rating': Decimal('4.9'),
-        'is_featured': True,
-        'instructor_idx': 0,
-        'category_slug': 'mutu-quality',
-        'sections': [
-            {'title': 'Pengenalan ISO 9001:2015', 'lessons': [
-                ('Apa itu ISO 9001?', 'video', '45 menit'),
-                ('Sejarah dan Revisi Standar', 'article', '20 menit'),
-                ('7 Prinsip Manajemen Mutu', 'video', '60 menit'),
-            ]},
-            {'title': 'Konteks Organisasi', 'lessons': [
-                ('Memahami Kebutuhan Pihak Berkepentingan', 'video', '50 menit'),
-                ('Menentukan Ruang Lingkup SMM', 'video', '40 menit'),
-                ('Quiz Modul 2', 'quiz', '20 menit'),
-            ]},
-            {'title': 'Kepemimpinan dan Kebijakan Mutu', 'lessons': [
-                ('Peran Manajemen Puncak', 'video', '45 menit'),
-                ('Menyusun Kebijakan Mutu', 'article', '30 menit'),
-            ]},
-        ],
+        "username": "pm.demo",
+        "email": "pm.demo@example.com",
+        "password": "Demo12345!",
+        "first_name": "Project",
+        "last_name": "Manager",
+        "is_staff": True,
+        "is_superuser": False,
+        "staff_role": STAFF_ROLE_PROJECT_MANAGER,
+        "phone": "081200000003",
+        "company": "Akademiso",
+        "position": "Project Manager",
     },
     {
-        'title': 'ISO 27001:2022 Keamanan Informasi — Lead Implementer',
-        'slug': 'iso-27001-lead-implementer',
-        'description': 'Program sertifikasi komprehensif untuk menjadi Lead Implementer Sistem Manajemen Keamanan Informasi (SMKI) berbasis ISO/IEC 27001:2022. Termasuk studi kasus nyata dan simulasi implementasi.',
-        'price': Decimal('4500000'),
-        'level': 'Advanced',
-        'duration': '3 Hari',
-        'rating': Decimal('4.8'),
-        'is_featured': True,
-        'instructor_idx': 1,
-        'category_slug': 'keamanan-security',
-        'sections': [
-            {'title': 'Pengenalan ISO 27001:2022', 'lessons': [
-                ('Overview Standar dan Perubahan dari 2013', 'video', '60 menit'),
-                ('Ancaman dan Risiko Keamanan Informasi', 'video', '75 menit'),
-                ('Regulatory Landscape (UU PDP, GDPR)', 'article', '45 menit'),
-            ]},
-            {'title': 'Penilaian dan Pengelolaan Risiko', 'lessons': [
-                ('Metodologi Risk Assessment', 'video', '90 menit'),
-                ('Risk Treatment Plan', 'video', '60 menit'),
-                ('Studi Kasus: Perbankan Digital', 'article', '60 menit'),
-            ]},
-            {'title': 'Implementasi Kontrol (Annex A)', 'lessons': [
-                ('93 Kontrol ISO 27001:2022', 'video', '120 menit'),
-                ('Kebijakan dan Prosedur Keamanan', 'article', '45 menit'),
-                ('Quiz Akhir Modul', 'quiz', '30 menit'),
-            ]},
-        ],
+        "username": "instruktur.demo",
+        "email": "instruktur.demo@example.com",
+        "password": "Demo12345!",
+        "first_name": "Dina",
+        "last_name": "Instruktur",
+        "is_staff": False,
+        "is_superuser": False,
+        "staff_role": None,
+        "phone": "081200000004",
+        "company": "Akademiso Trainer Network",
+        "position": "Lead Instructor ISO 9001",
+        "bio": "Instruktur demo untuk pengujian lokal.",
+        "npwp": "12.345.678.9-012.345",
+        "nik": "3174000000000004",
+        "bank_name": "BCA",
+        "bank_account_number": "1234567890",
+        "bank_account_holder": "Dina Instruktur",
     },
     {
-        'title': 'ISO 45001:2018 Keselamatan Kerja — Internal Auditor',
-        'slug': 'iso-45001-internal-auditor',
-        'description': 'Kuasai teknik audit internal Sistem Manajemen K3 sesuai ISO 45001:2018. Program ini mempersiapkan Anda untuk menjalankan audit internal yang efektif dan mengidentifikasi ketidaksesuaian.',
-        'price': Decimal('3200000'),
-        'level': 'Intermediate',
-        'duration': '2 Hari',
-        'rating': Decimal('4.7'),
-        'is_featured': False,
-        'instructor_idx': 2,
-        'category_slug': 'k3-safety',
-        'sections': [
-            {'title': 'Dasar K3 dan ISO 45001', 'lessons': [
-                ('Pengenalan ISO 45001:2018', 'video', '50 menit'),
-                ('Identifikasi Bahaya dan Penilaian Risiko K3', 'video', '70 menit'),
-            ]},
-            {'title': 'Teknik Audit Internal', 'lessons': [
-                ('Prinsip Audit (ISO 19011)', 'video', '60 menit'),
-                ('Perencanaan dan Pelaksanaan Audit', 'video', '90 menit'),
-                ('Pelaporan Temuan dan CAPA', 'article', '45 menit'),
-                ('Simulasi Audit Lapangan', 'article', '60 menit'),
-            ]},
-        ],
+        "username": "peserta.demo",
+        "email": "peserta.demo@example.com",
+        "password": "Demo12345!",
+        "first_name": "Budi",
+        "last_name": "Peserta",
+        "is_staff": False,
+        "is_superuser": False,
+        "staff_role": None,
+        "phone": "081200000005",
+        "company": "PT Demo Peserta",
+        "position": "Staff QA",
+        "bio": "Peserta demo untuk mencoba alur belajar.",
     },
     {
-        'title': 'ISO 14001:2015 Manajemen Lingkungan — Awareness',
-        'slug': 'iso-14001-awareness',
-        'description': 'Pahami konsep Sistem Manajemen Lingkungan (SML) dan bagaimana organisasi dapat mengelola dampak lingkungannya secara sistematis sesuai ISO 14001:2015.',
-        'price': Decimal('1800000'),
-        'level': 'Beginner',
-        'duration': '1 Hari',
-        'rating': Decimal('4.6'),
-        'is_featured': False,
-        'instructor_idx': 0,
-        'category_slug': 'lingkungan-environment',
-        'sections': [
-            {'title': 'Pengenalan Manajemen Lingkungan', 'lessons': [
-                ('Mengapa Manajemen Lingkungan Penting?', 'video', '40 menit'),
-                ('Struktur dan Persyaratan ISO 14001:2015', 'video', '60 menit'),
-                ('Aspek dan Dampak Lingkungan', 'article', '35 menit'),
-            ]},
-            {'title': 'Implementasi SML', 'lessons': [
-                ('Planning: Objectives dan Targets', 'video', '50 menit'),
-                ('Pengelolaan Limbah dan Emisi', 'video', '55 menit'),
-            ]},
-        ],
+        "username": "affiliator.demo",
+        "email": "affiliator.demo@example.com",
+        "password": "Demo12345!",
+        "first_name": "Sari",
+        "last_name": "Affiliator",
+        "is_staff": False,
+        "is_superuser": False,
+        "staff_role": None,
+        "phone": "081200000006",
+        "company": "Komunitas ISO Demo",
+        "position": "Affiliator",
+        "bio": "Akun demo affiliator.",
+        "affiliate_status": AFFILIATE_STATUS_APPROVED,
     },
-    {
-        'title': 'ISO 9001:2015 Manajemen Mutu — Lead Auditor',
-        'slug': 'iso-9001-lead-auditor',
-        'description': 'Program intensif 5 hari untuk menjadi Lead Auditor Sistem Manajemen Mutu yang kompeten. Terakreditasi IRCA dan diakui secara internasional. Termasuk ujian sertifikasi.',
-        'price': Decimal('6500000'),
-        'discount_price': Decimal('5800000'),
-        'level': 'Advanced',
-        'duration': '5 Hari',
-        'rating': Decimal('5.0'),
-        'is_featured': True,
-        'instructor_idx': 0,
-        'category_slug': 'mutu-quality',
-        'sections': [
-            {'title': 'Fondasi Audit dan ISO 9001', 'lessons': [
-                ('Prinsip-prinsip Audit Menurut ISO 19011', 'video', '90 menit'),
-                ('Persyaratan ISO 9001:2015 Secara Mendalam', 'video', '120 menit'),
-            ]},
-            {'title': 'Perencanaan dan Persiapan Audit', 'lessons': [
-                ('Audit Planning: Scope, Criteria, Objectives', 'video', '75 menit'),
-                ('Menyiapkan Checklist Audit yang Efektif', 'article', '45 menit'),
-            ]},
-            {'title': 'Pelaksanaan dan Pelaporan Audit', 'lessons': [
-                ('Opening Meeting dan On-site Audit Techniques', 'video', '90 menit'),
-                ('Penulisan Temuan dan NCR', 'video', '60 menit'),
-                ('Closing Meeting dan Audit Report', 'article', '45 menit'),
-                ('Ujian Sertifikasi (Simulasi)', 'quiz', '120 menit'),
-            ]},
-        ],
-    },
-]
-
-PARTICIPANTS = [
-    {'username': 'andi.wijaya',  'email': 'andi.wijaya@example.com',  'first_name': 'Andi',    'last_name': 'Wijaya',  'password': 'peserta123'},
-    {'username': 'siti.rahayu', 'email': 'siti.rahayu@example.com',  'first_name': 'Siti',    'last_name': 'Rahayu', 'password': 'peserta123'},
-    {'username': 'rizky.p',     'email': 'rizky.pratama@example.com','first_name': 'Rizky',   'last_name': 'Pratama','password': 'peserta123'},
-    {'username': 'dewi.k',      'email': 'dewi.kusuma@example.com',  'first_name': 'Dewi',    'last_name': 'Kusuma', 'password': 'peserta123'},
-    {'username': 'indah.perm',  'email': 'indah.permata@example.com','first_name': 'Indah',   'last_name': 'Permata','password': 'peserta123'},
 ]
 
 
 class Command(BaseCommand):
-    help = 'Seed the database with realistic dummy data'
+    help = "Seed demo data for all major roles and sample learning flows."
 
     def add_arguments(self, parser):
-        parser.add_argument('--reset', action='store_true', help='Delete all non-superuser data first')
+        parser.add_argument(
+            "--reset",
+            action="store_true",
+            help="Delete seeded demo data first, then recreate it.",
+        )
+
+    def _ensure_user(self, account):
+        user, _ = User.objects.get_or_create(
+            username=account["username"],
+            defaults={
+                "email": account["email"],
+                "first_name": account["first_name"],
+                "last_name": account["last_name"],
+                "is_staff": account["is_staff"],
+                "is_superuser": account["is_superuser"],
+                "is_active": True,
+            },
+        )
+        user.email = account["email"]
+        user.first_name = account["first_name"]
+        user.last_name = account["last_name"]
+        user.is_staff = account["is_staff"]
+        user.is_superuser = account["is_superuser"]
+        user.is_active = True
+        user.set_password(account["password"])
+        user.save()
+
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.phone = account.get("phone")
+        profile.company = account.get("company")
+        profile.position = account.get("position")
+        profile.bio = account.get("bio")
+        profile.npwp = account.get("npwp")
+        profile.nik = account.get("nik")
+        profile.bank_name = account.get("bank_name")
+        profile.bank_account_number = account.get("bank_account_number")
+        profile.bank_account_holder = account.get("bank_account_holder")
+        profile.staff_role = account.get("staff_role")
+        if account.get("affiliate_status"):
+            now = timezone.now()
+            profile.affiliate_status = account["affiliate_status"]
+            profile.affiliate_requested_at = now
+            profile.affiliate_reviewed_at = now
+            profile.affiliate_review_notes = "Disetujui untuk data demo."
+        profile.save()
+        return user, profile
+
+    def _reset_demo_data(self):
+        demo_usernames = [account["username"] for account in DEMO_ACCOUNTS]
+        demo_slugs = ["pelatihan-internal-audit-iso-9001-demo"]
+        demo_category_slugs = ["iso-9001-demo"]
+        demo_codes = ["AFFDEMO10"]
+        demo_project_titles = ["Implementasi ISO 9001 Demo"]
+
+        ProjectAssignment.objects.filter(project__title__in=demo_project_titles).delete()
+        Project.objects.filter(title__in=demo_project_titles).delete()
+        InstructorWithdrawalRequest.objects.filter(requested_by__username__in=demo_usernames).delete()
+        Order.objects.filter(user__username__in=demo_usernames).delete()
+        ReferralCode.objects.filter(code__in=demo_codes).delete()
+        Lesson.objects.filter(course__slug__in=demo_slugs).delete()
+        Section.objects.filter(course__slug__in=demo_slugs).delete()
+        Course.objects.filter(slug__in=demo_slugs).delete()
+        Instructor.objects.filter(user__username__in=demo_usernames).delete()
+        Category.objects.filter(slug__in=demo_category_slugs).delete()
+        User.objects.filter(username__in=[u for u in demo_usernames if u != "admin"]).delete()
 
     def handle(self, *args, **options):
-        if options['reset']:
-            self.stdout.write('🗑  Resetting data...')
-            Order.objects.all().delete()
-            CartItem.objects.all().delete()
-            Cart.objects.all().delete()
-            Lesson.objects.all().delete()
-            Section.objects.all().delete()
-            Course.objects.all().delete()
-            Instructor.objects.all().delete()
-            Category.objects.all().delete()
-            User.objects.filter(is_superuser=False).delete()
-            self.stdout.write('✅ Reset done.\n')
+        if options["reset"]:
+            self.stdout.write("Resetting existing demo data...")
+            self._reset_demo_data()
+            self.stdout.write(self.style.SUCCESS("Existing demo data removed."))
 
-        # ── Categories ───────────────────────────────────────────────────────
-        self.stdout.write('📂 Creating categories...')
-        cat_map = {}
-        for c in CATEGORIES:
-            obj, created = Category.objects.get_or_create(slug=c['slug'], defaults={'name': c['name'], 'icon': c['icon']})
-            cat_map[c['slug']] = obj
-            self.stdout.write(f"   {'Created' if created else 'Exists '}: {obj.name}")
+        users = {}
+        profiles = {}
+        for account in DEMO_ACCOUNTS:
+            user, profile = self._ensure_user(account)
+            users[account["username"]] = user
+            profiles[account["username"]] = profile
 
-        # ── Instructors (with User accounts) ────────────────────────────────
-        self.stdout.write('\n👨‍🏫 Creating instructors...')
-        instructor_objs = []
-        for i_data in INSTRUCTORS:
-            user, u_created = User.objects.get_or_create(
-                username=i_data['username'],
-                defaults={
-                    'email': i_data['email'],
-                    'first_name': i_data['first_name'],
-                    'last_name': i_data['last_name'],
-                    'is_staff': False,
-                }
-            )
-            if u_created:
-                user.set_password('instruktur123')
-                user.save()
+        now = timezone.now()
 
-            instr, created = Instructor.objects.get_or_create(
-                name=i_data['name'],
-                defaults={'title': i_data['title'], 'bio': i_data['bio']}
-            )
-            instructor_objs.append(instr)
-            self.stdout.write(f"   {'Created' if created else 'Exists '}: {instr.name}")
+        instructor_user = users["instruktur.demo"]
+        admin_user = users["admin"]
+        pm_user = users["pm.demo"]
+        affiliate_user = users["affiliator.demo"]
+        student_user = users["peserta.demo"]
 
-        # ── Courses with Sections & Lessons ──────────────────────────────────
-        self.stdout.write('\n📚 Creating courses...')
-        course_objs = []
-        for c_data in COURSES:
-            instructor = instructor_objs[c_data['instructor_idx']]
-            category   = cat_map[c_data['category_slug']]
+        instructor, _ = Instructor.objects.get_or_create(
+            user=instructor_user,
+            defaults={
+                "name": "Dina Instruktur",
+                "title": "Lead Instructor ISO 9001",
+                "bio": "Berpengalaman membimbing implementasi sistem manajemen mutu.",
+                "expertise_areas": ["ISO 9001", "Audit Internal", "Quality Management"],
+                "approval_status": "APPROVED",
+                "approved_by": admin_user,
+                "approved_at": now,
+            },
+        )
+        instructor.name = "Dina Instruktur"
+        instructor.title = "Lead Instructor ISO 9001"
+        instructor.bio = "Berpengalaman membimbing implementasi sistem manajemen mutu."
+        instructor.expertise_areas = ["ISO 9001", "Audit Internal", "Quality Management"]
+        instructor.approval_status = "APPROVED"
+        instructor.approved_by = admin_user
+        instructor.approved_at = now
+        instructor.save()
 
-            defaults = {
-                'description':  c_data['description'],
-                'price':        c_data['price'],
-                'level':        c_data['level'],
-                'duration':     c_data['duration'],
-                'rating':       c_data['rating'],
-                'is_featured':  c_data['is_featured'],
-                'instructor':   instructor,
-                'category':     category,
-            }
-            if 'discount_price' in c_data:
-                defaults['discount_price'] = c_data['discount_price']
+        category, _ = Category.objects.get_or_create(
+            slug="iso-9001-demo",
+            defaults={"name": "ISO 9001 Demo", "icon": "shield-check"},
+        )
+        category.name = "ISO 9001 Demo"
+        category.icon = "shield-check"
+        category.save()
 
-            course, created = Course.objects.get_or_create(slug=c_data['slug'], defaults={'title': c_data['title'], **defaults})
-            course_objs.append(course)
-            self.stdout.write(f"   {'Created' if created else 'Exists '}: {course.title}")
-
-            if created:
-                for s_order, s_data in enumerate(c_data['sections']):
-                    section = Section.objects.create(course=course, title=s_data['title'], order=s_order + 1)
-                    for l_order, (l_title, l_type, l_dur) in enumerate(s_data['lessons']):
-                        Lesson.objects.create(
-                            course=course, section=section,
-                            title=l_title, type=l_type, duration=l_dur, order=l_order + 1
-                        )
-
-        # ── Participants ─────────────────────────────────────────────────────
-        self.stdout.write('\n👥 Creating participants...')
-        participant_objs = []
-        for p in PARTICIPANTS:
-            user, created = User.objects.get_or_create(
-                username=p['username'],
-                defaults={
-                    'email': p['email'],
-                    'first_name': p['first_name'],
-                    'last_name': p['last_name'],
-                }
-            )
-            if created:
-                user.set_password(p['password'])
-                user.save()
-            participant_objs.append(user)
-            self.stdout.write(f"   {'Created' if created else 'Exists '}: {user.username}")
-
-        # ── Orders ───────────────────────────────────────────────────────────
-        self.stdout.write('\n🧾 Creating orders...')
-        enrollments = [
-            # (user_idx, course_idx, status)
-            (0, 0, 'Completed'),
-            (0, 4, 'Pending'),
-            (1, 0, 'Completed'),
-            (1, 1, 'Completed'),
-            (2, 1, 'Pending'),
-            (2, 2, 'Completed'),
-            (3, 3, 'Completed'),
-            (3, 0, 'Pending'),
-            (4, 2, 'Completed'),
-            (4, 4, 'Pending'),
+        course, _ = Course.objects.get_or_create(
+            slug="pelatihan-internal-audit-iso-9001-demo",
+            defaults={
+                "title": "Pelatihan Internal Audit ISO 9001 Demo",
+                "description": "Course demo untuk kebutuhan pengujian lokal Akademiso.",
+                "price": Decimal("1500000.00"),
+                "discount_price": Decimal("1250000.00"),
+                "instructor": instructor,
+                "category": category,
+                "duration": "2 Hari",
+            },
+        )
+        course.title = "Pelatihan Internal Audit ISO 9001 Demo"
+        course.type = "course"
+        course.description = "Course demo untuk kebutuhan pengujian lokal Akademiso."
+        course.detail_sections = [
+            {
+                "title": "Tentang Pelatihan",
+                "content": "Pelatihan ini membantu peserta memahami teknik audit internal ISO 9001.",
+            },
+            {
+                "title": "Manfaat",
+                "content": "Peserta memahami perencanaan audit, pelaksanaan audit, dan tindak lanjut temuan.",
+            },
         ]
-        for u_idx, c_idx, status in enrollments:
-            user   = participant_objs[u_idx]
-            course = course_objs[c_idx]
-            order, created = Order.objects.get_or_create(
-                user=user, course=course,
-                defaults={'status': status, 'total_amount': course.price}
-            )
-            self.stdout.write(f"   {'Created' if created else 'Exists '}: {user.username} → {course.title[:40]} [{status}]")
+        course.rundown_items = [
+            "08:30 - 09:00 | Registrasi dan pembukaan",
+            "09:00 - 12:00 | Prinsip audit ISO 9001",
+            "",
+            "13:00 - 15:00 | Simulasi audit dan pelaporan",
+        ]
+        course.public_training_enabled = True
+        course.public_training_intro = "Sesi public training demo untuk pengujian alur pendaftaran."
+        course.public_sessions = [
+            {
+                "id": "demo-public-online-1",
+                "label": "Batch Demo Online",
+                "schedule": "20 Mei 2026 09:00 WIB",
+                "delivery_mode": "online",
+                "location": "Zoom Meeting",
+            }
+        ]
+        course.public_online_price = Decimal("1400000.00")
+        course.public_online_discount_price = Decimal("1150000.00")
+        course.public_offline_price = Decimal("1600000.00")
+        course.public_offline_discount_price = Decimal("1350000.00")
+        course.inhouse_training_enabled = True
+        course.inhouse_training_intro = "Tersedia juga format in-house untuk kebutuhan perusahaan."
+        course.inhouse_training_benefits = ["Materi bisa dikustom", "Cocok untuk tim perusahaan"]
+        course.elearning_enabled = True
+        course.elearning_intro = "Akses materi mandiri tersedia setelah pembayaran berhasil."
+        course.price = Decimal("1500000.00")
+        course.discount_price = Decimal("1250000.00")
+        course.instructor = instructor
+        course.category = category
+        course.level = "Intermediate"
+        course.duration = "2 Hari"
+        course.delivery_mode = "online"
+        course.scheduled_at = now + timezone.timedelta(days=14)
+        course.scheduled_end_at = now + timezone.timedelta(days=15)
+        course.location = "Zoom Meeting"
+        course.zoom_link = "https://zoom.us/j/1234567890"
+        course.is_free = False
+        course.is_active = True
+        course.is_featured = True
+        course.has_certification_exam = True
+        course.rating = Decimal("4.80")
+        course.enrolled_count = 1
+        course.save()
 
-        # ── Summary ──────────────────────────────────────────────────────────
-        self.stdout.write(self.style.SUCCESS('\n✅ Seed data complete!'))
-        self.stdout.write('─' * 50)
-        self.stdout.write(f"  Categories : {Category.objects.count()}")
-        self.stdout.write(f"  Instructors: {Instructor.objects.count()}")
-        self.stdout.write(f"  Courses    : {Course.objects.count()}")
-        self.stdout.write(f"  Sections   : {Section.objects.count()}")
-        self.stdout.write(f"  Lessons    : {Lesson.objects.count()}")
-        self.stdout.write(f"  Users      : {User.objects.count()} (incl. admin & instructors)")
-        self.stdout.write(f"  Orders     : {Order.objects.count()}")
-        self.stdout.write('─' * 50)
-        self.stdout.write('\n📋 Test Accounts:')
-        self.stdout.write('  Admin      : username=root (or your superuser), password=your_password')
-        for i_data in INSTRUCTORS:
-            self.stdout.write(f"  Instruktur : username={i_data['username']}, password=instruktur123")
-        for p in PARTICIPANTS:
-            self.stdout.write(f"  Peserta    : username={p['username']}, password=peserta123")
+        section, _ = Section.objects.get_or_create(
+            course=course,
+            order=1,
+            defaults={"title": "Pendahuluan"},
+        )
+        section.title = "Pendahuluan"
+        section.save()
+
+        lesson, _ = Lesson.objects.get_or_create(
+            course=course,
+            order=1,
+            defaults={"title": "Pengenalan Audit Internal", "type": "article"},
+        )
+        lesson.section = section
+        lesson.title = "Pengenalan Audit Internal"
+        lesson.type = "article"
+        lesson.content = "<p>Materi demo pengantar audit internal ISO 9001.</p>"
+        lesson.duration = "15 menit"
+        lesson.save()
+
+        referral_code, _ = ReferralCode.objects.get_or_create(
+            code="AFFDEMO10",
+            defaults={
+                "label": "Referral Demo 10%",
+                "description": "Kode referral demo untuk pengujian lokal.",
+                "discount_type": "percent",
+                "discount_value": Decimal("10.00"),
+                "is_active": True,
+                "owner": affiliate_user,
+                "created_by": admin_user,
+                "affiliate_commission_rate": Decimal("0.2000"),
+            },
+        )
+        referral_code.label = "Referral Demo 10%"
+        referral_code.description = "Kode referral demo untuk pengujian lokal."
+        referral_code.discount_type = "percent"
+        referral_code.discount_value = Decimal("10.00")
+        referral_code.is_active = True
+        referral_code.owner = affiliate_user
+        referral_code.created_by = admin_user
+        referral_code.affiliate_commission_rate = Decimal("0.2000")
+        referral_code.save()
+
+        order, _ = Order.objects.get_or_create(
+            user=student_user,
+            course=course,
+            defaults={
+                "offer_type": "elearning",
+                "original_amount": Decimal("1250000.00"),
+                "referral_code": referral_code,
+                "referral_code_snapshot": "AFFDEMO10",
+                "referral_discount_amount": Decimal("125000.00"),
+                "status": "Completed",
+                "total_amount": Decimal("1125000.00"),
+                "affiliate_user": affiliate_user,
+                "affiliate_commission_rate": Decimal("0.2000"),
+            },
+        )
+        order.offer_type = "elearning"
+        order.offer_mode = ""
+        order.public_session_id = ""
+        order.original_amount = Decimal("1250000.00")
+        order.referral_code = referral_code
+        order.referral_code_snapshot = "AFFDEMO10"
+        order.referral_discount_amount = Decimal("125000.00")
+        order.status = "Completed"
+        order.total_amount = Decimal("1125000.00")
+        order.affiliate_user = affiliate_user
+        order.affiliate_commission_rate = Decimal("0.2000")
+        order.save()
+
+        project, _ = Project.objects.get_or_create(
+            title="Implementasi ISO 9001 Demo",
+            defaults={
+                "client_name": "PT Klien Demo",
+                "description": "Proyek demo implementasi sistem manajemen mutu.",
+                "deliverables": "Gap analysis, pelatihan, simulasi audit",
+                "status": "active",
+                "priority": "high",
+                "start_date": now.date(),
+                "due_date": (now + timezone.timedelta(days=30)).date(),
+                "related_course": course,
+                "created_by": pm_user,
+            },
+        )
+        project.client_name = "PT Klien Demo"
+        project.description = "Proyek demo implementasi sistem manajemen mutu."
+        project.deliverables = "Gap analysis, pelatihan, simulasi audit"
+        project.status = "active"
+        project.priority = "high"
+        project.start_date = now.date()
+        project.due_date = (now + timezone.timedelta(days=30)).date()
+        project.related_course = course
+        project.created_by = pm_user
+        project.save()
+
+        assignment, _ = ProjectAssignment.objects.get_or_create(
+            project=project,
+            instructor=instructor,
+            defaults={
+                "assigned_by": pm_user,
+                "status": "in_progress",
+                "role_label": "Instruktur Utama",
+                "notes": "Menangani sesi pelatihan dan review dokumen.",
+            },
+        )
+        assignment.assigned_by = pm_user
+        assignment.status = "in_progress"
+        assignment.role_label = "Instruktur Utama"
+        assignment.notes = "Menangani sesi pelatihan dan review dokumen."
+        assignment.save()
+
+        withdrawal, _ = InstructorWithdrawalRequest.objects.get_or_create(
+            instructor=instructor,
+            requested_by=instructor_user,
+            amount=Decimal("250000.00"),
+            defaults={
+                "note": "Permintaan pencairan demo lokal.",
+                "status": WITHDRAWAL_STATUS_PENDING,
+                "npwp_snapshot": profiles["instruktur.demo"].npwp,
+                "bank_name_snapshot": profiles["instruktur.demo"].bank_name,
+                "bank_account_number_snapshot": profiles["instruktur.demo"].bank_account_number,
+                "bank_account_holder_snapshot": profiles["instruktur.demo"].bank_account_holder,
+            },
+        )
+        withdrawal.note = "Permintaan pencairan demo lokal."
+        withdrawal.status = WITHDRAWAL_STATUS_PENDING
+        withdrawal.npwp_snapshot = profiles["instruktur.demo"].npwp
+        withdrawal.bank_name_snapshot = profiles["instruktur.demo"].bank_name
+        withdrawal.bank_account_number_snapshot = profiles["instruktur.demo"].bank_account_number
+        withdrawal.bank_account_holder_snapshot = profiles["instruktur.demo"].bank_account_holder
+        withdrawal.save()
+
+        self.stdout.write(self.style.SUCCESS("Demo data seeded successfully."))
+        self.stdout.write("Test accounts:")
+        for account in DEMO_ACCOUNTS:
+            self.stdout.write(f"  - {account['username']} / {account['password']}")
+        self.stdout.write("Demo course slug: pelatihan-internal-audit-iso-9001-demo")
+        self.stdout.write("Demo referral code: AFFDEMO10")

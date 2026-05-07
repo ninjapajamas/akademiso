@@ -98,7 +98,8 @@ Project ini sekarang sudah punya konfigurasi Docker yang lebih cocok untuk produ
 - Frontend berjalan dengan `next build` lalu `next start`
 - Backend berjalan dengan `gunicorn`
 - Static files dikumpulkan otomatis saat startup
-- Database SQLite, media, dan static disimpan di Docker volume agar tetap ada saat redeploy
+- PostgreSQL berjalan sebagai service Docker terpisah
+- Data PostgreSQL, media, dan static disimpan di Docker volume agar tetap ada saat redeploy
 
 ### Cara menjalankan
 
@@ -120,8 +121,31 @@ Sebelum deploy, sangat disarankan set variabel berikut:
 DJANGO_SECRET_KEY=isi-secret-yang-kuat
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,domain-anda.com
 DJANGO_CSRF_TRUSTED_ORIGINS=https://domain-anda.com
+DJANGO_DB_ENGINE=postgresql
+POSTGRES_DB=akademiso
+POSTGRES_USER=akademiso
+POSTGRES_PASSWORD=password-postgres-yang-kuat
 NEXT_PUBLIC_API_URL=https://api.domain-anda.com
 ```
+
+Jika Anda ingin container otomatis membuat superuser saat startup:
+
+```bash
+DJANGO_CREATE_SUPERUSER=1
+DJANGO_SUPERUSER_USERNAME=admin
+DJANGO_SUPERUSER_EMAIL=admin@example.com
+DJANGO_SUPERUSER_PASSWORD=password-yang-kuat
+```
+
+Jika Anda ingin data dummy otomatis dibuat saat deploy:
+
+```bash
+DJANGO_LOAD_DEMO_DATA=1
+```
+
+Catatan:
+- `DJANGO_LOAD_DEMO_DATA=1` cocok untuk server demo, staging, atau local testing.
+- Untuk production sungguhan, sebaiknya tetap `0` agar data demo tidak ikut masuk.
 
 Jika server Anda sudah sepenuhnya memakai HTTPS di balik reverse proxy, Anda juga bisa mengaktifkan:
 
@@ -138,13 +162,14 @@ DJANGO_SECURE_HSTS_PRELOAD=1
 
 - Request server-side dari Next.js container menggunakan alamat internal Docker `http://backend:8000`.
 - Rewrite di Next.js tetap tersedia untuk `/api` dan `/media`.
-- Backend tetap memakai `SQLite` sebagai default, tetapi sekarang file databasenya persisten di volume Docker.
+- Backend mendukung `SQLite` untuk local non-Docker, tetapi stack Docker sekarang default ke `PostgreSQL`.
 - Saat startup, container backend otomatis menjalankan `migrate` dan `collectstatic`.
-- Untuk traffic besar, tetap lebih baik memindahkan database ke PostgreSQL.
+- Jika diaktifkan, container backend juga bisa otomatis menjalankan `ensure_superuser` dan `seed_data`.
+- Jika perlu fallback ke SQLite, set `DJANGO_DB_ENGINE=sqlite3` dan isi `DJANGO_DB_PATH`.
 
 ### Jika sebelumnya sudah pernah deploy
 
-Jika sebelumnya container backend Anda menyimpan database SQLite di filesystem container lama, backup dulu database lama sebelum menjalankan deploy baru. Setelah konfigurasi baru ini aktif, database default akan berada di volume Docker pada path `/app/data/db.sqlite3`.
+Jika sebelumnya container backend Anda menyimpan database SQLite di filesystem container lama, backup dulu database lama sebelum menjalankan deploy baru. Setelah konfigurasi baru ini aktif, database utama berjalan di volume PostgreSQL. Jika ingin memindahkan data lama, ekspor dulu dari SQLite lalu impor ke PostgreSQL.
 
 ## 📚 Dokumentasi API
 
