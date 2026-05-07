@@ -7,11 +7,6 @@ export function getServerApiBaseUrl() {
 }
 
 export function getClientApiBaseUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (configuredUrl) {
-    return configuredUrl.replace(/\/+$/, '');
-  }
-
   if (typeof window !== 'undefined') {
     const { hostname, origin, protocol } = window.location;
     const isPrivateNetworkHost =
@@ -25,7 +20,17 @@ export function getClientApiBaseUrl() {
       return `${protocol}//${hostname}:8000`;
     }
 
+    const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+    if (configuredUrl) {
+      return configuredUrl.replace(/\/+$/, '');
+    }
+
     return origin.replace(/\/+$/, '');
+  }
+
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, '');
   }
 
   return 'http://localhost:8000';
