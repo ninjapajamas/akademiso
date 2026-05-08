@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Pencil, RefreshCw, Tags, UserCheck, XCircle } from 'lucide-react';
 
@@ -50,7 +51,7 @@ const initialForm = {
 };
 
 export default function AdminReferralsPage() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
     const [codes, setCodes] = useState<ReferralCodeItem[]>([]);
     const [applications, setApplications] = useState<AffiliateApplication[]>([]);
     const [loading, setLoading] = useState(true);
@@ -576,3 +577,4 @@ export default function AdminReferralsPage() {
         </div>
     );
 }
+

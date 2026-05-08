@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -88,7 +89,7 @@ export default function CourseCard({ course }: CourseCardProps) {
                 return;
             }
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/cart/add_item/`, {
                 method: 'POST',
                 headers: {
@@ -251,3 +252,4 @@ export default function CourseCard({ course }: CourseCardProps) {
         </div>
     );
 }
+

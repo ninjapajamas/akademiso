@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import {
     Award,
@@ -413,7 +414,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
     useEffect(() => {
         const fetchCourse = async () => {
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const decodedSlug = decodeURIComponent(slug);
                 const res = await fetch(`${apiUrl}/api/courses/${decodedSlug}/`);
 
@@ -473,7 +474,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                 public_session_id: payload?.public_session_id || '',
             };
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/cart/add_item/`, {
                 method: 'POST',
                 headers: {
@@ -623,7 +624,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
         setInhouseError('');
 
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+            const apiUrl = getClientApiBaseUrl();
             const payload: Partial<InhouseTrainingRequest> = {
                 course: course.id,
                 company_name: inhouseForm.company_name,
@@ -1291,3 +1292,4 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
         </div>
     );
 }
+

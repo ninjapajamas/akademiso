@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, ExternalLink, FilePenLine, Search } from 'lucide-react';
@@ -43,7 +44,7 @@ export default function AdminCertificatesPage() {
     const [approvingCertificateId, setApprovingCertificateId] = useState<number | null>(null);
     const { showError, showSuccess } = useFeedbackModal();
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
 
     const fetchCertificates = useCallback(async () => {
         try {
@@ -325,3 +326,4 @@ export default function AdminCertificatesPage() {
         </div>
     );
 }
+

@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, use, useMemo } from 'react';
 import {
     PlayCircle,
@@ -99,7 +100,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
 
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/lessons/${lesson.id}/post-test-feedback/`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -163,7 +164,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         setSubmitting(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/lessons/${lesson.id}/quiz-attempt/`, {
                 method: 'POST',
                 headers: {
@@ -199,7 +200,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/lessons/${lesson.id}/post-test-feedback/`, {
                 method: 'POST',
                 headers: {
@@ -574,7 +575,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         // 1. Mark current lesson as complete in backend
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/lessons/${activeLesson.id}/complete/`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -636,7 +637,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         const fetchCourse = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/courses/${slug}/`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -687,7 +688,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         const trackAccess = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/lessons/${activeLesson.id}/access/`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -896,7 +897,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                         // Refresh course status to show marks
                                         const fetchCourseStatus = async () => {
                                             const token = localStorage.getItem('access_token');
-                                            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                                            const apiUrl = getClientApiBaseUrl();
                                             const res = await fetch(`${apiUrl}/api/courses/${slug}/`, {
                                                 headers: { 'Authorization': `Bearer ${token}` }
                                             });
@@ -1099,3 +1100,4 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         </div>
     );
 }
+

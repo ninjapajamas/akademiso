@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Image from 'next/image';
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -67,7 +68,7 @@ function SettingsPageContent() {
     const fetchProfile = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/profile/`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -99,7 +100,7 @@ function SettingsPageContent() {
         e.preventDefault();
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const { firstName, lastName } = splitFullName(profile.full_name);
             const normalizedEmail = profile.email.trim();
 
@@ -150,7 +151,7 @@ function SettingsPageContent() {
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             // For security, we use our existing admin reset password endpoint for self resets 
             // but we need a user ID. We can decode token for that.
@@ -499,3 +500,4 @@ export default function SettingsPage() {
         </Suspense>
     );
 }
+

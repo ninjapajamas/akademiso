@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useFeedbackModal } from '@/components/FeedbackModalProvider';
@@ -84,7 +85,7 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
     const fetchCurriculum = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const res = await fetch(`${apiUrl}/api/sections/?course_id=${courseId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -111,7 +112,7 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const res = await fetch(`${apiUrl}/api/sections/`, {
                 method: 'POST',
@@ -152,7 +153,7 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             await fetch(`${apiUrl}/api/sections/${sectionId}/`, {
                 method: 'DELETE',
@@ -175,7 +176,7 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
         try {
             setMaterialBankLoading(true);
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/lessons/bank/?content_type=lessons`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -200,7 +201,7 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
         try {
             setCopyingLessonId(lessonId);
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/lessons/${lessonId}/copy-to-course/`, {
                 method: 'POST',
                 headers: {
@@ -479,3 +480,4 @@ export default function CourseCurriculumContent({ courseId }: { courseId: string
         </div>
     );
 }
+

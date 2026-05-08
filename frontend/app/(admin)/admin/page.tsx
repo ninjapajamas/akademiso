@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Award, BookOpen, BriefcaseBusiness, GraduationCap, KeyRound, LayoutDashboard, Tags, Users } from 'lucide-react';
@@ -23,7 +24,7 @@ export default function AdminDashboard() {
         const fetchStats = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/stats/`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -134,3 +135,4 @@ export default function AdminDashboard() {
         </div>
     );
 }
+

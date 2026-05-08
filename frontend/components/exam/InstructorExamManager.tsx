@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, Calendar, Clock, Video, CheckCircle2, AlertCircle, Send, Edit2, CalendarRange } from 'lucide-react';
 import { CertificationExam, CertificationInstructorSlot } from '@/types';
@@ -76,7 +77,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
     const fetchExam = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-exams/?course=${courseId}`, {
                 headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
             });
@@ -113,7 +114,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
         if (!exam) return;
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-exams/${exam.id}/`, {
                 method: 'PATCH',
                 headers: {
@@ -140,7 +141,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
         setConfirming(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-exams/${exam.id}/confirm_availability/`, {
                 method: 'POST',
                 headers: {
@@ -166,7 +167,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
         if (!exam) return;
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-slots/`, {
                 method: 'POST',
                 headers: {
@@ -196,7 +197,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
     const updateSlot = async (slotId: number, updates: Partial<CertificationInstructorSlot>) => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             await fetch(`${apiUrl}/api/certification-slots/${slotId}/`, {
                 method: 'PATCH',
                 headers: {
@@ -215,7 +216,7 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
     const deleteSlot = async (slotId: number) => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             await fetch(`${apiUrl}/api/certification-slots/${slotId}/`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -506,3 +507,4 @@ export default function InstructorExamManager({ courseId, refreshKey = 0 }: Inst
         </div>
     );
 }
+

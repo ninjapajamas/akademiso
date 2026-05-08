@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -133,7 +134,7 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
                     return;
                 }
 
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const response = await fetch(`${apiUrl}/api/instructor/courses/`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -301,3 +302,4 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
         </div>
     );
 }
+

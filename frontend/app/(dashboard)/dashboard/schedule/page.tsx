@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AlertCircle, Calendar, CheckCircle2, ChevronRight, Clock, MapPin } from 'lucide-react';
@@ -424,7 +425,7 @@ export default function SchedulePage() {
                     return;
                 }
 
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const [coursesRes, attemptsRes] = await Promise.all([
                     fetch(`${apiUrl}/api/my-courses/?include_public=1`, {
                         headers: { 'Authorization': `Bearer ${token}` }
@@ -596,3 +597,4 @@ export default function SchedulePage() {
         </div>
     );
 }
+

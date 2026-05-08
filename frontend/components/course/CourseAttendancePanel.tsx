@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import { CheckCircle2, ClipboardList, FileSpreadsheet, FileText, XCircle } from 'lucide-react';
 
@@ -67,7 +68,7 @@ export default function CourseAttendancePanel({ courseId }: { courseId: number }
 
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/courses/${courseId}/attendance/`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -362,3 +363,4 @@ export default function CourseAttendancePanel({ courseId }: { courseId: number }
         </div>
     );
 }
+

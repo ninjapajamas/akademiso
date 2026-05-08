@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { use, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Award, ChevronLeft, ChevronRight, Clock, AlertCircle, Calendar, CalendarCheck2 } from 'lucide-react';
@@ -66,7 +67,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
     const fetchAttemptData = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const attemptRes = await fetch(`${apiUrl}/api/certification-attempts/${attemptId}/`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -125,7 +126,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
         setSubmitting(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const res = await fetch(`${apiUrl}/api/certification-attempts/${attemptId}/submit_exam/`, {
                 method: 'POST',
@@ -584,3 +585,4 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
         </div>
     );
 }
+

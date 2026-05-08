@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -26,7 +27,7 @@ export default function InstructorCoursesPage() {
     const fetchCourses = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/instructor/courses/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -326,3 +327,4 @@ export default function InstructorCoursesPage() {
         </div>
     );
 }
+

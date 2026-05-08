@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle, Clock, Filter, RefreshCw, Search, XCircle, type LucideIcon } from 'lucide-react';
 import { formatRupiah } from '@/types/currency';
@@ -46,7 +47,7 @@ export default function AccountantTransactionsPage() {
     const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
     const [updating, setUpdating] = useState<number | null>(null);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
 
     const fetchOrders = useCallback(async () => {
         setLoading(true);
@@ -245,3 +246,4 @@ export default function AccountantTransactionsPage() {
         </div>
     );
 }
+

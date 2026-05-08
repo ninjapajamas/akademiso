@@ -1,5 +1,6 @@
 "use client";
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import { Calendar, Lock, CircleAlert, CheckCircle2, Building2, Mail, Phone, User } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -55,7 +56,7 @@ function CheckoutContent() {
 
         const fetchCheckoutData = async () => {
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const [courseRes, profileRes] = await Promise.all([
                     fetch(`${apiUrl}/api/courses/${slug}/`),
                     fetch(`${apiUrl}/api/profile/`, {
@@ -356,3 +357,4 @@ export default function Checkout() {
         </Suspense>
     );
 }
+

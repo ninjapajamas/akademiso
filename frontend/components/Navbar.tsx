@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import { Search, Menu, X, ShieldCheck, User, LayoutDashboard, LogOut, ShoppingCart } from 'lucide-react';
 import { useState, useEffect, useSyncExternalStore } from 'react';
@@ -64,7 +65,7 @@ export default function Navbar() {
 
         const loadProfile = async () => {
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/profile/`, {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
@@ -304,3 +305,4 @@ export default function Navbar() {
         </nav>
     );
 }
+

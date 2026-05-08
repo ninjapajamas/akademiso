@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Save, Award, CheckCircle2, Users, Plus, Trash2, LayoutList, BriefcaseBusiness, LaptopMinimal, ClipboardList, Clock3 } from 'lucide-react';
@@ -328,7 +329,7 @@ export function SharedCourseFormPage({
     const supportsDetailSections = ['course', 'webinar', 'workshop'].includes(formData.type);
 
     useEffect(() => {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const apiUrl = getClientApiBaseUrl();
         const fetchDropdowns = async () => {
             const token = localStorage.getItem('access_token');
             const [instRes, catRes, profileRes] = await Promise.all([
@@ -656,7 +657,7 @@ export function SharedCourseFormPage({
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const url = isNew
                 ? `${apiUrl}/api/courses/`
                 : `${apiUrl}/api/courses/${id}/`;
@@ -759,7 +760,7 @@ export function SharedCourseFormPage({
         setAttendanceLoading(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/courses/${id}/webinar-attendance/`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -785,7 +786,7 @@ export function SharedCourseFormPage({
         setMarkingAttendanceUserId(userId);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/courses/${id}/webinar-attendance/`, {
                 method: 'POST',
                 headers: {
@@ -1787,3 +1788,4 @@ export default function CourseFormPage({ params }: { params: Promise<{ id: strin
     const { id } = use(params);
     return <SharedCourseFormPage courseId={id} />;
 }
+

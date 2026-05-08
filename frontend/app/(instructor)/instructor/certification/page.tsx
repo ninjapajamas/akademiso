@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Award, Calendar, Clock, Plus, Trash2, CheckCircle2, ChevronRight, X, AlertTriangle, CircleAlert, CircleCheckBig, Info } from 'lucide-react';
@@ -256,7 +257,7 @@ export default function InstructorCertificationPage() {
     const fetchData = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const [examRes, slotRes, attemptRes] = await Promise.all([
                 fetch(`${apiUrl}/api/certification-exams/`, {
@@ -308,7 +309,7 @@ export default function InstructorCertificationPage() {
         e.preventDefault();
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const res = await fetch(`${apiUrl}/api/certification-slots/`, {
                 method: 'POST',
@@ -353,7 +354,7 @@ export default function InstructorCertificationPage() {
         try {
             setDeletingSlotId(slotToDelete.id);
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-slots/${slotToDelete.id}/`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -420,7 +421,7 @@ export default function InstructorCertificationPage() {
         try {
             setReviewingAttemptId(attempt.id);
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-attempts/${attempt.id}/review_interview/`, {
                 method: 'POST',
                 headers: {
@@ -473,7 +474,7 @@ export default function InstructorCertificationPage() {
         setExportingExamKey(exportKey);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const endpoint = dataset === 'questions' ? 'export_questions' : 'export_attempts';
             const res = await fetch(`${apiUrl}/api/certification-exams/${examId}/${endpoint}/?format=${format}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -841,3 +842,4 @@ export default function InstructorCertificationPage() {
         </div>
     );
 }
+

@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
 import { Award, Copy, Eye, Expand, FileImage, ImagePlus, Plus, Save, Signature, Trash2, X } from 'lucide-react';
@@ -207,7 +208,7 @@ export default function AdminCertificateTemplatesPage() {
     const templatesRef = useRef<CertificateTemplate[]>([]);
     const { confirmAction, showAlert, showError, showSuccess } = useFeedbackModal();
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
     const token = () => localStorage.getItem('access_token');
 
     const activeCourse = courses.find(course => String(course.id) === form.course_id) || null;
@@ -1257,3 +1258,4 @@ export default function AdminCertificateTemplatesPage() {
         </div>
     );
 }
+

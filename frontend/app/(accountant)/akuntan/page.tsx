@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, CheckCircle2, Clock3, ReceiptText, WalletCards, XCircle } from 'lucide-react';
@@ -62,7 +63,7 @@ export default function AccountantDashboard() {
         const fetchStats = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/accountant/stats/`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -230,3 +231,4 @@ export default function AccountantDashboard() {
         </div>
     );
 }
+

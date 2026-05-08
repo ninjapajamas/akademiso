@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfileDisplayName, splitFullName } from '@/utils/profile';
@@ -51,7 +52,7 @@ export default function UsersPage() {
     const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
     const token = () => localStorage.getItem('access_token');
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -500,3 +501,4 @@ export default function UsersPage() {
         </div>
     );
 }
+

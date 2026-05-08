@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BookOpen, ArrowRight, Search, Filter, BarChart, CreditCard, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
@@ -109,7 +110,7 @@ export default function MyCoursesPage() {
                 return;
             }
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const attemptsRes = await fetch(`${apiUrl}/api/certification-attempts/`, {
                 headers: { 'Authorization': `Bearer ${accessToken}` }
             });
@@ -133,7 +134,7 @@ export default function MyCoursesPage() {
                 const token = localStorage.getItem('access_token');
                 if (!token) { window.location.href = '/login'; return; }
 
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const [coursesRes, profileRes, attemptsRes] = await Promise.all([
                     fetch(`${apiUrl}/api/my-courses/`, {
                         headers: { 'Authorization': `Bearer ${token}` }
@@ -246,7 +247,7 @@ export default function MyCoursesPage() {
         setMarkingAttendanceCourseId(courseId);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const form = attendanceForms[courseId] || {
                 attendee_name: '',
                 attendee_email: '',
@@ -666,3 +667,4 @@ export default function MyCoursesPage() {
         </div>
     );
 }
+

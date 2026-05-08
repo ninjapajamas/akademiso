@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
 import { Users, Search, BookOpen, CheckCircle, Clock } from 'lucide-react';
 
@@ -31,7 +32,7 @@ export default function InstructorStudentsPage() {
         const fetch_ = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/instructor/students/`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -145,3 +146,4 @@ export default function InstructorStudentsPage() {
         </div>
     );
 }
+

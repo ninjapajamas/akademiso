@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
@@ -261,7 +262,7 @@ export default function DashboardPage() {
 
         const fetchDashboardData = async () => {
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const headers = { Authorization: `Bearer ${token}` };
                 const [coursesRes, catalogRes, gamificationRes, leaderboardRes, activityRes, certificatesRes] = await Promise.all([
                     fetch(`${apiUrl}/api/my-courses/`, { headers }),
@@ -1258,3 +1259,4 @@ export default function DashboardPage() {
         </div>
     );
 }
+

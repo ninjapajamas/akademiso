@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CheckCircle2, ClipboardList, Plus, Save, Search, Trash2, Users, X } from 'lucide-react';
 import { Course, Instructor, Project, ProjectAssignment } from '@/types';
@@ -70,7 +71,7 @@ export default function ProjectManagerProjectsPage() {
     const [form, setForm] = useState<ProjectFormState>(defaultFormState);
     const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
     const token = () => localStorage.getItem('access_token');
 
     const fetchData = useCallback(async () => {
@@ -672,3 +673,4 @@ export default function ProjectManagerProjectsPage() {
         </div>
     );
 }
+

@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, ReceiptText, WalletCards, XCircle } from 'lucide-react';
 import { InstructorWithdrawalRequest } from '@/types';
@@ -62,7 +63,7 @@ export default function AccountantWithdrawalsPage() {
     const fetchWithdrawals = useCallback(async (nextFilter: string) => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const query = nextFilter !== 'ALL' ? `?status=${nextFilter}` : '';
             const response = await fetch(`${apiUrl}/api/accountant/withdrawals/${query}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -114,7 +115,7 @@ export default function AccountantWithdrawalsPage() {
         setActionLoading(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const response = await fetch(`${apiUrl}/api/accountant/withdrawals/${selectedRequest.id}/`, {
                 method: 'PATCH',
                 headers: {
@@ -315,3 +316,4 @@ export default function AccountantWithdrawalsPage() {
         </div>
     );
 }
+

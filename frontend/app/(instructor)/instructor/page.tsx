@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -136,7 +137,7 @@ export default function InstructorDashboard() {
         const fetchData = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/instructor/courses/`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -182,7 +183,7 @@ export default function InstructorDashboard() {
         setSubmittingWithdrawal(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const normalizedAmount = withdrawAmount.replace(/\./g, '').replace(/,/g, '.').trim();
 
             const response = await fetch(`${apiUrl}/api/instructor/withdrawals/`, {
@@ -557,3 +558,4 @@ export default function InstructorDashboard() {
         </div>
     );
 }
+

@@ -1,4 +1,5 @@
 "use client"
+import { getClientApiBaseUrl } from '@/utils/api';
 import Image from 'next/image';
 import { Clock, CreditCard, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -101,7 +102,7 @@ function PaymentContent() {
 
         const fetchCourse = async () => {
             try {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/courses/${slug}/`);
                 if (res.ok) {
                     const data: Course = await res.json();
@@ -129,7 +130,7 @@ function PaymentContent() {
         const handleSync = async () => {
             try {
                 const authToken = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 await fetch(`${apiUrl}/api/orders/${orderId}/sync/`, {
                     method: 'POST',
                     headers: {
@@ -171,7 +172,7 @@ function PaymentContent() {
         setIsProcessing(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const res = await fetch(`${apiUrl}/api/orders/`, {
                 method: 'POST',
@@ -223,7 +224,7 @@ function PaymentContent() {
         setReferralMessage('');
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const params = new URLSearchParams({
                 code: normalizedCode,
                 course: String(course.id),
@@ -566,3 +567,4 @@ export default function Payment() {
         </Suspense>
     );
 }
+

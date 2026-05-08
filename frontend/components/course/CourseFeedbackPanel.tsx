@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import { MessageSquareQuote, RefreshCcw } from 'lucide-react';
 import { CourseFeedbackEntry } from '@/types';
@@ -44,7 +45,7 @@ export default function CourseFeedbackPanel({ courseId, managedBy }: CourseFeedb
 
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/courses/${courseId}/feedback/`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -151,3 +152,4 @@ export default function CourseFeedbackPanel({ courseId, managedBy }: CourseFeedb
         </div>
     );
 }
+

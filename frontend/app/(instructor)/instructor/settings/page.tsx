@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { User, Mail, Lock, Shield, Save, Eye, EyeOff, Signature, Landmark } from 'lucide-react';
 import { getProfileDisplayName, splitFullName } from '@/utils/profile';
@@ -49,7 +50,7 @@ export default function InstructorSettingsPage() {
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
     const [pwError, setPwError] = useState('');
     const canEditEmail = !profile.email.trim();
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
     const { showError, showSuccess } = useFeedbackModal();
     const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const signatureDrawingRef = useRef(false);
@@ -668,3 +669,4 @@ export default function InstructorSettingsPage() {
         </div>
     );
 }
+

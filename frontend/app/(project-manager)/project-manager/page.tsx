@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BriefcaseBusiness, ClipboardCheck, Clock3, Users } from 'lucide-react';
@@ -52,7 +53,7 @@ export default function ProjectManagerDashboardPage() {
         const fetchStats = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/project-manager/stats/`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -192,3 +193,4 @@ export default function ProjectManagerDashboardPage() {
         </div>
     );
 }
+

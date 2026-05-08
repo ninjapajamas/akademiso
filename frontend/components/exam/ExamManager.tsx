@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, HelpCircle, FileText, Users, Send, AlertCircle, CheckCircle2, Edit2, Check, CalendarRange, Clock3 } from 'lucide-react';
 import { CertificationExam, CertificationAlternative } from '@/types';
@@ -89,7 +90,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
     const fetchExam = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-exams/?course=${courseId}`, {
                 headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
             });
@@ -126,7 +127,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         setSaving(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-exams/`, {
                 method: 'POST',
                 headers: {
@@ -163,7 +164,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         setSaving(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-exams/${exam.id}/`, {
                 method: 'PATCH',
                 headers: {
@@ -235,7 +236,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         setSavingQuestionId(questionId);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const formData = new FormData();
             formData.append('text', question.text);
             formData.append('order', String(Math.max(1, Number(question.order) || 1)));
@@ -278,7 +279,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         if (!exam) return;
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const defaultQuestionText = type === 'MC'
                 ? 'Tuliskan pertanyaan pilihan ganda di sini.'
                 : type === 'Essay'
@@ -339,7 +340,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         setExportingKey(exportKey);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const endpoint = dataset === 'questions' ? 'export_questions' : 'export_attempts';
             const res = await fetch(`${apiUrl}/api/certification-exams/${exam.id}/${endpoint}/?format=${format}`, {
                 headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
@@ -369,7 +370,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
     const addAlternative = async (questionId: number) => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-alternatives/`, {
                 method: 'POST',
                 headers: {
@@ -397,7 +398,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
     const updateAlternative = async (altId: number, updates: Partial<CertificationAlternative>) => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             await fetch(`${apiUrl}/api/certification-alternatives/${altId}/`, {
                 method: 'PATCH',
                 headers: {
@@ -417,7 +418,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
     const deleteAlternative = async (altId: number) => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             await fetch(`${apiUrl}/api/certification-alternatives/${altId}/`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -434,7 +435,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         setRequesting(true);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-exams/${exam.id}/request_instructor_availability/`, {
                 method: 'POST',
                 headers: {
@@ -824,7 +825,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                                     if (!shouldDelete) return;
                                     try {
                                         const token = localStorage.getItem('access_token');
-                                        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                                        const apiUrl = getClientApiBaseUrl();
                                         await fetch(`${apiUrl}/api/certification-questions/${q.id}/`, {
                                             method: 'DELETE',
                                             headers: { 'Authorization': `Bearer ${token}` }
@@ -979,3 +980,4 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
         </div>
     );
 }
+

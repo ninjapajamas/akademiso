@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import { Award, CalendarCheck2, CalendarRange, CheckCircle2, ChevronRight, Clock, Lock, RefreshCw, XCircle } from 'lucide-react';
 import { CertificationAttempt, CertificationExam, CertificationInstructorSlot, Course } from '@/types';
@@ -171,7 +172,7 @@ export default function StudentExamSection({
             const loadAttempts = async () => {
                 try {
                     const token = localStorage.getItem('access_token');
-                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                    const apiUrl = getClientApiBaseUrl();
                     const res = await fetch(`${apiUrl}/api/certification-attempts/`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
@@ -200,7 +201,7 @@ export default function StudentExamSection({
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-attempts/`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -242,7 +243,7 @@ export default function StudentExamSection({
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             setSubmittingExamId(exam.id);
 
             const res = await fetch(`${apiUrl}/api/certification-attempts/`, {
@@ -296,7 +297,7 @@ export default function StudentExamSection({
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/certification-attempts/${attempt.id}/cancel_schedule/`, {
                 method: 'POST',
                 headers: {
@@ -629,3 +630,4 @@ export default function StudentExamSection({
         </div>
     );
 }
+

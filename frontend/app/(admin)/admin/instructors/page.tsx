@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFeedbackModal } from '@/components/FeedbackModalProvider';
@@ -74,7 +75,7 @@ export default function InstructorsPage() {
     const { confirmAction, promptAction, showError, showSuccess } = useFeedbackModal();
 
     const token = () => localStorage.getItem('access_token');
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
 
     const fetchInstructors = useCallback(async () => {
         setLoading(true);
@@ -556,3 +557,4 @@ export default function InstructorsPage() {
         </div>
     );
 }
+

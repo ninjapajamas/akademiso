@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { FileText, Loader2, MessageCircleMore, MessageSquarePlus, Paperclip, Pencil, Plus, Send, Trash2, UserCircle2, X } from 'lucide-react';
 
 import { CourseDiscussionComment, CourseDiscussionTopic } from '@/types';
+import { getClientApiBaseUrl } from '@/utils/api';
 import { markForumCourseAsRead } from '@/utils/forumReadState';
 
 type CourseDiscussionForumProps = {
@@ -157,7 +158,7 @@ export default function CourseDiscussionForum({ courseSlug, courseTitle, canPart
     const [editingCommentContent, setEditingCommentContent] = useState('');
     const [editingCommentAttachment, setEditingCommentAttachment] = useState<File | null>(null);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
     const activeTopic = topics.find((topic) => topic.id === activeTopicId) || null;
 
     const sortTopics = (items: CourseDiscussionTopic[]) => (
@@ -782,3 +783,4 @@ export default function CourseDiscussionForum({ courseSlug, courseTitle, canPart
         </div>
     );
 }
+

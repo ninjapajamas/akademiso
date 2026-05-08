@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, FileText, Save } from 'lucide-react';
@@ -39,7 +40,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
     const [saving, setSaving] = useState(false);
 
     const [formData, setFormData] = useState<InstructorFormState>(createEmptyForm);
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getClientApiBaseUrl();
 
     const getFileUrl = (url?: string | null) => {
         if (!url) return '';
@@ -245,3 +246,4 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
         </div>
     );
 }
+

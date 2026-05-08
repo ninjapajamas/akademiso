@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ClipboardList } from 'lucide-react';
@@ -14,7 +15,7 @@ export default function AdminCourseAttendancePage({ params }: { params: Promise<
         const fetchCourse = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/courses/${id}/`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -55,3 +56,4 @@ export default function AdminCourseAttendancePage({ params }: { params: Promise<
         </div>
     );
 }
+

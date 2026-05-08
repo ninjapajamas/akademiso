@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import { BriefcaseBusiness, Building2, Mail, Phone } from 'lucide-react';
 import { InhouseTrainingRequest } from '@/types';
@@ -26,7 +27,7 @@ export default function InhouseRequestsPage() {
     const fetchRequests = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/inhouse-requests/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -50,7 +51,7 @@ export default function InhouseRequestsPage() {
         setSavingId(requestId);
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/inhouse-requests/${requestId}/`, {
                 method: 'PATCH',
                 headers: {
@@ -172,3 +173,4 @@ export default function InhouseRequestsPage() {
         </div>
     );
 }
+

@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface CartContextType {
@@ -20,7 +21,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/cart/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -55,3 +56,4 @@ export function useCart() {
     }
     return context;
 }
+

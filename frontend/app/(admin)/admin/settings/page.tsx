@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
 import { User, Mail, Lock, Shield, Save, Eye, EyeOff } from 'lucide-react';
 import { getProfileDisplayName, splitFullName } from '@/utils/profile';
@@ -46,7 +47,7 @@ export default function AdminSettingsPage() {
     const fetchProfile = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/profile/`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -77,7 +78,7 @@ export default function AdminSettingsPage() {
         e.preventDefault();
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const { firstName, lastName } = splitFullName(profile.full_name);
             const normalizedEmail = profile.email.trim();
 
@@ -128,7 +129,7 @@ export default function AdminSettingsPage() {
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const payload = JSON.parse(atob(token!.split('.')[1]));
             const userId = payload.user_id;
@@ -326,3 +327,4 @@ export default function AdminSettingsPage() {
         </div>
     );
 }
+

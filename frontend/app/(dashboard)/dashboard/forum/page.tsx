@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, ChevronRight, MessageSquare, Search } from 'lucide-react';
@@ -20,7 +21,7 @@ export default function DashboardForumPage() {
                     return;
                 }
 
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const response = await fetch(`${apiUrl}/api/my-courses/?include_public=1`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -133,3 +134,4 @@ export default function DashboardForumPage() {
         </div>
     );
 }
+

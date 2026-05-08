@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Upload, Video, FileText, HelpCircle, Plus, Trash2, CheckCircle2, Library, Search, X } from 'lucide-react';
@@ -221,7 +222,7 @@ export default function LessonFormContent({
         const fetchData = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
 
                 // Fetch sections for dropdown
                 const sectionsRes = await fetch(`${apiUrl}/api/sections/?course_id=${courseId}`, {
@@ -320,7 +321,7 @@ export default function LessonFormContent({
         try {
             setQuestionBankLoading(true);
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/lessons/bank/?content_type=questions`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -537,7 +538,7 @@ export default function LessonFormContent({
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
 
             const data = new FormData();
             data.append('course', courseId);
@@ -1184,3 +1185,4 @@ export default function LessonFormContent({
         </div>
     );
 }
+

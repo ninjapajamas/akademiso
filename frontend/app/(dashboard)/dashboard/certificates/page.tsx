@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useMemo, useState } from 'react';
 import { Award, CheckCircle2, Clock3, Download, ExternalLink, Search } from 'lucide-react';
 import { Certificate } from '@/types';
@@ -59,7 +60,7 @@ export default function CertificatesPage() {
                     return;
                 }
 
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const apiUrl = getClientApiBaseUrl();
                 const res = await fetch(`${apiUrl}/api/certificates/`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
@@ -251,3 +252,4 @@ export default function CertificatesPage() {
         </div>
     );
 }
+

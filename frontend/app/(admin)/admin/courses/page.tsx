@@ -1,5 +1,6 @@
 'use client';
 
+import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2, BookOpen } from 'lucide-react';
@@ -32,7 +33,7 @@ export default function CoursesPage() {
     const fetchCourses = useCallback(async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/courses/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -67,7 +68,7 @@ export default function CoursesPage() {
 
         try {
             const token = localStorage.getItem('access_token');
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/courses/${id}/`, {
                 method: 'DELETE',
                 headers: {
@@ -217,3 +218,4 @@ export default function CoursesPage() {
         </div>
     );
 }
+
