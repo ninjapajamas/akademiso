@@ -2,6 +2,7 @@ import json
 import random
 from decimal import Decimal
 from io import BytesIO
+from urllib.parse import quote
 
 from rest_framework import viewsets, generics, serializers
 from rest_framework.decorators import action
@@ -43,8 +44,11 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+from django.utils.text import slugify
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 
 try:
     import midtransclient
@@ -143,6 +147,85 @@ def _can_manage_project(user, project):
     return get_user_role(user) == STAFF_ROLE_PROJECT_MANAGER and project.created_by_id == user.id
 
 
+def _issue_auth_tokens_for_user(user):
+    from .serializers import CustomTokenObtainPairSerializer
+
+    refresh = CustomTokenObtainPairSerializer.get_token(user)
+    return {
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+    }
+
+
+def _generate_unique_username_from_email(email):
+    email_prefix = (email or '').split('@')[0].strip().lower()
+    base_username = slugify(email_prefix).replace('-', '') or 'user'
+    candidate = base_username[:30]
+    suffix_length = 6
+
+    while User.objects.filter(username__iexact=candidate).exists():
+        trimmed_base = base_username[: max(1, 30 - suffix_length)]
+        candidate = f"{trimmed_base}{get_random_string(suffix_length).lower()}"
+
+    return candidate
+
+
+def _verify_google_credential(credential):
+    client_ids = getattr(settings, 'GOOGLE_OAUTH_CLIENT_IDS', [])
+    if not client_ids:
+        raise serializers.ValidationError({
+            'credential': 'Login Google belum dikonfigurasi di server.'
+        })
+
+    request_adapter = google_requests.Request()
+    last_error = None
+
+    for client_id in client_ids:
+        try:
+            return google_id_token.verify_oauth2_token(
+                credential,
+                request_adapter,
+                client_id,
+            )
+        except ValueError as exc:
+            last_error = exc
+
+    raise serializers.ValidationError({
+        'credential': 'Token Google tidak valid atau client ID tidak cocok.'
+    }) from last_error
+
+
+def _sync_google_profile(user, payload):
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    google_sub = (payload.get('sub') or '').strip()
+    avatar_url = (payload.get('picture') or '').strip()
+
+    updated_fields = []
+
+    if google_sub and profile.google_sub != google_sub:
+        profile.google_sub = google_sub
+        updated_fields.append('google_sub')
+
+    if avatar_url and profile.google_avatar_url != avatar_url:
+        profile.google_avatar_url = avatar_url
+        updated_fields.append('google_avatar_url')
+
+    if updated_fields:
+        profile.save(update_fields=updated_fields)
+
+    user_updated_fields = []
+    if not user.first_name and payload.get('given_name'):
+        user.first_name = str(payload.get('given_name') or '').strip()
+        user_updated_fields.append('first_name')
+    if not user.last_name and payload.get('family_name'):
+        user.last_name = str(payload.get('family_name') or '').strip()
+        user_updated_fields.append('last_name')
+    if user_updated_fields:
+        user.save(update_fields=user_updated_fields)
+
+    return profile
+
+
 def _get_accountant_whatsapp_number():
     raw_value = str(getattr(settings, 'ACCOUNTANT_WHATSAPP_NUMBER', '6281390012014') or '').strip()
     digits = ''.join(ch for ch in raw_value if ch.isdigit())
@@ -154,7 +237,6 @@ def _build_accountant_whatsapp_url(message=''):
     base_url = f'https://wa.me/{whatsapp_number}'
     if not message:
         return base_url
-    from urllib.parse import quote
     return f'{base_url}?text={quote(message)}'
 
 
@@ -823,6 +905,61 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = (AllowAny,)
     serializer_class = RegisterSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+
+class GoogleAuthView(APIView):
+    permission_classes = [AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        credential = str(request.data.get('credential') or request.data.get('id_token') or '').strip()
+        if not credential:
+            return Response({'credential': 'Credential Google wajib dikirim.'}, status=400)
+
+        payload = _verify_google_credential(credential)
+        email = str(payload.get('email') or '').strip().lower()
+        google_sub = str(payload.get('sub') or '').strip()
+        email_verified = bool(payload.get('email_verified'))
+
+        if not email:
+            return Response({'credential': 'Akun Google tidak mengirim alamat email.'}, status=400)
+        if not email_verified:
+            return Response({'credential': 'Email Google Anda belum terverifikasi.'}, status=400)
+        if not google_sub:
+            return Response({'credential': 'Identitas Google tidak lengkap.'}, status=400)
+
+        profile = UserProfile.objects.select_related('user').filter(google_sub=google_sub).first()
+        user = profile.user if profile else User.objects.filter(email__iexact=email).first()
+        is_new_user = False
+
+        if user and not user.is_active:
+            return Response({'credential': 'Akun Anda sedang tidak aktif. Silakan hubungi admin.'}, status=403)
+
+        if not user:
+            user = User.objects.create_user(
+                username=_generate_unique_username_from_email(email),
+                email=email,
+                first_name=str(payload.get('given_name') or '').strip(),
+                last_name=str(payload.get('family_name') or '').strip(),
+            )
+            is_new_user = True
+
+        linked_profile = getattr(user, 'profile', None)
+        if linked_profile and linked_profile.google_sub and linked_profile.google_sub != google_sub:
+            return Response({
+                'credential': 'Email ini sudah terhubung ke akun Google lain. Silakan hubungi admin jika ini tidak sesuai.'
+            }, status=409)
+
+        _sync_google_profile(user, payload)
+        tokens = _issue_auth_tokens_for_user(user)
+
+        return Response({
+            **tokens,
+            'username': user.username,
+            'is_new_user': is_new_user,
+            'message': 'Login Google berhasil.' if not is_new_user else 'Akun berhasil dibuat dengan Google.',
+            'redirect_to': '/dashboard/settings?welcome=1&google=1' if is_new_user else '',
+        })
 
 
 class UserViewSet(viewsets.ModelViewSet):

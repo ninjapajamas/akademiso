@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { splitFullName } from '@/utils/profile';
 import { getClientApiBaseUrl } from '@/utils/api';
+import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
 import {
     ArrowRight, FileText, GraduationCap, Loader2,
     Lock, Mail, ShieldCheck, User, AlertCircle, Eye, EyeOff, X
@@ -304,6 +305,25 @@ export default function Register() {
                                 <GraduationCap className="w-4 h-4" />
                                 Trainer
                             </button>
+                        </div>
+
+                        <div className="space-y-3 rounded-xl border border-gray-200 bg-slate-50 px-4 py-4">
+                            <p className="text-sm font-semibold text-gray-800">
+                                {accountType === 'student' ? 'Daftar cepat dengan Google' : 'Mulai dengan Google'}
+                            </p>
+                            <GoogleAuthButton
+                                mode="register"
+                                onError={setError}
+                                note={accountType === 'student'
+                                    ? 'Akun Google baru akan langsung dibuat sebagai peserta.'
+                                    : 'Akun Google akan dibuat sebagai peserta terlebih dahulu. Setelah masuk, Anda bisa melengkapi data trainer dan mengajukan approval.'}
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
+                            <span className="h-px flex-1 bg-gray-200" />
+                            atau isi manual
+                            <span className="h-px flex-1 bg-gray-200" />
                         </div>
 
                         {accountType === 'instructor' && (

@@ -56,6 +56,8 @@ services:
       DJANGO_SUPERUSER_FIRST_NAME: "${DJANGO_SUPERUSER_FIRST_NAME:-Admin}"
       DJANGO_SUPERUSER_LAST_NAME: "${DJANGO_SUPERUSER_LAST_NAME:-Akademiso}"
       DJANGO_LOAD_DEMO_DATA: "${DJANGO_LOAD_DEMO_DATA:-0}"
+      GOOGLE_OAUTH_CLIENT_ID: "${GOOGLE_OAUTH_CLIENT_ID:-}"
+      GOOGLE_OAUTH_CLIENT_IDS: "${GOOGLE_OAUTH_CLIENT_IDS:-}"
       GUNICORN_WORKERS: "${GUNICORN_WORKERS:-3}"
       GUNICORN_TIMEOUT: "${GUNICORN_TIMEOUT:-120}"
     volumes:
@@ -69,6 +71,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: "${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}"
         BACKEND_INTERNAL_URL: "http://backend:8000"
     container_name: akademiso-frontend
     restart: unless-stopped
@@ -79,6 +82,7 @@ services:
     environment:
       NODE_ENV: "production"
       NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: "${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}"
       BACKEND_INTERNAL_URL: "http://backend:8000"
 
 volumes:

@@ -7,6 +7,7 @@ import { ShieldCheck, Mail, Lock, Loader2, ArrowRight, AlertCircle, Eye, EyeOff 
 import { Suspense } from 'react';
 import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
 import { getClientApiBaseUrl } from '@/utils/api';
+import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
 
 function LoginForm() {
     const router = useRouter();
@@ -222,6 +223,19 @@ function LoginForm() {
                                 </>
                             )}
                         </button>
+
+                        <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
+                            <span className="h-px flex-1 bg-gray-200" />
+                            atau
+                            <span className="h-px flex-1 bg-gray-200" />
+                        </div>
+
+                        <GoogleAuthButton
+                            mode="login"
+                            redirectTo={redirect || undefined}
+                            onError={setError}
+                            note="Jika email Google Anda sudah terdaftar di Akademiso, akun akan langsung dihubungkan ke sesi login ini."
+                        />
                     </form>
 
                     <div className="mt-8 text-center text-sm text-gray-500">

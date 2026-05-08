@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet, InstructorViewSet, ProjectViewSet, CourseViewSet, OrderViewSet,
     ReferralCodeViewSet,
-    RegisterView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
+    RegisterView, GoogleAuthView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
     SectionViewSet, StatsView, AccountantStatsView, ProjectManagerStatsView, InstructorCoursesView, InstructorStudentsView,
     AdminResetPasswordView, AdminEditUserView, AdminImpersonateView, ProfileView,
     MidtransNotificationView, QuizAttemptView, PostTestFeedbackView, CourseFeedbackListView, CompleteLessonView, AccessLessonView,
@@ -40,6 +40,7 @@ router.register(r'student-access-links', StudentAccessLinkViewSet)
 urlpatterns = [
     path('', include(router.urls)),
     path('register/', RegisterView.as_view(), name='auth_register'),
+    path('auth/google/', GoogleAuthView.as_view(), name='auth_google'),
     path('my-courses/', MyCoursesView.as_view(), name='my-courses'),
     path('gamification/summary/', GamificationSummaryView.as_view(), name='gamification-summary'),
     path('gamification/leaderboard/', GamificationLeaderboardView.as_view(), name='gamification-leaderboard'),

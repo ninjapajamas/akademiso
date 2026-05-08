@@ -48,6 +48,14 @@ CSRF_COOKIE_SECURE = os.getenv('DJANGO_CSRF_COOKIE_SECURE', '0') == '1'
 SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', '0'))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', '0') == '1'
 SECURE_HSTS_PRELOAD = os.getenv('DJANGO_SECURE_HSTS_PRELOAD', '0') == '1'
+GOOGLE_OAUTH_CLIENT_IDS = [
+    client_id.strip()
+    for client_id in os.getenv(
+        'GOOGLE_OAUTH_CLIENT_IDS',
+        os.getenv('GOOGLE_OAUTH_CLIENT_ID', ''),
+    ).split(',')
+    if client_id.strip()
+]
 
 
 # Application definition
