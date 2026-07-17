@@ -1489,3 +1489,32 @@ class SecurityAndProfileRegressionTests(APITestCase):
         self.assertFalse(profile.notify_email_schedule)
         self.assertTrue(profile.notify_email_promo)
         self.assertTrue(profile.notify_sms)
+
+    def test_free_order_ignores_referral_input_transport_field_and_completes(self):
+        instructor = Instructor.objects.create(name='Free Course Trainer')
+        course = Course.objects.create(
+            title='Free Regression Course',
+            slug='free-regression-course',
+            description='Free checkout regression test.',
+            price=Decimal('0'),
+            instructor=instructor,
+            duration='1 Jam',
+            is_free=True,
+            elearning_enabled=True,
+        )
+        self.client.force_authenticate(self.student)
+
+        response = self.client.post('/api/orders/', {
+            'course': course.id,
+            'offer_type': ORDER_OFFER_ELEARNING,
+            'offer_mode': '',
+            'public_session_id': '',
+            'referral_code_input': '',
+            'total_amount': '0',
+            'status': 'Pending',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(user=self.student, course=course)
+        self.assertEqual(order.status, 'Completed')
+        self.assertEqual(order.total_amount, Decimal('0'))

@@ -1285,6 +1285,12 @@ class OrderSerializer(serializers.ModelSerializer):
                 attrs['affiliate_commission_rate'] = referral_code.affiliate_commission_rate if referral_code and referral_code.owner_id else Decimal('0')
 
         return attrs
+
+    def create(self, validated_data):
+        # This field is only used to resolve a ReferralCode during validation;
+        # it is not a column on Order and must not reach Model.objects.create().
+        validated_data.pop('referral_code_input', None)
+        return super().create(validated_data)
     
     class Meta:
         model = Order
