@@ -154,10 +154,10 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
     const hasCurrentAnswer = currentAnswer.trim().length > 0;
     const isShortAnswerQuestion = currentQuestion.question_type === QUESTION_TYPE_SHORT_ANSWER;
 
-    const handleAnswerSelect = (answer: string) => {
+    const handleAnswerSelect = (answer: string | number) => {
         setAnswers({
             ...answers,
-            [currentQuestionId]: answer
+            [currentQuestionId]: String(answer)
         });
     };
 
@@ -469,7 +469,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                                     key={alt.id}
                                     onClick={() => handleAnswerSelect(alt.id)}
                                     className={`w-full text-left p-5 rounded-2xl border-2 transition-all flex items-center justify-between group
-                                        ${currentAnswer === alt.id
+                                        ${currentAnswer === alt.id.toString()
                                             ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-md'
                                             : 'border-gray-50 hover:border-gray-200 text-gray-600 hover:bg-gray-50'
                                         }
@@ -477,12 +477,12 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                                 >
                                     <span className="font-bold text-sm">{alt.text}</span>
                                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
-                                        ${currentAnswer === alt.id
+                                        ${currentAnswer === alt.id.toString()
                                             ? 'border-blue-600 bg-blue-600 text-white'
                                             : 'border-gray-200 group-hover:border-gray-300'
                                         }
                                     `}>
-                                        {currentAnswer === alt.id && <CheckCircle2 className="w-4 h-4" />}
+                                        {currentAnswer === alt.id.toString() && <CheckCircle2 className="w-4 h-4" />}
                                     </div>
                                 </button>
                             ))
