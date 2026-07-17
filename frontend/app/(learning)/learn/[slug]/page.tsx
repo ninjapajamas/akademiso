@@ -737,7 +737,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
     const dashOffset = 125.6 - (125.6 * progressPercentage) / 100;
 
     return (
-        <div className="flex flex-col h-[calc(100vh-6rem)]">
+        <div className="flex min-h-screen flex-col lg:h-[calc(100vh-6rem)] lg:min-h-0">
             {/* Header Navigation specific to Learning */}
             <div className="flex items-center gap-4 mb-6 px-6 pt-6">
                 <Link href="/dashboard/courses" className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
@@ -753,9 +753,9 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                 </div>
             </div>
 
-            <div className="flex flex-1 gap-6 overflow-hidden px-6 pb-6">
+            <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6 sm:px-6 lg:flex-row lg:overflow-hidden">
                 {/* Main Content */}
-                <div className="flex-1 flex flex-col overflow-y-auto pr-2 custom-scrollbar">
+                <div className="flex w-full min-w-0 flex-1 flex-col overflow-visible custom-scrollbar lg:overflow-y-auto lg:pr-2">
                     {/* Webinar Link Banner */}
                     {course.type === 'webinar' && course.zoom_link && (
                         <div className="relative mb-8 overflow-hidden rounded-3xl bg-gradient-to-r from-rose-600 to-rose-700 p-8 text-white shadow-xl shadow-rose-600/20">
@@ -1001,7 +1001,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                 </div>
 
                 {/* Sidebar (Module List) */}
-                <div className="w-96 bg-white border border-gray-100 rounded-[2.5rem] flex flex-col overflow-hidden shrink-0 sticky top-0 h-full shadow-2xl shadow-gray-200/50">
+                <div className="flex h-auto max-h-[60vh] w-full shrink-0 flex-col overflow-hidden rounded-[2.5rem] border border-gray-100 bg-white shadow-2xl shadow-gray-200/50 lg:sticky lg:top-0 lg:h-full lg:max-h-none lg:w-96">
                     <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
                         <div>
                             <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">Materi Kursus</h3>
