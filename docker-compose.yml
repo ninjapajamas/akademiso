@@ -70,6 +70,17 @@ services:
       - backend_data:/app/data
       - backend_media:/app/media
       - backend_static:/app/staticfiles
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.akademiso-api.rule=Host(`akademiso.isonesia.id`) && (PathPrefix(`/api`) || PathPrefix(`/media`))"
+      - "traefik.http.routers.akademiso-api.entrypoints=web"
+      - "traefik.http.routers.akademiso-api.priority=100"
+      - "traefik.http.routers.akademiso-api-secure.rule=Host(`akademiso.isonesia.id`) && (PathPrefix(`/api`) || PathPrefix(`/media`))"
+      - "traefik.http.routers.akademiso-api-secure.entrypoints=websecure"
+      - "traefik.http.routers.akademiso-api-secure.tls=true"
+      - "traefik.http.routers.akademiso-api-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.akademiso-api-secure.priority=100"
+      - "traefik.http.services.akademiso-api.loadbalancer.server.port=8000"
 
   frontend:
     build:
@@ -90,6 +101,15 @@ services:
       NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-}"
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: "${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}"
       BACKEND_INTERNAL_URL: "http://backend:8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.akademiso.rule=Host(`akademiso.isonesia.id`)"
+      - "traefik.http.routers.akademiso.entrypoints=web"
+      - "traefik.http.routers.akademiso-secure.rule=Host(`akademiso.isonesia.id`)"
+      - "traefik.http.routers.akademiso-secure.entrypoints=websecure"
+      - "traefik.http.routers.akademiso-secure.tls=true"
+      - "traefik.http.routers.akademiso-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.akademiso.loadbalancer.server.port=3000"
 
 volumes:
   postgres_data:
