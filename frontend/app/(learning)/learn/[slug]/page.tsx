@@ -80,12 +80,13 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
 
     const isPostTestLesson = lesson.type === 'final_test';
     const quiz = lesson.quiz_data as { questions?: any[]; pass_score?: number; time_limit?: number | null } | undefined;
+    const questions = quiz?.questions;
     const orderedQuestions = useMemo<any[]>(() => {
-        if (!quiz?.questions?.length) {
+        if (!questions?.length) {
             return [];
         }
-        return shuffleQuestions(quiz.questions);
-    }, [lesson.id, quiz?.questions]);
+        return shuffleQuestions(questions);
+    }, [questions]);
 
     useEffect(() => {
         if (!result || !isPostTestLesson) {
@@ -440,7 +441,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                         <h4 className="text-2xl font-bold text-gray-900 mt-4 leading-snug">{currentQuestion.text}</h4>
                         {currentQuestion.image_url && (
                             <div className="mt-5 overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 p-4">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                { }
                                 <img
                                     src={currentQuestion.image_url}
                                     alt={`Gambar pertanyaan ${currentQuestionIdx + 1}`}
@@ -704,7 +705,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         };
 
         trackAccess();
-    }, [activeLesson?.id]);
+    }, [activeLesson]);
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen">

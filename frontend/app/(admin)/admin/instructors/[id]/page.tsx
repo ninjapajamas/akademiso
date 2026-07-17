@@ -74,7 +74,7 @@ export default function InstructorFormPage({ params }: { params: Promise<{ id: s
             };
             fetchData();
         }
-    }, [id, isNew]);
+    }, [apiUrl, id, isNew]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

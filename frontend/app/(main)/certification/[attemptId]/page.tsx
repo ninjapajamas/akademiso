@@ -406,7 +406,7 @@ export default function CertificationExamPage({ params }: { params: Promise<{ at
 
                             {currentQuestion.image_url && (
                                 <div className="mb-8 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    { }
                                     <img
                                         src={currentQuestion.image_url}
                                         alt={`Gambar soal ${currentQuestionIdx + 1}`}

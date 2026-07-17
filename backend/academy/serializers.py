@@ -1463,6 +1463,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = (
             'avatar', 'phone', 'company', 'position', 'bio',
             'npwp', 'nik', 'bank_name', 'bank_account_number', 'bank_account_holder',
+            'notify_email_schedule', 'notify_email_certificate',
+            'notify_email_promo', 'notify_sms',
         )
 
 

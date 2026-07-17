@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { ArrowLeft, MailQuestion, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, MailQuestion } from 'lucide-react';
+import BrandMark from '@/components/BrandMark';
 
 export default function ForgotPasswordPage() {
     return (
@@ -8,9 +9,7 @@ export default function ForgotPasswordPage() {
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
                     <div className="p-8">
                         <Link href="/" className="mb-8 inline-flex items-center gap-2">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                                <ShieldCheck className="h-6 w-6 fill-current" />
-                            </div>
+                            <BrandMark className="h-12 w-12" priority />
                             <span className="text-2xl font-bold tracking-tight text-slate-900">Akademiso</span>
                         </Link>
 

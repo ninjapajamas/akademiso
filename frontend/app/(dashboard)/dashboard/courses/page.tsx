@@ -199,8 +199,8 @@ export default function MyCoursesPage() {
             Cancelled: 'bg-red-100 text-red-700',
         };
         const label: Record<string, string> = {
-            Completed: 'Selesai',
-            Pending: 'Berlangsung',
+            Completed: 'Lunas',
+            Pending: 'Menunggu Pembayaran',
             Cancelled: 'Dibatalkan',
         };
         return (
@@ -366,8 +366,8 @@ export default function MyCoursesPage() {
                         className="border-none outline-none bg-transparent font-medium text-gray-700 cursor-pointer"
                     >
                         <option value="all">Semua Status</option>
-                        <option value="Pending">Berlangsung</option>
-                        <option value="Completed">Selesai</option>
+                        <option value="Pending">Menunggu Pembayaran</option>
+                        <option value="Completed">Lunas</option>
                         <option value="Cancelled">Dibatalkan</option>
                     </select>
                 </div>

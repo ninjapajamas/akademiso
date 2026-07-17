@@ -204,6 +204,7 @@ export default function CartPage() {
                                                 <button
                                                     onClick={() => removeItem(item.id)}
                                                     className="rounded-full p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-700"
+                                                    aria-label={`Hapus ${item.course.title} dari keranjang`}
                                                 >
                                                     <Trash2 className="w-5 h-5" />
                                                 </button>

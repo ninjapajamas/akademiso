@@ -76,8 +76,8 @@ export default function InstructorSettingsPage() {
                     email: data.email,
                     phone: data.profile?.phone || '',
                     company: data.profile?.company || '',
-                    position: data.profile?.position || '',
-                    bio: data.profile?.bio || '',
+                    position: data.profile?.position || data.instructor?.title || '',
+                    bio: data.profile?.bio || data.instructor?.bio || '',
                     npwp: data.profile?.npwp || '',
                     nik: data.profile?.nik || '',
                     bank_name: data.profile?.bank_name || '',
@@ -273,23 +273,25 @@ export default function InstructorSettingsPage() {
         try {
             const token = localStorage.getItem('access_token');
 
-            const payload = JSON.parse(atob(token!.split('.')[1]));
-            const userId = payload.user_id;
-
-            const res = await fetch(`${apiUrl}/api/users/${userId}/reset-password/`, {
+            const res = await fetch(`${apiUrl}/api/profile/change-password/`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ password: passwords.new })
+                body: JSON.stringify({
+                    old_password: passwords.old,
+                    new_password: passwords.new,
+                })
             });
 
             if (res.ok) {
                 setPasswords({ old: '', new: '', confirm: '' });
                 await showSuccess('Kata sandi instruktur berhasil diperbarui.', 'Kata Sandi Diperbarui');
             } else {
-                setPwError('Gagal memperbarui kata sandi.');
+                const data = await res.json().catch(() => ({}));
+                const message = data.old_password || data.new_password?.[0] || data.new_password;
+                setPwError(message || 'Gagal memperbarui kata sandi.');
             }
         } catch {
             setPwError('Terjadi kesalahan sistem.');
@@ -323,7 +325,7 @@ export default function InstructorSettingsPage() {
                         <div className="relative group">
                             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-3xl shadow-lg overflow-hidden border-4 border-white">
                                 {profile.avatar ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
+
                                     <img src={resolveMediaUrl(profile.avatar) || ''} alt="Avatar" className="w-full h-full object-cover" />
                                 ) : (
                                     (profile.full_name?.trim().charAt(0) || 'I').toUpperCase()
@@ -455,7 +457,7 @@ export default function InstructorSettingsPage() {
 
                                     <div className="flex min-h-36 items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-slate-50 p-4">
                                         {profile.signature_image ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
+
                                             <img
                                                 src={resolveMediaUrl(profile.signature_image) || ''}
                                                 alt="Tanda tangan instruktur"

@@ -8,5 +8,6 @@ openpyxl
 reportlab
 gunicorn
 requests
+midtransclient
 whitenoise
 psycopg[binary]

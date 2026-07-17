@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Award, BookOpen, BriefcaseBusiness, GraduationCap, KeyRound, LayoutDashboard, LogOut, Menu, Settings, ShieldCheck, Tags, Users, X } from 'lucide-react';
+import { Award, BookOpen, BriefcaseBusiness, FolderTree, GraduationCap, KeyRound, LayoutDashboard, LogOut, Menu, ReceiptText, Settings, Tags, Users, X } from 'lucide-react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { clearStoredAuth, decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
+import BrandMark from '@/components/BrandMark';
 
 type AuthState = {
     authorized: boolean;
@@ -98,9 +99,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const menuItems = [
         { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
         { name: 'Courses', href: '/admin/courses', icon: BookOpen },
+        { name: 'Kategori', href: '/admin/categories', icon: FolderTree },
         { name: 'Inhouse Leads', href: '/admin/inhouse-requests', icon: BriefcaseBusiness },
         { name: 'Instructors', href: '/admin/instructors', icon: GraduationCap },
         { name: 'Students', href: '/admin/users', icon: Users },
+        { name: 'Transaksi', href: '/admin/orders', icon: ReceiptText },
         { name: 'Referral', href: '/admin/referrals', icon: Tags },
         { name: 'Access Links', href: '/admin/access-links', icon: KeyRound },
         { name: 'Sertifikat', href: '/admin/certificates', icon: Award },
@@ -120,9 +123,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-gray-100 bg-white transition-all duration-300 md:flex">
                 <div className="h-20 flex items-center px-6 border-b border-gray-50">
                     <Link href="/admin" className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shrink-0">
-                            <ShieldCheck className="w-5 h-5" />
-                        </div>
+                        <BrandMark className="h-10 w-10" priority />
                         <div className="font-bold text-lg text-gray-900">
                             Akademiso
                             <span className="block text-[10px] text-gray-500 font-normal">Admin Portal</span>
@@ -165,9 +166,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur md:hidden">
                 <div className="flex h-16 items-center justify-between px-4">
                     <Link href="/admin" className="flex items-center gap-2">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
-                            <ShieldCheck className="h-5 w-5" />
-                        </div>
+                        <BrandMark className="h-10 w-10" priority />
                         <div>
                             <div className="text-sm font-bold text-gray-900">Akademiso</div>
                             <div className="text-[10px] text-gray-500">Admin Portal</div>

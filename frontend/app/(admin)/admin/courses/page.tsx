@@ -198,12 +198,14 @@ export default function CoursesPage() {
                                             <Link
                                                 href={`/admin/courses/${course.id}`}
                                                 className="inline-flex p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                                aria-label={`Edit course ${course.title}`}
                                             >
                                                 <Edit className="w-4 h-4" />
                                             </Link>
                                             <button
                                                 onClick={() => handleDelete(course.id)}
                                                 className="inline-flex p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                                aria-label={`Hapus course ${course.title}`}
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>

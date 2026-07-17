@@ -1,6 +1,6 @@
 'use client';
 
-import { X, CheckCircle, ShoppingCart, ArrowRight } from 'lucide-react';
+import { CheckCircle, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 

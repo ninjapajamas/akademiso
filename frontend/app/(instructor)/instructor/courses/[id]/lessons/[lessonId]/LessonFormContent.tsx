@@ -880,7 +880,7 @@ export default function LessonFormContent({
                                                             </div>
                                                             {(questionImageFiles[q.client_id] || q.image_url) && (
                                                                 <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-3">
-                                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                    { }
                                                                     <img
                                                                         src={questionImageFiles[q.client_id]
                                                                             ? URL.createObjectURL(questionImageFiles[q.client_id] as File)

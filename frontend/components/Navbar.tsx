@@ -2,12 +2,13 @@
 
 import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
-import { Search, Menu, X, ShieldCheck, User, LayoutDashboard, LogOut, ShoppingCart } from 'lucide-react';
+import { Search, Menu, X, User, LayoutDashboard, LogOut, ShoppingCart } from 'lucide-react';
 import { useState, useEffect, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '../context/CartContext';
 import { clearStoredAuth, getPortalPathForRole } from '@/utils/auth';
 import type { UserProfilePayload } from '@/utils/profile';
+import BrandMark from './BrandMark';
 
 const WHATSAPP_URL = 'https://wa.me/6281390012014';
 
@@ -106,9 +107,7 @@ export default function Navbar() {
 
                     {/* Logo */}
                     <Link href="/" className="flex min-w-0 items-center gap-2 flex-shrink-0">
-                        <div className="w-9 h-9 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0">
-                            <ShieldCheck className="w-5 h-5 fill-current" />
-                        </div>
+                        <BrandMark className="h-10 w-10" priority />
                         <span className="truncate font-bold text-lg tracking-tight text-gray-900 sm:text-xl">Akademiso</span>
                     </Link>
 

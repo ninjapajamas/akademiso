@@ -10,7 +10,7 @@ import CourseFeedbackPanel from '@/components/course/CourseFeedbackPanel';
 import InstructorExamManager from '@/components/exam/InstructorExamManager';
 import { Category, Instructor, PublicTrainingSession, TrainingDetailSection } from '@/types';
 import { calculateEstimatedPph, calculateInstructorPayout, calculateNetAfterPph, calculatePlatformFee, formatNumberInput, formatRupiah, normalizePriceForApi, parseCurrencyValue } from '@/types/currency';
-import { createTodayDateTimeInputAtStartOfDay, formatApiDateTimeForInput, formatInputDateTimeForApi, normalizeDateTimeInputToStartOfDay } from '@/types/datetime';
+import { formatApiDateTimeForInput, formatInputDateTimeForApi, normalizeDateTimeInputToStartOfDay } from '@/types/datetime';
 import { buildRundownLine, parseRundownText, serializeRundownText } from '@/utils/rundown';
 
 type CourseType = 'course' | 'webinar' | 'workshop';
@@ -313,7 +313,6 @@ export function SharedCourseFormPage({
     const [webinarAttendance, setWebinarAttendance] = useState<WebinarAttendanceRow[]>([]);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
     const [markingAttendanceUserId, setMarkingAttendanceUserId] = useState<number | null>(null);
-    const [seededDateTimeFields, setSeededDateTimeFields] = useState<Partial<Record<'scheduled_at' | 'scheduled_end_at', string>>>({});
     const [examRefreshKey, setExamRefreshKey] = useState(0);
     const [rundownDraft, setRundownDraft] = useState({
         start_time: '',
@@ -435,11 +434,6 @@ export function SharedCourseFormPage({
 
         if (!isCheckbox && (name === 'scheduled_at' || name === 'scheduled_end_at')) {
             value = normalizeDateTimeInputToStartOfDay(String(value));
-            setSeededDateTimeFields(prev => {
-                const next = { ...prev };
-                delete next[name as 'scheduled_at' | 'scheduled_end_at'];
-                return next;
-            });
         }
 
         if (name === 'type') {
@@ -615,42 +609,6 @@ export function SharedCourseFormPage({
         });
     };
 
-    const seedDateTimeField = (field: 'scheduled_at' | 'scheduled_end_at') => {
-        if (formData[field]) {
-            return;
-        }
-
-        const seededValue = createTodayDateTimeInputAtStartOfDay();
-        if (!seededValue) {
-            return;
-        }
-
-        setFormData(prev => ({
-            ...prev,
-            [field]: seededValue
-        }));
-        setSeededDateTimeFields(prev => ({
-            ...prev,
-            [field]: seededValue
-        }));
-    };
-
-    const handleDateTimeFieldBlur = (field: 'scheduled_at' | 'scheduled_end_at') => {
-        const seededValue = seededDateTimeFields[field];
-        if (seededValue && formData[field] === seededValue) {
-            setFormData(prev => ({
-                ...prev,
-                [field]: ''
-            }));
-        }
-
-        setSeededDateTimeFields(prev => {
-            const next = { ...prev };
-            delete next[field];
-            return next;
-        });
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
@@ -702,8 +660,10 @@ export function SharedCourseFormPage({
             payload.append('discount_price', normalizePriceForApi(formData.discount_price));
             payload.append('type', formData.type);
             payload.append('delivery_mode', formData.type === 'webinar' ? 'online' : formData.delivery_mode);
-            payload.append('scheduled_at', formatInputDateTimeForApi(formData.scheduled_at) || '');
-            payload.append('scheduled_end_at', formatInputDateTimeForApi(formData.scheduled_end_at) || '');
+            const scheduledAt = formatInputDateTimeForApi(formData.scheduled_at);
+            const scheduledEndAt = formatInputDateTimeForApi(formData.scheduled_end_at);
+            if (scheduledAt) payload.append('scheduled_at', scheduledAt);
+            if (scheduledEndAt) payload.append('scheduled_end_at', scheduledEndAt);
             payload.append('location', formData.location);
             payload.append('zoom_link', formData.zoom_link);
             payload.append('is_free', String(formData.is_free));
@@ -970,7 +930,7 @@ export function SharedCourseFormPage({
                         <div className="grid gap-4 md:grid-cols-[220px_1fr]">
                             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 aspect-[4/3]">
                                 {formData.thumbnail_preview ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
+
                                     <img
                                         src={formData.thumbnail_preview}
                                         alt={formData.title || 'Preview course'}
@@ -1163,8 +1123,6 @@ export function SharedCourseFormPage({
                                     className="w-full px-4 py-2 border border-blue-300 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                                     value={formData.scheduled_at}
                                     onChange={handleChange}
-                                    onFocus={() => seedDateTimeField('scheduled_at')}
-                                    onBlur={() => handleDateTimeFieldBlur('scheduled_at')}
                                 />
                             </div>
                             <div>
@@ -1177,8 +1135,6 @@ export function SharedCourseFormPage({
                                     className="w-full px-4 py-2 border border-blue-300 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900"
                                     value={formData.scheduled_end_at}
                                     onChange={handleChange}
-                                    onFocus={() => seedDateTimeField('scheduled_end_at')}
-                                    onBlur={() => handleDateTimeFieldBlur('scheduled_end_at')}
                                 />
                             </div>
                         </div>

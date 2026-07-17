@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Django API routes use trailing slashes. Keep them intact so rewrites do
+  // not redirect POST requests such as /api/token/ to /api/token.
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     const backendUrl =
       process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";

@@ -4,10 +4,11 @@ import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Award, BookOpen, GraduationCap, LayoutDashboard, LogOut, MessageSquare, Settings, ShieldAlert, Users } from 'lucide-react';
+import { Award, BookOpen, LayoutDashboard, LogOut, MessageSquare, Settings, ShieldAlert, Users } from 'lucide-react';
 import { clearStoredAuth, decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
 import { countUnreadDiscussionCourses, subscribeForumBadgeChange } from '@/utils/forumReadState';
 import { Course } from '@/types';
+import BrandMark from '@/components/BrandMark';
 
 type InstructorAuthSnapshot = {
     hijackUser: string | null;
@@ -202,14 +203,16 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
         router.push('/admin/users');
     };
 
+    if (!authState.username || authState.redirectTo) {
+        return <div className="min-h-screen bg-gray-50" aria-busy="true" aria-label="Memeriksa akses Trainer" />;
+    }
+
     return (
         <div className="min-h-screen bg-gray-50 flex">
             <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-gray-100 bg-white md:flex">
                 <div className="h-20 flex items-center px-6 border-b border-gray-50">
                     <Link href="/instructor" className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
-                            <GraduationCap className="w-5 h-5" />
-                        </div>
+                        <BrandMark className="h-10 w-10" priority />
                         <div className="font-bold text-gray-900">
                             Akademiso
                             <span className="block text-[10px] text-gray-500 font-normal">Portal Trainer</span>

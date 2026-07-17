@@ -13,10 +13,10 @@ import {
     MessageSquare,
     Settings,
     ShieldAlert,
-    ShieldCheck,
     X,
 } from 'lucide-react';
 import { clearStoredAuth, decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
+import BrandMark from '@/components/BrandMark';
 
 type DashboardUser = {
     name: string;
@@ -199,9 +199,7 @@ export default function DashboardLayout({
             >
                 <div className="h-20 flex items-center px-6 border-b border-gray-50">
                     <Link href="/" className="flex items-center gap-2 overflow-hidden">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shrink-0">
-                            <ShieldCheck className="w-5 h-5" />
-                        </div>
+                        <BrandMark className="h-10 w-10" priority />
                         {isSidebarOpen && (
                             <div className="font-bold text-lg text-gray-900 duration-200">
                                 Akademiso
@@ -249,9 +247,7 @@ export default function DashboardLayout({
             <div className="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur md:hidden">
                 <div className="flex h-16 items-center justify-between px-4">
                     <Link href="/dashboard" className="flex items-center gap-2">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
-                            <ShieldCheck className="h-5 w-5" />
-                        </div>
+                        <BrandMark className="h-10 w-10" priority />
                         <div>
                             <div className="text-sm font-bold text-gray-900">Akademiso</div>
                             <div className="text-[10px] text-gray-500">Dashboard Peserta</div>

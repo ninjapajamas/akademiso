@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { splitFullName } from '@/utils/profile';
 import { getClientApiBaseUrl } from '@/utils/api';
 import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
+import BrandMark from '@/components/BrandMark';
+import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
 import {
     ArrowRight, FileText, GraduationCap, Loader2,
     Lock, Mail, ShieldCheck, User, AlertCircle, Eye, EyeOff, X
@@ -85,6 +87,13 @@ const termsSections = [
 
 export default function Register() {
     const router = useRouter();
+
+    useEffect(() => {
+        const payload = decodeJwtPayload(localStorage.getItem('access_token'));
+        if (payload && !isTokenExpired(payload)) {
+            router.replace(getPortalPathForRole(getRoleFromPayload(payload)));
+        }
+    }, [router]);
     const [accountType, setAccountType] = useState<AccountType>('student');
     const [formData, setFormData] = useState({
         full_name: '',
@@ -266,9 +275,7 @@ export default function Register() {
                 <div className="p-6 sm:p-8">
                     <div className="text-center mb-8">
                         <Link href="/" className="inline-flex items-center gap-2 mb-6">
-                            <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
-                                <ShieldCheck className="w-6 h-6 fill-current" />
-                            </div>
+                            <BrandMark className="h-12 w-12" priority />
                             <span className="font-bold text-2xl tracking-tight text-gray-900">Akademiso</span>
                         </Link>
                         <h1 className="text-2xl font-bold text-gray-900 mb-2">Buat Akun Baru</h1>

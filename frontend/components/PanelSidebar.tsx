@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Award, Users, CheckSquare, DollarSign, LogOut, Settings, Bell } from 'lucide-react';
+import { LayoutDashboard, Award, Users, CheckSquare, DollarSign } from 'lucide-react';
+import BrandMark from './BrandMark';
 
 const menuItems = [
     { name: 'Dasbor Utama', icon: LayoutDashboard, href: '/panel/dashboard' },
@@ -18,11 +19,7 @@ export default function PanelSidebar() {
     return (
         <aside className="w-64 bg-white border-r border-gray-100 min-h-screen fixed left-0 top-0 flex flex-col z-10">
             <div className="p-6 flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth="3">
-                        <path d="M5 13l4 4L19 7" />
-                    </svg>
-                </div>
+                <BrandMark className="h-10 w-10" priority />
                 <div>
                     <h1 className="font-bold text-gray-900 leading-none">Akademiso</h1>
                     <span className="text-[10px] font-bold text-gray-400 tracking-wider">PANEL SERTIFIKASI</span>

@@ -98,6 +98,19 @@ function CheckoutContent() {
 
     if (!course) return null;
 
+    if (profile?.role && profile.role !== 'student') {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+                <div className="max-w-lg rounded-3xl border border-amber-200 bg-white p-8 text-center shadow-sm">
+                    <CircleAlert className="mx-auto h-10 w-10 text-amber-500" />
+                    <h1 className="mt-4 text-2xl font-black text-gray-900">Checkout khusus akun peserta</h1>
+                    <p className="mt-2 text-sm leading-6 text-gray-600">Akun staf tidak dapat membeli pelatihan. Gunakan akun Student agar identitas peserta, akses belajar, dan sertifikat tercatat pada pemilik yang benar.</p>
+                    <Link href="/courses" className="mt-6 inline-flex rounded-full bg-blue-600 px-5 py-2.5 font-bold text-white hover:bg-blue-700">Kembali ke Daftar Pelatihan</Link>
+                </div>
+            </div>
+        );
+    }
+
     const selectedPublicSession = offer === 'public' ? getSelectedPublicSession(course, publicSessionId, offerMode) : null;
     const resolvedPublicMode = offerMode === 'offline' || selectedPublicSession?.delivery_mode === 'offline' ? 'offline' : 'online';
     const publicPriceSummary = resolvedPublicMode === 'offline'

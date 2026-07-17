@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ShieldCheck, Mail, Lock, Loader2, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { Suspense } from 'react';
-import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload } from '@/utils/auth';
+import { Mail, Lock, Loader2, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
 import { getClientApiBaseUrl } from '@/utils/api';
 import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
+import BrandMark from '@/components/BrandMark';
 
 function LoginForm() {
     const router = useRouter();
@@ -22,6 +22,13 @@ function LoginForm() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [fieldErrors, setFieldErrors] = useState<{ identifier?: string; password?: string }>({});
+
+    useEffect(() => {
+        const payload = decodeJwtPayload(localStorage.getItem('access_token'));
+        if (payload && !isTokenExpired(payload)) {
+            router.replace(getPortalPathForRole(getRoleFromPayload(payload)));
+        }
+    }, [router]);
 
     const parseLoginErrors = (data: unknown) => {
         if (!data || typeof data !== 'object') {
@@ -64,10 +71,14 @@ function LoginForm() {
         setError('');
         setFieldErrors({});
 
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
         try {
             const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/token/`, {
                 method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -93,6 +104,7 @@ function LoginForm() {
         } catch {
             setError('Terjadi kesalahan jaringan. Silakan coba lagi.');
         } finally {
+            window.clearTimeout(timeoutId);
             setIsLoading(false);
         }
     };
@@ -115,9 +127,7 @@ function LoginForm() {
                 <div className="p-8">
                     <div className="text-center mb-8">
                         <Link href="/" className="inline-flex items-center gap-2 mb-6">
-                            <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
-                                <ShieldCheck className="w-6 h-6 fill-current" />
-                            </div>
+                            <BrandMark className="h-12 w-12" priority />
                             <span className="font-bold text-2xl tracking-tight text-gray-900">Akademiso</span>
                         </Link>
                         <h1 className="text-2xl font-bold text-gray-900 mb-2">Selamat Datang Kembali</h1>

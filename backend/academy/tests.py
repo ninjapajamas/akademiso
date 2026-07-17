@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from .models import (
-    Alternative, CartItem, Certificate, CertificationAttempt, CertificationExam, Course, CourseDiscussionComment, CourseFeedback, Instructor,
+    Alternative, CartItem, Category, Certificate, CertificationAttempt, CertificationExam, Course, CourseDiscussionComment, CourseFeedback, Instructor,
     CertificationAlternative, CertificationInstructorSlot, CertificationQuestion,
     InstructorWithdrawalRequest, Lesson, Order, Question, Quiz, Section, UserLessonProgress, UserProfile, UserQuizAttempt,
     ORDER_OFFER_ELEARNING, ORDER_OFFER_PUBLIC, STAFF_ROLE_ACCOUNTANT, StudentAccessLink, StudentAccessLinkClaim, get_order_total_amount
@@ -1427,3 +1427,65 @@ class GamificationApiTests(APITestCase):
             if badge['earned']
         }
         self.assertTrue({'first_step', 'steady_learner', 'quiz_conqueror', 'perfect_score', 'course_finisher', 'certified_ready'}.issubset(earned_badges))
+
+
+class SecurityAndProfileRegressionTests(APITestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='security-student',
+            email='security@example.com',
+            password='OldSecurePass#2026',
+        )
+        self.admin = User.objects.create_superuser(
+            username='security-admin',
+            email='admin-security@example.com',
+            password='AdminSecurePass#2026',
+        )
+
+    def test_anonymous_user_cannot_write_categories(self):
+        response = self.client.post('/api/categories/', {
+            'name': 'Unauthorized',
+            'slug': 'unauthorized',
+        }, format='json')
+        self.assertIn(response.status_code, [401, 403])
+        self.assertFalse(Category.objects.filter(slug='unauthorized').exists())
+
+    def test_admin_can_write_categories(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post('/api/categories/', {
+            'name': 'Quality Management',
+            'slug': 'quality-management',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_user_can_change_own_password_with_old_password(self):
+        self.client.force_authenticate(self.student)
+        wrong_response = self.client.post('/api/profile/change-password/', {
+            'old_password': 'wrong-password',
+            'new_password': 'DifferentSecure#2026',
+        }, format='json')
+        self.assertEqual(wrong_response.status_code, 400)
+
+        response = self.client.post('/api/profile/change-password/', {
+            'old_password': 'OldSecurePass#2026',
+            'new_password': 'DifferentSecure#2026',
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password('DifferentSecure#2026'))
+
+    def test_notification_preferences_persist(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.patch('/api/profile/', {
+            'profile': {
+                'notify_email_schedule': False,
+                'notify_email_certificate': True,
+                'notify_email_promo': True,
+                'notify_sms': True,
+            },
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        profile = UserProfile.objects.get(user=self.student)
+        self.assertFalse(profile.notify_email_schedule)
+        self.assertTrue(profile.notify_email_promo)
+        self.assertTrue(profile.notify_sms)

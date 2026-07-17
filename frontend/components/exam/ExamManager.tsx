@@ -905,7 +905,7 @@ export default function ExamManager({ courseId, managedBy = 'admin', onExamChang
                                 </label>
                                 <div className="rounded-2xl border border-gray-100 bg-white p-3">
                                     {q.image_url ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
+
                                         <img
                                             src={q.image_url}
                                             alt={`Gambar untuk soal ${idx + 1}`}

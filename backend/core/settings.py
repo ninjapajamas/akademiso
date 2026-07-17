@@ -76,7 +76,11 @@ INSTALLED_APPS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'login': os.getenv('DJANGO_LOGIN_THROTTLE_RATE', '10/min'),
+        'password_change': os.getenv('DJANGO_PASSWORD_CHANGE_THROTTLE_RATE', '5/hour'),
+    },
 }
 
 from datetime import timedelta
@@ -184,6 +188,10 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Permit realistic training documents while keeping an explicit upper bound.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE', str(50 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('DJANGO_FILE_UPLOAD_MAX_MEMORY_SIZE', str(10 * 1024 * 1024)))
+
 # Midtrans Configuration
-MIDTRANS_SERVER_KEY = 'SB-Mid-server-_XqEtoAya225E9UDtzx3JHcc'
-MIDTRANS_IS_PRODUCTION = False # Set to True for production
+MIDTRANS_SERVER_KEY = os.getenv('MIDTRANS_SERVER_KEY', '').strip()
+MIDTRANS_IS_PRODUCTION = os.getenv('MIDTRANS_IS_PRODUCTION', '0') == '1'

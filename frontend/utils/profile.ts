@@ -18,6 +18,10 @@ export interface UserProfilePayload {
         bank_name?: string;
         bank_account_number?: string;
         bank_account_holder?: string;
+        notify_email_schedule?: boolean;
+        notify_email_certificate?: boolean;
+        notify_email_promo?: boolean;
+        notify_sms?: boolean;
     } | null;
     affiliate?: {
         status?: 'none' | 'pending' | 'approved' | 'rejected';

@@ -33,38 +33,19 @@ import {
 import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
 import { getRundownAgendaEntries } from '@/utils/rundown';
 
-const REVIEWS = [
-    {
-        name: 'Budi Santoso',
-        role: 'Quality Manager, PT Astra',
-        avatar: 'B',
-        color: 'bg-blue-500',
-        rating: 5,
-        date: 'Jan 2026',
-        likes: 24,
-        text: 'Materinya runut, mudah diikuti, dan langsung bisa dipakai untuk menyusun perbaikan proses di perusahaan.'
-    },
-    {
-        name: 'Siti Rahayu',
-        role: 'HSE Officer, Pertamina',
-        avatar: 'S',
-        color: 'bg-emerald-500',
-        rating: 5,
-        date: 'Des 2025',
-        likes: 17,
-        text: 'Bagian studi kasus dan diskusinya membantu sekali karena dekat dengan tantangan operasional sehari-hari.'
-    },
-    {
-        name: 'Ahmad Fauzi',
-        role: 'Lead Auditor, BCA',
-        avatar: 'A',
-        color: 'bg-indigo-500',
-        rating: 5,
-        date: 'Nov 2025',
-        likes: 13,
-        text: 'Format pelatihannya fleksibel. Tim kami akhirnya mengambil jalur inhouse karena kebutuhannya bisa sangat spesifik.'
-    },
-];
+type PublicReview = {
+    name: string;
+    role: string;
+    avatar: string;
+    color: string;
+    rating: number;
+    date: string;
+    likes: number;
+    text: string;
+};
+
+// Reviews must come from verified participants. Keep empty until the API supplies them.
+const REVIEWS: PublicReview[] = [];
 
 type TrainingOfferKey = 'public' | 'inhouse' | 'elearning';
 
@@ -301,14 +282,14 @@ function StarRow({ count, filled }: { count: number; filled: boolean }) {
 
 function ReviewsSection({ rating }: { rating: string | number }) {
     const [showAll, setShowAll] = useState(false);
-    const avg = Number(rating) || 4.9;
+    const avg = Number(rating) || 0;
     const displayed = showAll ? REVIEWS : REVIEWS.slice(0, 3);
     const dist = [
-        { stars: 5, pct: 74 },
-        { stars: 4, pct: 18 },
-        { stars: 3, pct: 5 },
-        { stars: 2, pct: 2 },
-        { stars: 1, pct: 1 },
+        { stars: 5, pct: 0 },
+        { stars: 4, pct: 0 },
+        { stars: 3, pct: 0 },
+        { stars: 2, pct: 0 },
+        { stars: 1, pct: 0 },
     ];
 
     return (
@@ -347,6 +328,11 @@ function ReviewsSection({ rating }: { rating: string | number }) {
             </div>
 
             <div className="grid gap-4">
+                {displayed.length === 0 && (
+                    <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
+                        Belum ada ulasan terverifikasi untuk pelatihan ini.
+                    </div>
+                )}
                 {displayed.map((review, index) => (
                     <div key={index} className="bg-white rounded-2xl border border-gray-100 p-6">
                         <div className="flex items-start gap-4">
@@ -539,7 +525,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
         : offlinePublicPriceSummary;
     const heroMetrics = [
         { label: 'Format Tersedia', value: `${availableOffers.length} Jalur` },
-        { label: 'Jumlah Peserta', value: `${(course?.enrolled_count || 0) + 1200}+` },
+        { label: 'Jumlah Peserta', value: String(course?.enrolled_count || 0) },
         { label: 'Durasi', value: course?.duration || 'Fleksibel' },
         { label: 'Bahasa', value: 'Indonesia' },
     ];
@@ -682,7 +668,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                     <div className="space-y-6 sm:space-y-8">
                         <section className="relative min-h-[240px] overflow-hidden rounded-3xl border border-gray-100 bg-slate-900 shadow-sm md:min-h-[440px]">
                             {course.thumbnail ? (
-                                // eslint-disable-next-line @next/next/no-img-element
+
                                 <img src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover" />
                             ) : (
                                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.55),_transparent_45%),linear-gradient(160deg,_#0f172a_0%,_#1d4ed8_120%)]" />
@@ -731,7 +717,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                 )}
                                 <div className="inline-flex items-center gap-2">
                                     <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                    <span>{Number(course.rating || 4.9).toFixed(1)} rating</span>
+                                    <span>{Number(course.rating || 0).toFixed(1)} rating</span>
                                 </div>
                             </div>
                         </section>
@@ -905,7 +891,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                 <div className="bg-white border border-blue-100 rounded-3xl p-6 md:p-8 flex flex-col sm:flex-row gap-6 items-start">
                                     <div className="w-20 h-20 rounded-full bg-gray-200 overflow-hidden relative flex-shrink-0">
                                         {course.instructor.photo ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
+
                                             <img src={course.instructor.photo} alt={course.instructor.name} className="w-full h-full object-cover" />
                                         ) : (
                                             <div className="w-full h-full bg-gradient-to-br from-blue-300 to-blue-600 flex items-center justify-center text-white font-bold text-2xl">
@@ -1274,7 +1260,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                         </div>
                                         <div className="flex justify-between gap-4">
                                             <span>Peserta</span>
-                                            <span className="font-medium text-gray-900">{(course.enrolled_count || 0) + 1200}+</span>
+                                            <span className="font-medium text-gray-900">{course.enrolled_count || 0}</span>
                                         </div>
                                         <div className="flex justify-between gap-4">
                                             <span>Bahasa</span>

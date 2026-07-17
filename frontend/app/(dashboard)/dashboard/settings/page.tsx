@@ -84,6 +84,12 @@ function SettingsPageContent() {
                     avatar: data.profile?.avatar || null
                 });
                 setAffiliate(data.affiliate || null);
+                setNotifs({
+                    email_schedule: data.profile?.notify_email_schedule ?? true,
+                    email_cert: data.profile?.notify_email_certificate ?? true,
+                    email_promo: data.profile?.notify_email_promo ?? false,
+                    sms: data.profile?.notify_sms ?? false,
+                });
             }
         } catch (e) {
             console.error('Failed to fetch profile:', e);
@@ -153,28 +159,59 @@ function SettingsPageContent() {
             const token = localStorage.getItem('access_token');
             const apiUrl = getClientApiBaseUrl();
 
-            // For security, we use our existing admin reset password endpoint for self resets 
-            // but we need a user ID. We can decode token for that.
-            const payload = JSON.parse(atob(token!.split('.')[1]));
-            const userId = payload.user_id;
-
-            const res = await fetch(`${apiUrl}/api/users/${userId}/reset-password/`, {
+            const res = await fetch(`${apiUrl}/api/profile/change-password/`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ password: passwords.new })
+                body: JSON.stringify({
+                    old_password: passwords.old,
+                    new_password: passwords.new,
+                })
             });
 
             if (res.ok) {
                 setPasswords({ old: '', new: '', confirm: '' });
                 await showSuccess('Password Anda berhasil diperbarui.', 'Password Diperbarui');
             } else {
-                setPwError('Gagal memperbarui password');
+                const data = await res.json().catch(() => ({}));
+                const message = data.old_password || data.new_password?.[0] || data.new_password;
+                setPwError(message || 'Gagal memperbarui password.');
             }
         } catch {
             setPwError('Kesalahan sistem');
+        }
+    };
+
+    const handleSaveNotifications = async () => {
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = getClientApiBaseUrl();
+            const res = await fetch(`${apiUrl}/api/profile/`, {
+                method: 'PATCH',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    profile: {
+                        notify_email_schedule: notifs.email_schedule,
+                        notify_email_certificate: notifs.email_cert,
+                        notify_email_promo: notifs.email_promo,
+                        notify_sms: notifs.sms,
+                    },
+                }),
+            });
+
+            if (!res.ok) {
+                await showError('Preferensi notifikasi belum bisa disimpan.', 'Penyimpanan Gagal');
+                return;
+            }
+
+            await showSuccess('Preferensi notifikasi berhasil disimpan.', 'Preferensi Tersimpan');
+        } catch {
+            await showError('Terjadi kesalahan jaringan saat menyimpan preferensi.', 'Koneksi Bermasalah');
         }
     };
 
@@ -470,6 +507,9 @@ function SettingsPageContent() {
                             </div>
                             <button
                                 type="button"
+                                role="switch"
+                                aria-checked={notifs[item.key as keyof typeof notifs]}
+                                aria-label={item.label}
                                 onClick={() => setNotifs(n => ({ ...n, [item.key]: !n[item.key as keyof typeof n] }))}
                                 className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors ${notifs[item.key as keyof typeof notifs] ? 'bg-blue-600' : 'bg-gray-200'}`}
                             >
@@ -479,7 +519,7 @@ function SettingsPageContent() {
                     ))}
                 </div>
                 <button
-                    onClick={() => void showSuccess('Preferensi notifikasi berhasil disimpan.', 'Preferensi Tersimpan')}
+                    onClick={() => void handleSaveNotifications()}
                     className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 mt-2"
                 >
                     <Save className="w-4 h-4" /> Simpan Preferensi

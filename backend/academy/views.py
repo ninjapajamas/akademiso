@@ -34,9 +34,12 @@ from .serializers import (
 )
 from .certificates import generate_certificate_pdf
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, BasePermission, SAFE_METHODS
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from datetime import datetime
 from django.db import transaction
 from django.db.models import Sum, Count, Max, Q
@@ -1038,6 +1041,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAdmin()]
+
 
 class InstructorViewSet(viewsets.ModelViewSet):
     queryset = Instructor.objects.select_related('user', 'approved_by').all()
@@ -1761,7 +1769,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if get_user_role(self.request.user) != STAFF_ROLE_ACCOUNTANT:
+        if get_user_role(self.request.user) not in {STAFF_ROLE_ACCOUNTANT, STAFF_ROLE_ADMIN}:
             qs = qs.filter(user=self.request.user)
         return qs
 
@@ -1777,6 +1785,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             serializer.instance.status = order.status
             serializer.instance.snap_token = order.snap_token
             serializer.instance.midtrans_id = order.midtrans_id
+            order.course.enrolled_count = max(order.course.enrolled_count, 0) + 1
+            order.course.save(update_fields=['enrolled_count'])
             return
 
         if midtransclient is None:
@@ -1786,11 +1796,13 @@ class OrderViewSet(viewsets.ModelViewSet):
             })
         
         # 2. Initialize Midtrans Snap
-        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
+        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', '')
         is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
-        
-        # Log for debugging (don't show full key)
-        print(f"DEBUG: Initializing Midtrans with key starting with: {server_key[:7]}...")
+        if not server_key:
+            order.delete()
+            raise serializers.ValidationError({
+                'error': 'MIDTRANS_SERVER_KEY belum dikonfigurasi pada server.'
+            })
         
         snap = midtransclient.Snap(
             is_production=is_production,
@@ -1818,8 +1830,6 @@ class OrderViewSet(viewsets.ModelViewSet):
             }
         }
         
-        print(f"DEBUG: Midtrans Parameters: {param}")
-        
         try:
             # 4. Get Snap Token from Midtrans
             transaction = snap.create_transaction(param)
@@ -1834,13 +1844,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             serializer.instance.snap_token = snap_token
             serializer.instance.midtrans_id = order.midtrans_id
             
-            print(f"DEBUG: Snap Token generated: {snap_token}")
         except Exception as e:
-            error_msg = f"Midtrans Error: {str(e)}"
-            print(f"CRITICAL: {error_msg}")
+            print(f"CRITICAL: Midtrans transaction initialization failed: {type(e).__name__}")
             # Delete the pending order since it failed to initialize payment
             order.delete()
-            raise serializers.ValidationError({"error": error_msg})
+            raise serializers.ValidationError({"error": "Pembayaran belum bisa dibuat. Silakan coba lagi."})
 
     @action(detail=True, methods=['post'])
     def sync(self, request, pk=None):
@@ -1851,8 +1859,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         if midtransclient is None:
             return Response({'error': 'Integrasi pembayaran Midtrans belum tersedia pada environment ini.'}, status=503)
 
-        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
+        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', '')
         is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
+        if not server_key:
+            return Response({'error': 'MIDTRANS_SERVER_KEY belum dikonfigurasi.'}, status=503)
         
         snap = midtransclient.Snap(
             is_production=is_production,
@@ -3120,8 +3130,10 @@ class MidtransNotificationView(APIView):
         if midtransclient is None:
             return Response({'error': 'Integrasi pembayaran Midtrans belum tersedia pada environment ini.'}, status=503)
 
-        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', 'SB-Mid-server-placeholder')
+        server_key = getattr(settings, 'MIDTRANS_SERVER_KEY', '')
         is_production = getattr(settings, 'MIDTRANS_IS_PRODUCTION', False)
+        if not server_key:
+            return Response({'error': 'MIDTRANS_SERVER_KEY belum dikonfigurasi.'}, status=503)
         
         snap = midtransclient.Snap(
             is_production=is_production,
@@ -3129,7 +3141,6 @@ class MidtransNotificationView(APIView):
         )
         
         data = request.data
-        print(f"DEBUG: Incoming Midtrans Notification: {data}")
         
         try:
             # Verify notification authenticity
@@ -3137,7 +3148,7 @@ class MidtransNotificationView(APIView):
             
             order_id = status_response['order_id']
             transaction_status = status_response['transaction_status']
-            fraud_status = status_response['fraud_status']
+            fraud_status = status_response.get('fraud_status')
             
             print(f"DEBUG: Midtrans Status: {transaction_status}, Fraud: {fraud_status} for Order: {order_id}")
             
@@ -3207,6 +3218,33 @@ class AdminResetPasswordView(APIView):
         user.set_password(new_password)
         user.save()
         return Response({'message': f'Password {user.username} berhasil direset.'})
+
+
+class ChangePasswordView(APIView):
+    """Allow an authenticated user to change only their own password."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_change'
+
+    def post(self, request):
+        old_password = str(request.data.get('old_password') or '')
+        new_password = str(request.data.get('new_password') or '')
+
+        if not request.user.check_password(old_password):
+            return Response({'old_password': 'Password lama tidak sesuai.'}, status=400)
+
+        try:
+            validate_password(new_password, user=request.user)
+        except DjangoValidationError as exc:
+            return Response({'new_password': list(exc.messages)}, status=400)
+
+        if old_password == new_password:
+            return Response({'new_password': 'Password baru harus berbeda dari password lama.'}, status=400)
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({'message': 'Password berhasil diperbarui. Silakan masuk kembali.'})
 
 
 class AdminEditUserView(APIView):
@@ -3582,6 +3620,8 @@ class ProfileView(APIView):
         profile_fields = [
             'phone', 'company', 'position', 'bio',
             'npwp', 'bank_name', 'bank_account_number', 'bank_account_holder',
+            'notify_email_schedule', 'notify_email_certificate',
+            'notify_email_promo', 'notify_sms',
         ]
         for field in profile_fields:
             if field in data:

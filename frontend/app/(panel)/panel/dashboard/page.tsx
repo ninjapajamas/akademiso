@@ -1,4 +1,4 @@
-import { ArrowUpRight, CheckCircle2, MoreHorizontal, Download, Plus, Filter } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, Download, Filter } from 'lucide-react';
 
 export default function PanelDashboard() {
     return (

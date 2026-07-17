@@ -439,6 +439,10 @@ class UserProfile(models.Model):
     affiliate_requested_at = models.DateTimeField(blank=True, null=True)
     affiliate_reviewed_at = models.DateTimeField(blank=True, null=True)
     affiliate_review_notes = models.TextField(blank=True, null=True)
+    notify_email_schedule = models.BooleanField(default=True)
+    notify_email_certificate = models.BooleanField(default=True)
+    notify_email_promo = models.BooleanField(default=False)
+    notify_sms = models.BooleanField(default=False)
     affiliate_reviewed_by = models.ForeignKey(
         User,
         blank=True,

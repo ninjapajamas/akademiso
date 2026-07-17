@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Copy, KeyRound, Link2, Plus, Power, Trash2, Users } from 'lucide-react';
 import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 import { getClientApiBaseUrl } from '@/utils/api';
@@ -49,7 +49,7 @@ export default function StudentAccessLinksPage() {
     const { showError, showSuccess, confirmAction } = useFeedbackModal();
     const frontendOrigin = typeof window === 'undefined' ? '' : window.location.origin;
 
-    const fetchLinks = async () => {
+    const fetchLinks = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch(`${apiUrl}/api/student-access-links/`, {
@@ -69,11 +69,11 @@ export default function StudentAccessLinksPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [apiUrl, showError]);
 
     useEffect(() => {
         void fetchLinks();
-    }, []);
+    }, [fetchLinks]);
 
     const handleCreate = async (event: React.FormEvent) => {
         event.preventDefault();

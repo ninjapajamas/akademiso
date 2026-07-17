@@ -232,7 +232,7 @@ export default function InstructorCoursesPage() {
                                         <div className="flex items-center gap-4">
                                             <div className="w-12 h-12 rounded-xl bg-indigo-50 overflow-hidden flex-shrink-0">
                                                 {course.thumbnail ? (
-                                                    <img src={course.thumbnail} className="w-full h-full object-cover" />
+                                                    <img src={course.thumbnail} alt={`Thumbnail ${course.title}`} className="w-full h-full object-cover" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center">
                                                         <BookOpen className="w-5 h-5 text-indigo-200" />

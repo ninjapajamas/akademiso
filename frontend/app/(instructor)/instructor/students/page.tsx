@@ -2,7 +2,7 @@
 
 import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
-import { Users, Search, BookOpen, CheckCircle, Clock } from 'lucide-react';
+import { Users, Search, BookOpen, CheckCircle } from 'lucide-react';
 
 interface Student {
     id: number;

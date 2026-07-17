@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BriefcaseBusiness, ClipboardList, LayoutDashboard, LogOut, ShieldAlert } from 'lucide-react';
+import { ClipboardList, LayoutDashboard, LogOut, ShieldAlert } from 'lucide-react';
 import { useEffect, useSyncExternalStore } from 'react';
 import { clearStoredAuth, decodeJwtPayload, getPortalPathForRole, getRoleFromPayload, isTokenExpired } from '@/utils/auth';
+import BrandMark from '@/components/BrandMark';
 
 type ProjectManagerAuthSnapshot = {
     hijackUser: string | null;
@@ -135,14 +136,16 @@ export default function ProjectManagerLayout({ children }: { children: React.Rea
         router.push('/admin/users');
     };
 
+    if (!authState.username || authState.redirectTo) {
+        return <div className="min-h-screen bg-amber-50" aria-busy="true" aria-label="Memeriksa akses Project Manager" />;
+    }
+
     return (
         <div className="min-h-screen bg-amber-50 flex">
             <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-amber-100 bg-white md:flex">
                 <div className="h-20 flex items-center px-6 border-b border-amber-50">
                     <Link href="/project-manager" className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center">
-                            <BriefcaseBusiness className="w-5 h-5" />
-                        </div>
+                        <BrandMark className="h-11 w-11" priority />
                         <div>
                             <div className="font-bold text-slate-900">Akademiso</div>
                             <div className="text-[11px] text-slate-500">Portal Manajer Proyek</div>

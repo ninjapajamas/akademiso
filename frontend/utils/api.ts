@@ -28,9 +28,10 @@ export function getClientApiBaseUrl() {
       try {
         const parsedUrl = new URL(configuredUrl);
         if (isLocalHostName(parsedUrl.hostname)) {
-          parsedUrl.hostname = hostname;
-          parsedUrl.protocol = protocol;
-          return parsedUrl.toString().replace(/\/+$/, '');
+          // A localhost API URL baked into a production build must not be
+          // rewritten to https://<public-host>:8000. Use the same-origin
+          // Next.js proxy instead; it can reach the backend internally.
+          return origin.replace(/\/+$/, '');
         }
       } catch {
         // Fallback to the configured value when it is not a valid absolute URL.
