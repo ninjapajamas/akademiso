@@ -3,13 +3,14 @@
 import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useCart } from '@/context/CartContext';
 import { Trash2, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useFeedbackModal } from '@/components/FeedbackModalProvider';
+import { getGuestCart, removeGuestCartItem } from '@/utils/guestCart';
+import CourseThumbnail from '@/components/CourseThumbnail';
 
 interface CartItem {
-    id: number;
+    id: number | string;
     course: {
         id: number;
         slug: string;
@@ -39,13 +40,19 @@ interface CartItem {
 export default function CartPage() {
     const [items, setItems] = useState<CartItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isGuest, setIsGuest] = useState(false);
     const { refreshCart } = useCart();
     const { confirmAction, showError, showSuccess } = useFeedbackModal();
 
     const fetchCart = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            if (!token) return;
+            if (!token) {
+                setIsGuest(true);
+                setItems(getGuestCart());
+                return;
+            }
+            setIsGuest(false);
 
             const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/cart/`, {
@@ -69,7 +76,7 @@ export default function CartPage() {
         fetchCart();
     }, []);
 
-    const removeItem = async (itemId: number) => {
+    const removeItem = async (itemId: number | string) => {
         const shouldDelete = await confirmAction({
             title: 'Hapus Item dari Keranjang?',
             message: 'Item transaksi ini akan dihapus dari keranjang belanja Anda.',
@@ -81,6 +88,13 @@ export default function CartPage() {
 
         try {
             const token = localStorage.getItem('access_token');
+            if (!token) {
+                removeGuestCartItem(String(itemId));
+                await fetchCart();
+                await refreshCart();
+                await showSuccess('Kursus berhasil dihapus dari keranjang.', 'Keranjang Diperbarui');
+                return;
+            }
             const apiUrl = getClientApiBaseUrl();
 
             const res = await fetch(`${apiUrl}/api/cart/remove_item/`, {
@@ -94,7 +108,7 @@ export default function CartPage() {
 
             if (res.ok) {
                 await fetchCart();
-                refreshCart();
+                await refreshCart();
                 await showSuccess('Kursus berhasil dihapus dari keranjang.', 'Keranjang Diperbarui');
             } else {
                 await showError('Kursus belum bisa dihapus dari keranjang.', 'Penghapusan Gagal');
@@ -167,11 +181,7 @@ export default function CartPage() {
                             {items.map((item) => (
                                 <div key={item.id} className="flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:gap-6 sm:p-6">
                                     <div className="relative h-40 w-full flex-shrink-0 overflow-hidden rounded-lg bg-gray-200 sm:h-24 sm:w-24">
-                                        {item.course.thumbnail ? (
-                                            <Image src={item.course.thumbnail} alt={item.course.title} fill className="object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Image</div>
-                                        )}
+                                        <CourseThumbnail imageUrl={item.course.thumbnail} title={item.course.title} />
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="mb-1 text-base font-bold text-gray-900 sm:text-lg">{item.course.title}</h3>
@@ -232,6 +242,11 @@ export default function CartPage() {
                                 <p className="mb-4 text-sm text-gray-500">
                                     Checkout dilakukan per item agar paket e-learning dan public training tetap mengikuti sesi yang dipilih.
                                 </p>
+                                {isGuest && (
+                                    <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                                        Anda dapat menyusun keranjang tanpa login. Login baru diminta saat melanjutkan checkout.
+                                    </div>
+                                )}
                                 {items.length === 1 ? (
                                     <Link href={getCheckoutHref(items[0])} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 font-bold text-white transition-colors hover:bg-blue-700 shadow-lg shadow-blue-600/20">
                                         Checkout Sekarang

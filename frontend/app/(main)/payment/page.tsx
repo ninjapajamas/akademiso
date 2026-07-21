@@ -1,11 +1,12 @@
 "use client"
 import { getClientApiBaseUrl } from '@/utils/api';
-import Image from 'next/image';
 import { Clock, CreditCard, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { Course, PublicTrainingSession } from '@/types';
 import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
+import { isRequiredProfileComplete, type UserProfilePayload } from '@/utils/profile';
+import CourseThumbnail from '@/components/CourseThumbnail';
 
 type PaymentOffer = 'elearning' | 'public';
 
@@ -76,6 +77,7 @@ function PaymentContent() {
     const [referralPreview, setReferralPreview] = useState<ReferralPreview | null>(null);
     const [referralLoading, setReferralLoading] = useState(false);
     const [referralMessage, setReferralMessage] = useState('');
+    const [profileComplete, setProfileComplete] = useState(true);
 
     const selectedPublicSession = offer === 'public' ? getSelectedPublicSession(course, publicSessionId, offerMode) : null;
     const resolvedPublicMode = offerMode === 'offline' || selectedPublicSession?.delivery_mode === 'offline' ? 'offline' : 'online';
@@ -103,12 +105,23 @@ function PaymentContent() {
         const fetchCourse = async () => {
             try {
                 const apiUrl = getClientApiBaseUrl();
-                const res = await fetch(`${apiUrl}/api/courses/${slug}/`);
+                const [res, profileRes] = await Promise.all([
+                    fetch(`${apiUrl}/api/courses/${slug}/`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                    fetch(`${apiUrl}/api/profile/`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                ]);
                 if (res.ok) {
                     const data: Course = await res.json();
                     setCourse(data);
                 } else {
                     router.push('/courses');
+                }
+                if (profileRes.ok) {
+                    const profileData: UserProfilePayload = await profileRes.json();
+                    setProfileComplete(isRequiredProfileComplete(profileData));
                 }
             } catch (error) {
                 console.error('Error fetching course:', error);
@@ -119,6 +132,10 @@ function PaymentContent() {
 
         fetchCourse();
     }, [paymentQuery, router, slug]);
+
+    const successRedirect = profileComplete
+        ? '/dashboard/courses'
+        : '/dashboard/settings?payment=success&welcome=1';
 
     // Midtrans Snap declaration
     const snapPay = (token: string, orderId: number) => {
@@ -146,7 +163,7 @@ function PaymentContent() {
             onSuccess: async (result) => {
                 console.log('Payment success:', result);
                 await handleSync();
-                router.push('/dashboard/courses');
+                router.push(successRedirect);
             },
             onPending: async (result) => {
                 console.log('Payment pending:', result);
@@ -196,7 +213,7 @@ function PaymentContent() {
                 if (data.snap_token) {
                     snapPay(data.snap_token, data.id);
                 } else {
-                    router.push('/dashboard/courses');
+                    router.push(successRedirect);
                 }
             } else {
                 const data = await res.json();
@@ -425,11 +442,7 @@ function PaymentContent() {
                             <div className="p-6">
                                 <div className="flex gap-4 mb-6">
                                     <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0 overflow-hidden">
-                                        {course.thumbnail ? (
-                                            <Image src={course.thumbnail} alt={course.title} width={64} height={64} unoptimized className="w-full h-full object-cover" />
-                                        ) : (
-                                            'ISO'
-                                        )}
+                                        <CourseThumbnail imageUrl={course.thumbnail} title={course.title} compact />
                                     </div>
                                     <div>
                                         <h4 className="font-bold text-gray-900 text-sm line-clamp-2">{course.title}</h4>

@@ -8,6 +8,7 @@ import { CertificationAttempt, EnrolledCourse } from '@/types';
 import { ParticipantIdentity } from '@/components/dashboard/ParticipantCard';
 import ParticipantCardModal from '@/components/dashboard/ParticipantCardModal';
 import StudentExamSection from '@/components/exam/StudentExamSection';
+import CourseThumbnail from '@/components/CourseThumbnail';
 
 interface ProfileResponse {
     username: string;
@@ -387,11 +388,7 @@ export default function MyCoursesPage() {
                             <div className="min-w-0">
                                 <div className="flex flex-col gap-5 sm:flex-row">
                                     <div className="w-full h-40 sm:h-28 sm:w-28 rounded-2xl flex-shrink-0 overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-                                        {enrollment.course.thumbnail ? (
-                                            <img src={enrollment.course.thumbnail} alt={enrollment.course.title} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <BookOpen className="w-10 h-10 text-white/80" />
-                                        )}
+                                        <CourseThumbnail imageUrl={enrollment.course.thumbnail} title={enrollment.course.title} />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex flex-wrap items-start justify-between gap-2 mb-2">

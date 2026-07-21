@@ -32,6 +32,8 @@ import {
 } from '@/utils/instructorProfile';
 import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
 import { getRundownAgendaEntries } from '@/utils/rundown';
+import { addCourseToGuestCart } from '@/utils/guestCart';
+import CourseThumbnail from '@/components/CourseThumbnail';
 
 type PublicReview = {
     name: string;
@@ -402,7 +404,10 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
             try {
                 const apiUrl = getClientApiBaseUrl();
                 const decodedSlug = decodeURIComponent(slug);
-                const res = await fetch(`${apiUrl}/api/courses/${decodedSlug}/`);
+                const token = localStorage.getItem('access_token');
+                const res = await fetch(`${apiUrl}/api/courses/${decodedSlug}/`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                });
 
                 if (!res.ok) {
                     setCourse(null);
@@ -445,20 +450,27 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
     }) => {
         if (!course) return;
 
+        if (course.is_enrolled && (payload?.offer_type || 'elearning') === 'elearning') {
+            await showError('Kursus ini sudah terdaftar pada akun Anda.', 'Sudah Terdaftar');
+            return;
+        }
+
         setIsAdding(true);
         try {
-            const token = localStorage.getItem('access_token');
-            if (!token) {
-                window.location.href = '/login';
-                return;
-            }
-
             const cartPayload = {
                 course_id: course.id,
                 offer_type: payload?.offer_type || 'elearning',
                 offer_mode: payload?.offer_mode || '',
                 public_session_id: payload?.public_session_id || '',
             };
+
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                addCourseToGuestCart(course, cartPayload);
+                setShowModal(true);
+                await refreshCart();
+                return;
+            }
 
             const apiUrl = getClientApiBaseUrl();
             const res = await fetch(`${apiUrl}/api/cart/add_item/`, {
@@ -476,13 +488,14 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                 return;
             }
 
-            if (res.status === 401) {
-                window.location.href = '/login';
+            if (res.status === 409) {
+                setCourse(previous => previous ? { ...previous, is_enrolled: true } : previous);
+                await showError('Kursus atau sesi ini sudah terdaftar pada akun Anda.', 'Sudah Terdaftar');
                 return;
             }
 
             const data = await res.json();
-            await showError(data.message || 'Kursus belum bisa ditambahkan ke keranjang.', 'Gagal Menambahkan');
+            await showError(data.error || data.message || 'Kursus belum bisa ditambahkan ke keranjang.', 'Gagal Menambahkan');
         } catch (error) {
             console.error('Error adding to cart:', error);
             await showError('Terjadi kesalahan koneksi saat menambahkan kursus ke keranjang.', 'Koneksi Bermasalah');
@@ -667,12 +680,9 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-8">
                     <div className="space-y-6 sm:space-y-8">
                         <section className="relative min-h-[240px] overflow-hidden rounded-3xl border border-gray-100 bg-slate-900 shadow-sm md:min-h-[440px]">
-                            {course.thumbnail ? (
-
-                                <img src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover" />
-                            ) : (
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.55),_transparent_45%),linear-gradient(160deg,_#0f172a_0%,_#1d4ed8_120%)]" />
-                            )}
+                            <div className="absolute inset-0">
+                                <CourseThumbnail imageUrl={course.thumbnail} title={course.title} />
+                            </div>
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent" />
                         </section>
 
@@ -1222,7 +1232,7 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                         <div className="space-y-3">
                                             {course.is_enrolled ? (
                                                 <Link href={`/learn/${course.slug}`} className="block w-full text-center rounded-full bg-emerald-600 text-white px-5 py-3.5 font-bold hover:bg-emerald-700 transition">
-                                                    Buka Pelatihan
+                                                    Sudah Terdaftar — Buka Pelatihan
                                                 </Link>
                                             ) : (
                                                 <>
@@ -1245,6 +1255,20 @@ export default function CourseDetailContent({ slug }: { slug: string }) {
                                                 <span>Belajar mandiri sesuai kurikulum yang sudah tersedia.</span>
                                             </div>
                                         </div>
+
+                                        {course.certificate_requirements && course.certificate_requirements.length > 0 && (
+                                            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                                                <p className="text-sm font-bold text-amber-900">Persyaratan Sertifikat</p>
+                                                <ul className="mt-3 space-y-2 text-sm text-amber-900">
+                                                    {course.certificate_requirements.map(requirement => (
+                                                        <li key={requirement} className="flex items-start gap-2">
+                                                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                                                            <span>{requirement}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
                                     </>
                                 )}
 

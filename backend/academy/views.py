@@ -33,6 +33,7 @@ from .serializers import (
     InstructorWithdrawalRequestSerializer, InstructorWithdrawalRequestCreateSerializer, InstructorWithdrawalRequestReviewSerializer
 )
 from .certificates import generate_certificate_pdf
+from .certificate_requirements import get_certificate_requirement_status
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, BasePermission, SAFE_METHODS
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -545,23 +546,12 @@ def _sync_certificate_readiness(certificate):
             _approve_certificate(certificate, approved_by=certificate.approved_by, force=True)
         return certificate
 
-    if certificate.exam is None:
-        attendance_exists = WebinarAttendance.objects.filter(
-            user=certificate.user,
-            course=certificate.course,
-            is_present=True,
-        ).exists()
-        if attendance_exists:
-            _approve_certificate(certificate, approved_by=None, force=True)
-        return certificate
-
-    passed_attempt = CertificationAttempt.objects.filter(
-        user=certificate.user,
+    requirement_status = get_certificate_requirement_status(
+        certificate.user,
+        certificate.course,
         exam=certificate.exam,
-        status='GRADED',
-        score__gte=certificate.exam.passing_percentage or 70,
-    ).exists()
-    if passed_attempt:
+    )
+    if requirement_status['eligible']:
         _approve_certificate(certificate, approved_by=None, force=True)
 
     return certificate
@@ -616,7 +606,7 @@ def _mark_webinar_attendance(course, user, marked_by, notes='', attendance_data=
         ])
 
     certificate, _ = _ensure_webinar_certificate_pending(user, course)
-    _approve_certificate(certificate, approved_by=None, force=True)
+    _sync_certificate_readiness(certificate)
     return attendance
 
 
@@ -671,6 +661,14 @@ def _finalize_attempt_certificate_if_eligible(attempt):
         certificate.approved_at = None
         certificate.certificate_url = ''
         certificate.save(update_fields=['approval_status', 'approved_by', 'approved_at', 'certificate_url'])
+    requirement_status = get_certificate_requirement_status(
+        attempt.user,
+        attempt.exam.course,
+        exam=attempt.exam,
+    )
+    if not requirement_status['eligible']:
+        return False
+
     _approve_certificate(certificate, approved_by=None, force=True)
     return True
 
@@ -961,7 +959,7 @@ class GoogleAuthView(APIView):
             'username': user.username,
             'is_new_user': is_new_user,
             'message': 'Login Google berhasil.' if not is_new_user else 'Akun berhasil dibuat dengan Google.',
-            'redirect_to': '/dashboard/settings?welcome=1&google=1' if is_new_user else '',
+            'redirect_to': '/courses' if is_new_user else '',
         })
 
 
@@ -2747,13 +2745,13 @@ class CertificationAttemptViewSet(viewsets.ModelViewSet):
 
         attempt.submitted_at = timezone.now()
         attempt.status = 'SUBMITTED' if requires_manual_review else 'GRADED'
-        if not requires_manual_review and attempt.score >= passing_percentage:
-            attempt.status = 'GRADED'
-            _finalize_attempt_certificate_if_eligible(attempt)
-        elif not requires_manual_review:
+        if not requires_manual_review:
             attempt.status = 'GRADED'
 
         attempt.save()
+
+        if not requires_manual_review and attempt.score >= passing_percentage:
+            _finalize_attempt_certificate_if_eligible(attempt)
 
         return Response(self.get_serializer(attempt).data)
 
@@ -3379,6 +3377,23 @@ class CartViewSet(viewsets.ViewSet):
 
             course = get_object_or_404(Course, id=course_id)
             offer_type, offer_mode, public_session_id = self._normalize_cart_offer(course, request.data)
+            enrollment_filters = {
+                'user': request.user,
+                'course': course,
+                'status': 'Completed',
+                'offer_type': offer_type,
+            }
+            if offer_type == ORDER_OFFER_PUBLIC:
+                enrollment_filters.update({
+                    'offer_mode': offer_mode,
+                    'public_session_id': public_session_id,
+                })
+            if Order.objects.filter(**enrollment_filters).exists():
+                return Response({
+                    'error': 'Kursus atau sesi ini sudah terdaftar pada akun Anda.',
+                    'is_enrolled': True,
+                }, status=409)
+
             total_amount = get_order_total_amount(
                 course,
                 offer_type=offer_type,

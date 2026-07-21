@@ -188,6 +188,24 @@ export interface Course {
     progress_percentage?: number;
     zoom_link?: string;
     is_enrolled?: boolean;
+    certificate_min_progress?: number;
+    certificate_require_all_quizzes_passed?: boolean;
+    certificate_require_profile_complete?: boolean;
+    certificate_require_attendance?: boolean;
+    certificate_custom_requirements?: string;
+    certificate_requirements?: string[];
+    certificate_eligibility?: {
+        eligible: boolean;
+        checks: Array<{
+            key: string;
+            label: string;
+            required: boolean;
+            met: boolean | null;
+            value?: number;
+            manual?: boolean;
+        }>;
+        unmet_requirements: string[];
+    } | null;
     certification_exams?: CertificationExam[];
     webinar_attendance?: WebinarAttendance | null;
     attendance_summary?: {

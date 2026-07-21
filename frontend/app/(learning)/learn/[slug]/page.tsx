@@ -1,7 +1,7 @@
 'use client';
 
 import { getClientApiBaseUrl } from '@/utils/api';
-import { useState, useEffect, use, useMemo } from 'react';
+import { useState, useEffect, use, useMemo, useCallback, useRef } from 'react';
 import {
     PlayCircle,
     CheckCircle,
@@ -29,7 +29,7 @@ const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
 const QUESTION_TYPE_SHORT_ANSWER = 'SHORT_ANSWER';
 const LESSON_TABS = [
     { key: 'deskripsi', label: 'Deskripsi' },
-    { key: 'sumber-daya', label: 'Sumber Daya' },
+    { key: 'sumber-daya', label: 'File Penunjang' },
 ] as const;
 const isAssessmentLesson = (type?: string) => ASSESSMENT_LESSON_TYPES.includes(type || '');
 const getLessonTypeLabel = (type?: string) => {
@@ -66,6 +66,8 @@ const shuffleQuestions = <T,>(items: T[]) => {
 };
 
 const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => void }) => {
+    const quiz = lesson.quiz_data as { questions?: any[]; pass_score?: number; time_limit?: number | null } | undefined;
+    const timeLimitSeconds = Math.max(0, Number(quiz?.time_limit || 0) * 60);
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
     const [answers, setAnswers] = useState<Record<string, string>>({});
     const [submitting, setSubmitting] = useState(false);
@@ -77,9 +79,10 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
     const [hasFeedback, setHasFeedback] = useState(false);
     const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
     const [feedbackError, setFeedbackError] = useState<string | null>(null);
+    const [secondsRemaining, setSecondsRemaining] = useState(timeLimitSeconds);
+    const autoSubmittedRef = useRef(false);
 
     const isPostTestLesson = lesson.type === 'final_test';
-    const quiz = lesson.quiz_data as { questions?: any[]; pass_score?: number; time_limit?: number | null } | undefined;
     const questions = quiz?.questions;
     const orderedQuestions = useMemo<any[]>(() => {
         if (!questions?.length) {
@@ -87,6 +90,59 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         }
         return shuffleQuestions(questions);
     }, [questions]);
+
+    const handleSubmit = useCallback(async () => {
+        setSubmitting(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = getClientApiBaseUrl();
+            const res = await fetch(`${apiUrl}/api/lessons/${lesson.id}/quiz-attempt/`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ answers })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setResult(data);
+            } else {
+                alert('Gagal mengirim jawaban. Silakan coba lagi.');
+            }
+        } catch (error) {
+            console.error('Quiz submission error:', error);
+            alert('Terjadi kesalahan koneksi.');
+        } finally {
+            setSubmitting(false);
+        }
+    }, [answers, lesson.id]);
+
+    useEffect(() => {
+        setSecondsRemaining(timeLimitSeconds);
+        autoSubmittedRef.current = false;
+    }, [lesson.id, timeLimitSeconds]);
+
+    useEffect(() => {
+        if (!timeLimitSeconds || result) return;
+        const timer = window.setInterval(() => {
+            setSecondsRemaining(previous => Math.max(previous - 1, 0));
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [result, timeLimitSeconds]);
+
+    useEffect(() => {
+        if (
+            timeLimitSeconds > 0
+            && secondsRemaining === 0
+            && !result
+            && !submitting
+            && !autoSubmittedRef.current
+        ) {
+            autoSubmittedRef.current = true;
+            void handleSubmit();
+        }
+    }, [handleSubmit, result, secondsRemaining, submitting, timeLimitSeconds]);
 
     useEffect(() => {
         if (!result || !isPostTestLesson) {
@@ -161,33 +217,6 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         });
     };
 
-    const handleSubmit = async () => {
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem('access_token');
-            const apiUrl = getClientApiBaseUrl();
-            const res = await fetch(`${apiUrl}/api/lessons/${lesson.id}/quiz-attempt/`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ answers })
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setResult(data);
-            } else {
-                alert('Gagal mengirim jawaban. Silakan coba lagi.');
-            }
-        } catch (error) {
-            console.error('Quiz submission error:', error);
-            alert('Terjadi kesalahan koneksi.');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
     const handleFeedbackSubmit = async () => {
         if (!feedbackForm.criticism.trim() && !feedbackForm.suggestion.trim()) {
             setFeedbackError('Isi kritik, saran, atau keduanya terlebih dahulu.');
@@ -242,6 +271,8 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         setHasFeedback(false);
         setFeedbackMessage(null);
         setFeedbackError(null);
+        setSecondsRemaining(timeLimitSeconds);
+        autoSubmittedRef.current = false;
     };
 
     if (result) {
@@ -411,9 +442,16 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
                             <span className="text-xs font-bold text-gray-600">Minimal Lulus {quiz.pass_score}%</span>
                         </div>
                         {quiz.time_limit && (
-                            <div className="flex items-center gap-3">
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                <span className="text-xs font-bold text-gray-600">Batas Waktu {quiz.time_limit} Menit</span>
+                            <div className={`rounded-2xl border p-4 ${secondsRemaining <= 60 ? 'border-red-200 bg-red-50' : 'border-blue-100 bg-white'}`}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="flex items-center gap-2 text-xs font-bold text-gray-600">
+                                        <Clock className="h-4 w-4" /> Sisa Waktu
+                                    </span>
+                                    <span className={`font-mono text-xl font-black tabular-nums ${secondsRemaining <= 60 ? 'text-red-600' : 'text-blue-700'}`}>
+                                        {String(Math.floor(secondsRemaining / 60)).padStart(2, '0')}:{String(secondsRemaining % 60).padStart(2, '0')}
+                                    </span>
+                                </div>
+                                <p className="mt-2 text-[11px] leading-4 text-gray-500">Jawaban dikirim otomatis saat waktu habis.</p>
                             </div>
                         )}
                     </div>
@@ -963,7 +1001,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                                             <FileText className="h-6 w-6" />
                                                         </div>
                                                         <div>
-                                                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Lampiran Materi</p>
+                                                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">File Penunjang</p>
                                                             <p className="mt-2 text-lg font-bold text-gray-900">{getAttachmentLabel(activeLesson) || 'Dokumen Materi'}</p>
                                                             <p className="mt-2 text-sm text-gray-500">Unduh file pendukung yang dibagikan trainer untuk materi ini.</p>
                                                         </div>
@@ -984,7 +1022,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                                                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-gray-400 shadow-sm">
                                                     <Download className="h-6 w-6" />
                                                 </div>
-                                                <p className="mt-5 font-semibold text-gray-700">Belum ada sumber daya yang dapat diunduh.</p>
+                                                <p className="mt-5 font-semibold text-gray-700">Belum ada file penunjang yang dapat diunduh.</p>
                                                 <p className="mt-2 text-sm text-gray-400">Jika trainer menambahkan lampiran atau bahan pendukung, file-nya akan muncul di tab ini.</p>
                                             </div>
                                         )

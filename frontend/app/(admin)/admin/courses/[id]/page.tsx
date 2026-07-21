@@ -53,6 +53,11 @@ interface CourseFormState {
     zoom_link: string;
     is_free: boolean;
     has_certification_exam: boolean;
+    certificate_min_progress: string;
+    certificate_require_all_quizzes_passed: boolean;
+    certificate_require_profile_complete: boolean;
+    certificate_require_attendance: boolean;
+    certificate_custom_requirements: string;
     thumbnail: File | null;
     thumbnail_preview: string;
     detail_sections: TrainingDetailSection[];
@@ -270,6 +275,11 @@ function createInitialFormData(): CourseFormState {
         zoom_link: '',
         is_free: false,
         has_certification_exam: false,
+        certificate_min_progress: '100',
+        certificate_require_all_quizzes_passed: true,
+        certificate_require_profile_complete: true,
+        certificate_require_attendance: false,
+        certificate_custom_requirements: '',
         thumbnail: null,
         thumbnail_preview: '',
         detail_sections: buildRecommendedDetailSections(),
@@ -395,6 +405,11 @@ export function SharedCourseFormPage({
                             zoom_link: data.zoom_link || '',
                             is_free: data.is_free || false,
                             has_certification_exam: data.has_certification_exam || false,
+                            certificate_min_progress: String(data.certificate_min_progress ?? 0),
+                            certificate_require_all_quizzes_passed: Boolean(data.certificate_require_all_quizzes_passed),
+                            certificate_require_profile_complete: Boolean(data.certificate_require_profile_complete),
+                            certificate_require_attendance: Boolean(data.certificate_require_attendance),
+                            certificate_custom_requirements: data.certificate_custom_requirements || '',
                             thumbnail: null,
                             thumbnail_preview: data.thumbnail || '',
                             detail_sections: normalizeDetailSections(data.detail_sections),
@@ -668,6 +683,11 @@ export function SharedCourseFormPage({
             payload.append('zoom_link', formData.zoom_link);
             payload.append('is_free', String(formData.is_free));
             payload.append('has_certification_exam', String(formData.has_certification_exam));
+            payload.append('certificate_min_progress', formData.certificate_min_progress || '0');
+            payload.append('certificate_require_all_quizzes_passed', String(formData.certificate_require_all_quizzes_passed));
+            payload.append('certificate_require_profile_complete', String(formData.certificate_require_profile_complete));
+            payload.append('certificate_require_attendance', String(formData.certificate_require_attendance));
+            payload.append('certificate_custom_requirements', formData.certificate_custom_requirements);
             payload.append('detail_sections', JSON.stringify(normalizedDetailSections));
             payload.append('public_training_enabled', String(formData.public_training_enabled));
             payload.append('public_training_intro', formData.public_training_intro);
@@ -782,7 +802,7 @@ export function SharedCourseFormPage({
     if (loading) return <div>Loading...</div>;
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6 pb-20">
+        <div className="mx-auto max-w-6xl space-y-6 px-1 pb-20 sm:px-2">
             <div className="flex items-center gap-4">
                 <Link href={listHref} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
                     <ChevronLeft className="w-5 h-5" />
@@ -830,7 +850,7 @@ export function SharedCourseFormPage({
                 </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6 lg:p-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Judul Kursus</label>
@@ -1212,6 +1232,61 @@ export function SharedCourseFormPage({
                             </label>
                         </div>
                     )}
+
+                    <div className="md:col-span-2 rounded-2xl border border-amber-200 bg-amber-50/60 p-5 sm:p-6">
+                        <div className="mb-5">
+                            <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                                <Award className="h-5 w-5 text-amber-600" /> Persyaratan Sertifikat
+                            </h2>
+                            <p className="mt-1 text-sm leading-6 text-gray-600">
+                                Admin dan instruktur dapat menentukan syarat yang diperiksa otomatis sebelum sertifikat diterbitkan.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label className="mb-1.5 block text-sm font-semibold text-gray-700">Minimal penyelesaian materi (%)</label>
+                                <input
+                                    type="number"
+                                    name="certificate_min_progress"
+                                    min="0"
+                                    max="100"
+                                    value={formData.certificate_min_progress}
+                                    onChange={handleChange}
+                                    className="w-full rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-gray-900 outline-none focus:ring-2 focus:ring-amber-300"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">Isi 0 jika progress materi tidak menjadi syarat.</p>
+                            </div>
+
+                            <div className="space-y-3 rounded-xl border border-amber-100 bg-white p-4">
+                                <label className="flex cursor-pointer items-start gap-3 text-sm font-semibold text-gray-800">
+                                    <input name="certificate_require_all_quizzes_passed" type="checkbox" checked={formData.certificate_require_all_quizzes_passed} onChange={handleChange} className="mt-0.5 h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+                                    Wajib lulus seluruh quiz, pre-test, dan post-test
+                                </label>
+                                <label className="flex cursor-pointer items-start gap-3 text-sm font-semibold text-gray-800">
+                                    <input name="certificate_require_profile_complete" type="checkbox" checked={formData.certificate_require_profile_complete} onChange={handleChange} className="mt-0.5 h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+                                    Wajib melengkapi profil peserta
+                                </label>
+                                <label className="flex cursor-pointer items-start gap-3 text-sm font-semibold text-gray-800">
+                                    <input name="certificate_require_attendance" type="checkbox" checked={formData.certificate_require_attendance} onChange={handleChange} className="mt-0.5 h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+                                    Wajib konfirmasi kehadiran
+                                </label>
+                            </div>
+
+                            <div className="sm:col-span-2">
+                                <label className="mb-1.5 block text-sm font-semibold text-gray-700">Persyaratan tambahan</label>
+                                <textarea
+                                    name="certificate_custom_requirements"
+                                    rows={3}
+                                    value={formData.certificate_custom_requirements}
+                                    onChange={handleChange}
+                                    placeholder="Contoh: Mengumpulkan studi kasus audit paling lambat 7 hari setelah pelatihan."
+                                    className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-gray-900 outline-none focus:ring-2 focus:ring-amber-300"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">Catatan tambahan ditampilkan kepada peserta dan diverifikasi manual oleh admin/instruktur.</p>
+                            </div>
+                        </div>
+                    </div>
 
                     {supportsDetailSections && (
                         <>

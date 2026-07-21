@@ -14,6 +14,7 @@ from .models import (
     ORDER_OFFER_ELEARNING, ORDER_OFFER_PUBLIC, STAFF_ROLE_ACCOUNTANT, StudentAccessLink, StudentAccessLinkClaim, get_order_total_amount
 )
 from .serializers import LessonSerializer
+from .certificate_requirements import get_certificate_requirement_status
 
 
 class CourseForumApiTests(APITestCase):
@@ -1176,6 +1177,71 @@ class CartOfferTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn('public_session_id', response.data)
+
+    def test_completed_enrollment_cannot_be_added_to_cart_or_ordered_again(self):
+        Order.objects.create(
+            user=self.user,
+            course=self.course,
+            offer_type=ORDER_OFFER_ELEARNING,
+            total_amount=Decimal('300000.00'),
+            status='Completed',
+        )
+
+        cart_response = self.client.post(
+            '/api/cart/add_item/',
+            {'course_id': self.course.id, 'offer_type': ORDER_OFFER_ELEARNING},
+            format='json',
+        )
+        self.assertEqual(cart_response.status_code, 409)
+        self.assertTrue(cart_response.data['is_enrolled'])
+
+        order_response = self.client.post(
+            '/api/orders/',
+            {
+                'course': self.course.id,
+                'offer_type': ORDER_OFFER_ELEARNING,
+                'total_amount': '300000.00',
+                'status': 'Pending',
+            },
+            format='json',
+        )
+        self.assertEqual(order_response.status_code, 400)
+        self.assertIn('course', order_response.data)
+
+    def test_certificate_requirements_report_progress_and_profile(self):
+        self.course.certificate_min_progress = 100
+        self.course.certificate_require_profile_complete = True
+        self.course.save(update_fields=['certificate_min_progress', 'certificate_require_profile_complete'])
+        section = Section.objects.create(course=self.course, title='Materi Utama', order=1)
+        lesson = Lesson.objects.create(
+            course=self.course,
+            section=section,
+            title='Pengantar',
+            type='article',
+            order=1,
+        )
+        Order.objects.create(
+            user=self.user,
+            course=self.course,
+            offer_type=ORDER_OFFER_ELEARNING,
+            total_amount=Decimal('300000.00'),
+            status='Completed',
+        )
+
+        initial_status = get_certificate_requirement_status(self.user, self.course)
+        self.assertFalse(initial_status['eligible'])
+        self.assertIn('Selesaikan minimal 100% materi', initial_status['unmet_requirements'])
+
+        profile, _ = UserProfile.objects.get_or_create(user=self.user)
+        self.user.first_name = 'Peserta'
+        self.user.save(update_fields=['first_name'])
+        profile.phone = '08123456789'
+        profile.company = 'PT Uji'
+        profile.save(update_fields=['phone', 'company'])
+        UserLessonProgress.objects.create(user=self.user, lesson=lesson, is_completed=True)
+
+        final_status = get_certificate_requirement_status(self.user, self.course)
+        self.assertTrue(final_status['eligible'])
 
     def test_course_level_public_mode_price_supports_discount_and_fallback_session(self):
         fallback_course = Course.objects.create(

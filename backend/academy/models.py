@@ -547,6 +547,14 @@ class Course(models.Model):
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
     has_certification_exam = models.BooleanField(default=False)
+    certificate_min_progress = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Persentase minimal penyelesaian materi untuk penerbitan sertifikat.",
+    )
+    certificate_require_all_quizzes_passed = models.BooleanField(default=False)
+    certificate_require_profile_complete = models.BooleanField(default=False)
+    certificate_require_attendance = models.BooleanField(default=False)
+    certificate_custom_requirements = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     rating = models.DecimalField(max_digits=3, decimal_places=1, default=0.0)
     enrolled_count = models.IntegerField(default=0)

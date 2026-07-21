@@ -2,12 +2,13 @@
 
 import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
-import { Calendar, Lock, CircleAlert, CheckCircle2, Building2, Mail, Phone, User } from 'lucide-react';
+import { Calendar, Lock, CircleAlert, Building2, Mail, Phone, User } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { Course } from '@/types';
-import { getProfileDisplayName, getRequiredProfileMissingFields, isRequiredProfileComplete, type UserProfilePayload } from '@/utils/profile';
+import { getProfileDisplayName, type UserProfilePayload } from '@/utils/profile';
 import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
+import CourseThumbnail from '@/components/CourseThumbnail';
 
 type CheckoutOffer = 'elearning' | 'public';
 
@@ -132,8 +133,6 @@ function CheckoutContent() {
     const phone = profile?.profile?.phone?.trim() || '-';
     const company = profile?.profile?.company?.trim() || '-';
     const position = profile?.profile?.position?.trim() || '-';
-    const missingFields = getRequiredProfileMissingFields(profile);
-    const canProceed = isRequiredProfileComplete(profile);
 
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
@@ -145,7 +144,7 @@ function CheckoutContent() {
 
                         <div className="flex flex-col items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
-                            <span className="text-[11px] font-bold text-blue-600 sm:text-xs">Identitas</span>
+                            <span className="text-[11px] font-bold text-blue-600 sm:text-xs">Pesanan</span>
                         </div>
                         <div className="flex flex-col items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center font-bold text-sm">2</div>
@@ -157,8 +156,8 @@ function CheckoutContent() {
                         </div>
                     </div>
 
-                    <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Konfirmasi Identitas</h1>
-                    <p className="mt-1 text-sm leading-relaxed text-gray-500 sm:text-base">Checkout menggunakan preview identitas dari halaman pengaturan akun Anda.</p>
+                    <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Konfirmasi Pesanan</h1>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-500 sm:text-base">Profil peserta dapat dilengkapi setelah pembayaran berhasil.</p>
                 </div>
             </div>
 
@@ -170,39 +169,16 @@ function CheckoutContent() {
                                 <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
                                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
-                                            <h2 className="text-lg font-bold text-gray-900">Preview Identitas Peserta</h2>
+                                            <h2 className="text-lg font-bold text-gray-900">Informasi Akun Saat Ini</h2>
                                             <p className="mt-1 text-sm text-gray-500">
-                                                Data ini tidak diisi ulang di checkout. Jika ada yang perlu diperbaiki, ubah dulu di pengaturan akun.
+                                                Data yang belum lengkap tidak menghalangi pembayaran. Anda akan diarahkan untuk melengkapinya setelah pembayaran berhasil.
                                             </p>
                                         </div>
-                                        {canProceed ? (
-                                                <div className="inline-flex shrink-0 self-start whitespace-nowrap items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                                                <CheckCircle2 className="w-4 h-4" />
-                                                Profil Siap
-                                            </div>
-                                        ) : (
-                                                <div className="inline-flex shrink-0 self-start whitespace-nowrap items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
-                                                <CircleAlert className="w-4 h-4" />
-                                                Profil Belum Lengkap
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {!canProceed && (
-                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
-                                        <div className="flex items-start gap-3">
-                                            <CircleAlert className="w-5 h-5 mt-0.5 shrink-0" />
-                                            <div className="space-y-2 text-sm">
-                                                <p className="font-bold">Lengkapi profil Anda terlebih dahulu di pengaturan.</p>
-                                                <p>Data yang masih kurang: {missingFields.join(', ')}.</p>
-                                                <Link href="/dashboard/settings?welcome=1" className="inline-flex items-center rounded-full bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700 transition">
-                                                    Buka Pengaturan
-                                                </Link>
-                                            </div>
+                                        <div className="inline-flex shrink-0 self-start whitespace-nowrap items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
+                                            Lengkapi Setelah Pembayaran
                                         </div>
                                     </div>
-                                )}
+                                </div>
 
                                 {isPriceUnavailable && (
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
@@ -257,21 +233,6 @@ function CheckoutContent() {
                                         )}
                                     </div>
                                 </div>
-
-                                <label className="flex items-start gap-3 cursor-pointer pt-4 border-t border-gray-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={agreed}
-                                        onChange={(event) => setAgreed(event.target.checked)}
-                                        disabled={!canProceed}
-                                        className="w-5 h-5 mt-0.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
-                                    />
-                                    <span className="text-sm text-gray-600">
-                                        <span className="font-bold text-gray-900">Setuju dengan Syarat & Ketentuan</span>
-                                        <br />
-                                        Saya menyatakan preview identitas di atas sudah benar dan menyetujui kebijakan privasi Akademiso.
-                                    </span>
-                                </label>
                             </div>
                         </div>
 
@@ -285,11 +246,8 @@ function CheckoutContent() {
                     <div className="lg:col-span-1">
                             <div className="sticky top-20 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:top-24">
                             <div className="h-32 bg-gray-800 relative">
-                                {course.thumbnail ? (
-                                    <img src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover opacity-50" />
-                                ) : (
-                                    <div className="absolute inset-0 bg-blue-900/50"></div>
-                                )}
+                                <CourseThumbnail imageUrl={course.thumbnail} title={course.title} imageClassName="opacity-60" />
+                                <div className="absolute inset-0 bg-slate-950/25" />
                                 <div className="absolute bottom-4 left-4 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded">Best Seller</div>
                             </div>
 
@@ -336,22 +294,32 @@ function CheckoutContent() {
                                     <span className="font-bold text-xl text-blue-600">{isPriceUnavailable ? 'Hubungi Tim' : isFreeWebinar || isFreeOffering ? 'Gratis' : `Rp ${price.toLocaleString('id-ID')}`}</span>
                                 </div>
 
-                                {canProceed && !isPriceUnavailable ? (
+                                {!isPriceUnavailable && (
+                                    <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={agreed}
+                                            onChange={(event) => setAgreed(event.target.checked)}
+                                            className="mt-0.5 h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm leading-5 text-gray-600">
+                                            Saya menyetujui <Link href="/terms" className="font-bold text-blue-700 hover:underline">Syarat & Ketentuan</Link> dan <Link href="/privacy" className="font-bold text-blue-700 hover:underline">Kebijakan Privasi</Link> Akademiso.
+                                        </span>
+                                    </label>
+                                )}
+
+                                {!isPriceUnavailable ? (
                                     <button
                                         type="button"
                                         disabled={!agreed}
                                         onClick={() => router.push(`/payment?${checkoutQuery}`)}
-                                        className="block w-full text-center bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="block w-full rounded-xl bg-blue-600 py-3.5 text-center font-bold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         Lanjut ke Pembayaran
                                     </button>
-                                ) : isPriceUnavailable ? (
+                                ) : (
                                     <Link href={`/courses/${course.slug}`} className="block w-full text-center bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-colors shadow-lg shadow-amber-600/20">
                                         Pilih Sesi Lain
-                                    </Link>
-                                ) : (
-                                    <Link href="/dashboard/settings?welcome=1" className="block w-full text-center bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-colors shadow-lg shadow-amber-600/20">
-                                        Lengkapi Profil Dulu
                                     </Link>
                                 )}
                             </div>

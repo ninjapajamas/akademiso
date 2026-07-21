@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Course } from '@/types';
 import { formatRupiah } from '@/types/currency';
+import CourseThumbnail from '@/components/CourseThumbnail';
 
 export default function InstructorCoursesPage() {
     const [courses, setCourses] = useState<Course[]>([]);
@@ -120,17 +121,7 @@ export default function InstructorCoursesPage() {
                     {filteredCourses.map((course) => (
                         <div key={course.id} className="group bg-white rounded-3xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300">
                             <div className="aspect-video relative overflow-hidden">
-                                {course.thumbnail ? (
-                                    <img
-                                        src={course.thumbnail}
-                                        alt={course.title}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full bg-indigo-50 flex items-center justify-center">
-                                        <BookOpen className="w-10 h-10 text-indigo-200" />
-                                    </div>
-                                )}
+                                <CourseThumbnail imageUrl={course.thumbnail} title={course.title} imageClassName="transition-transform duration-500 group-hover:scale-105" />
                                 <div className="absolute top-3 right-3">
                                     <span className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-indigo-600 shadow-sm uppercase tracking-wider">
                                         {course.level}
@@ -231,13 +222,7 @@ export default function InstructorCoursesPage() {
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-4">
                                             <div className="w-12 h-12 rounded-xl bg-indigo-50 overflow-hidden flex-shrink-0">
-                                                {course.thumbnail ? (
-                                                    <img src={course.thumbnail} alt={`Thumbnail ${course.title}`} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center">
-                                                        <BookOpen className="w-5 h-5 text-indigo-200" />
-                                                    </div>
-                                                )}
+                                                <CourseThumbnail imageUrl={course.thumbnail} title={course.title} compact />
                                             </div>
                                             <div>
                                                 <div className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors decoration-indigo-600/30 underline-offset-4 line-clamp-1">{course.title}</div>

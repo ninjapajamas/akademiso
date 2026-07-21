@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import CourseCard from '@/components/CourseCard';
 import { Course } from '@/types';
+import { getClientApiBaseUrl } from '@/utils/api';
 
 type SortOption = 'recommended' | 'newest' | 'price_asc' | 'price_desc';
 type PriceFilter = 'all' | 'under2m' | '2m_to_5m' | 'above5m';
@@ -12,6 +13,7 @@ type TypeFilter = 'all' | 'course' | 'webinar' | 'workshop';
 type OfferFilter = 'all' | 'elearning' | 'public_training' | 'inhouse_training';
 
 export default function CatalogContent({ initialCourses }: { initialCourses: Course[] }) {
+    const [courses, setCourses] = useState(initialCourses);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [priceFilter, setPriceFilter] = useState<PriceFilter>('all');
@@ -22,10 +24,35 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
     const [showMobileFilter, setShowMobileFilter] = useState(false);
 
     const categories = useMemo(() => {
-        const names = initialCourses
+        const names = courses
             .map(course => course.category?.name)
             .filter((name): name is string => !!name);
         return Array.from(new Set(names)).sort();
+    }, [courses]);
+
+    useEffect(() => {
+        const token = window.localStorage.getItem('access_token');
+        if (!token) return;
+
+        const controller = new AbortController();
+        const refreshEnrollmentStatus = async () => {
+            try {
+                const response = await fetch(`${getClientApiBaseUrl()}/api/courses/`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    signal: controller.signal,
+                });
+                if (!response.ok) return;
+                const payload = await response.json();
+                setCourses(Array.isArray(payload) ? payload : payload.results || initialCourses);
+            } catch (error) {
+                if ((error as Error).name !== 'AbortError') {
+                    console.error('Failed to refresh enrollment status:', error);
+                }
+            }
+        };
+
+        void refreshEnrollmentStatus();
+        return () => controller.abort();
     }, [initialCourses]);
 
     const toggleCategory = (category: string) => {
@@ -45,7 +72,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
     };
 
     const filteredAndSorted = useMemo(() => {
-        let result = [...initialCourses];
+        let result = [...courses];
 
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
@@ -102,7 +129,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
 
         return result;
     }, [
-        initialCourses,
+        courses,
         searchQuery,
         selectedCategories,
         priceFilter,
@@ -171,7 +198,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
                                     {category}
                                 </span>
                                 <span className="ml-auto text-xs text-gray-400">
-                                    {initialCourses.filter(course => course.category?.name === category).length}
+                                    {courses.filter(course => course.category?.name === category).length}
                                 </span>
                             </label>
                         ))}
@@ -331,7 +358,7 @@ export default function CatalogContent({ initialCourses }: { initialCourses: Cou
                         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-gray-500">
                                 Menampilkan <span className="font-bold text-gray-900">{filteredAndSorted.length}</span> dari{' '}
-                                <span className="font-bold text-gray-900">{initialCourses.length}</span> program pelatihan
+                                <span className="font-bold text-gray-900">{courses.length}</span> program pelatihan
                                 {activeFilterCount > 0 && (
                                     <button onClick={clearAll} className="ml-2 font-medium text-blue-600 hover:underline">
                                         (hapus filter)

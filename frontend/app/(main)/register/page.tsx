@@ -245,7 +245,7 @@ export default function Register() {
                 if (accountType === 'instructor') {
                     params.set('instructor_pending', 'true');
                 } else {
-                    params.set('redirect', '/dashboard/settings?welcome=1');
+                    params.set('redirect', '/courses');
                 }
                 router.push(`/login?${params.toString()}`);
             } else {

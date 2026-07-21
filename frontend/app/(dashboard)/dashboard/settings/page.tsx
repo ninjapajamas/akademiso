@@ -3,7 +3,7 @@
 import { getClientApiBaseUrl } from '@/utils/api';
 import Image from 'next/image';
 import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { User, Mail, Lock, Shield, Save, Eye, EyeOff, TriangleAlert, Share2 } from 'lucide-react';
 import { getProfileDisplayName, getRequiredProfileMissingFields, splitFullName, type UserProfilePayload } from '@/utils/profile';
 import { useFeedbackModal } from '@/components/FeedbackModalProvider';
@@ -28,6 +28,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function SettingsPageContent() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [showOldPw, setShowOldPw] = useState(false);
     const [showNewPw, setShowNewPw] = useState(false);
@@ -38,6 +39,7 @@ function SettingsPageContent() {
         phone: '',
         company: '',
         position: '',
+        nik: '',
         bio: '',
         avatar: null as string | null
     });
@@ -47,6 +49,7 @@ function SettingsPageContent() {
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
     const [pwError, setPwError] = useState('');
     const welcomeMode = searchParams.get('welcome') === '1';
+    const postPaymentMode = searchParams.get('payment') === 'success';
     const canEditEmail = !profile.email.trim();
     const parsedName = splitFullName(profile.full_name);
     const missingFields = getRequiredProfileMissingFields({
@@ -62,7 +65,7 @@ function SettingsPageContent() {
         }
     });
     const profileIncomplete = !loading && missingFields.length > 0;
-    const showProfileBanner = !loading && (welcomeMode || profileIncomplete);
+    const showProfileBanner = !loading && (welcomeMode || postPaymentMode || profileIncomplete);
     const { showError, showSuccess } = useFeedbackModal();
 
     const fetchProfile = async () => {
@@ -80,6 +83,7 @@ function SettingsPageContent() {
                     phone: data.profile?.phone || '',
                     company: data.profile?.company || '',
                     position: data.profile?.position || '',
+                    nik: data.profile?.nik || '',
                     bio: data.profile?.bio || '',
                     avatar: data.profile?.avatar || null
                 });
@@ -119,6 +123,7 @@ function SettingsPageContent() {
             formData.append('phone', profile.phone);
             formData.append('company', profile.company);
             formData.append('position', profile.position);
+            formData.append('nik', profile.nik);
             formData.append('bio', profile.bio);
 
             if (avatarFile) {
@@ -134,6 +139,9 @@ function SettingsPageContent() {
             if (res.ok) {
                 await fetchProfile();
                 await showSuccess('Profil Anda berhasil diperbarui.', 'Profil Tersimpan');
+                if (postPaymentMode && firstName && profile.phone.trim() && profile.company.trim()) {
+                    router.push('/dashboard/courses');
+                }
             } else {
                 await showError('Profil belum bisa disimpan. Silakan coba lagi.', 'Penyimpanan Gagal');
             }
@@ -238,16 +246,20 @@ function SettingsPageContent() {
                         <TriangleAlert className="w-5 h-5 mt-0.5 shrink-0" />
                         <div className="space-y-1 text-sm">
                             <p className="font-bold">
-                                {profileIncomplete ? 'Lengkapi informasi diri sebelum checkout.' : 'Profil Anda siap digunakan untuk checkout.'}
+                                {postPaymentMode
+                                    ? 'Pembayaran berhasil. Lengkapi profil peserta Anda.'
+                                    : profileIncomplete
+                                        ? 'Lengkapi informasi diri untuk kebutuhan pelatihan dan sertifikat.'
+                                        : 'Profil peserta Anda sudah lengkap.'}
                             </p>
                             <p>
                                 {profileIncomplete
                                     ? `Data yang masih perlu diisi: ${missingFields.join(', ')}.`
-                                    : 'Nama, telepon, dan perusahaan Anda sudah bisa dipakai sebagai preview identitas saat checkout.'}
+                                    : 'Nama, telepon, dan perusahaan akan digunakan pada administrasi pelatihan.'}
                             </p>
                             {welcomeMode && (
                                 <p>
-                                    Informasi di halaman ini akan dipakai sebagai preview identitas saat checkout, jadi pastikan datanya sudah benar.
+                                    Informasi ini disimpan setelah pembayaran untuk administrasi peserta dan penerbitan sertifikat.
                                 </p>
                             )}
                         </div>
@@ -341,6 +353,17 @@ function SettingsPageContent() {
                                 onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))}
                                 placeholder="08xx-xxxx-xxxx"
                             />
+                        </Field>
+                        <Field label="NIK *">
+                            <input
+                                className={inputClass}
+                                value={profile.nik}
+                                onChange={e => setProfile(p => ({ ...p, nik: e.target.value }))}
+                                placeholder="Nomor Induk Kependudukan"
+                                inputMode="numeric"
+                                maxLength={32}
+                            />
+                            <p className="mt-1 text-xs text-gray-500">* Opsional — isi hanya jika diperlukan untuk administrasi atau dokumen pelatihan.</p>
                         </Field>
                         <Field label="Perusahaan / Instansi">
                             <input

@@ -4,13 +4,15 @@ import { getClientApiBaseUrl } from '@/utils/api';
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Star, Clock, BarChart, BookOpen, ShoppingCart, MapPin } from 'lucide-react';
+import { Star, Clock, BarChart, ShoppingCart, MapPin, CheckCircle2 } from 'lucide-react';
 import { Course } from '@/types';
 import { useCart } from '../context/CartContext';
 import AddToCartModal from './AddToCartModal';
 import { formatRupiah } from '@/types/currency';
 import { useFeedbackModal } from './FeedbackModalProvider';
 import { getElearningPriceSummary, getPublicModePriceSummary } from '@/utils/coursePricing';
+import { addCourseToGuestCart } from '@/utils/guestCart';
+import CourseThumbnail from './CourseThumbnail';
 
 interface CourseCardProps {
     course: Course;
@@ -20,6 +22,7 @@ export default function CourseCard({ course }: CourseCardProps) {
     const { refreshCart } = useCart();
     const [isAdding, setIsAdding] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const [isEnrolled, setIsEnrolled] = useState(Boolean(course.is_enrolled));
     const isFreeWebinar = course.type === 'webinar' && course.is_free;
     const categoryName = course.category?.name || 'ISO Training';
     const { showError } = useFeedbackModal();
@@ -32,7 +35,12 @@ export default function CourseCard({ course }: CourseCardProps) {
             ? publicOnlinePriceSummary
             : publicOfflinePriceSummary;
 
-    const getCartPayload = () => {
+    const getCartPayload = (): {
+        course_id: number;
+        offer_type: 'elearning' | 'public';
+        offer_mode: string;
+        public_session_id: string;
+    } | null => {
         if (course.elearning_enabled) {
             return {
                 course_id: course.id,
@@ -75,17 +83,23 @@ export default function CourseCard({ course }: CourseCardProps) {
 
     const addToCart = async (e: React.MouseEvent) => {
         e.preventDefault(); // Prevent navigation if wrapped in Link
+        if (isEnrolled) {
+            await showError('Kursus ini sudah terdaftar pada akun Anda.', 'Sudah Terdaftar');
+            return;
+        }
         setIsAdding(true);
         try {
-            const token = localStorage.getItem('access_token');
-            if (!token) {
-                window.location.href = '/login';
-                return;
-            }
-
             const payload = getCartPayload();
             if (!payload) {
                 await showError('Program ini belum memiliki paket transaksi yang bisa dimasukkan ke keranjang.', 'Belum Tersedia');
+                return;
+            }
+
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                addCourseToGuestCart(course, payload);
+                setShowModal(true);
+                await refreshCart();
                 return;
             }
 
@@ -103,12 +117,13 @@ export default function CourseCard({ course }: CourseCardProps) {
                 setShowModal(true);
                 refreshCart(); // Update navbar badge
             } else {
-                if (res.status === 401) {
-                    window.location.href = '/login';
+                if (res.status === 409) {
+                    setIsEnrolled(true);
+                    await showError('Kursus ini sudah terdaftar pada akun Anda.', 'Sudah Terdaftar');
                     return;
                 }
                 const data = await res.json();
-                await showError(data.message || 'Kursus belum bisa ditambahkan ke keranjang.', 'Gagal Menambahkan');
+                await showError(data.error || data.message || 'Kursus belum bisa ditambahkan ke keranjang.', 'Gagal Menambahkan');
             }
         } catch (error) {
             console.error('Error adding to cart:', error);
@@ -149,19 +164,11 @@ export default function CourseCard({ course }: CourseCardProps) {
                 </div>
 
                 {/* Thumbnail or Placeholder */}
-                {course.thumbnail ? (
-                    <Image
-                        src={course.thumbnail}
-                        alt={course.title}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-indigo-600 flex flex-col items-center justify-center gap-2">
-                        <BookOpen className="w-10 h-10 text-white/80" />
-                        <span className="text-white/60 text-xs font-medium">{categoryName}</span>
-                    </div>
-                )}
+                <CourseThumbnail
+                    imageUrl={course.thumbnail}
+                    title={course.title}
+                    imageClassName="transition-transform duration-500 group-hover:scale-105"
+                />
             </div>
 
             <div className="p-4 sm:p-5 flex flex-col flex-1">
@@ -234,18 +241,27 @@ export default function CourseCard({ course }: CourseCardProps) {
                                         : formatRupiah(primaryPriceSummary.finalPrice)}
                         </p>
                     </div>
-                    <button
-                        onClick={addToCart}
-                        disabled={isAdding}
-                        className="h-10 w-10 shrink-0 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        aria-label="Tambah ke keranjang"
-                    >
-                        {isAdding ? (
-                            <div className="w-4 h-4 border-2 border-current rounded-full border-t-transparent animate-spin"></div>
-                        ) : (
-                            <ShoppingCart className="w-4 h-4" />
-                        )}
-                    </button>
+                    {isEnrolled ? (
+                        <Link
+                            href={`/learn/${course.slug}`}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
+                        >
+                            <CheckCircle2 className="h-4 w-4" /> Sudah Terdaftar
+                        </Link>
+                    ) : (
+                        <button
+                            onClick={addToCart}
+                            disabled={isAdding}
+                            className="h-10 w-10 shrink-0 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label="Tambah ke keranjang"
+                        >
+                            {isAdding ? (
+                                <div className="w-4 h-4 border-2 border-current rounded-full border-t-transparent animate-spin"></div>
+                            ) : (
+                                <ShoppingCart className="w-4 h-4" />
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
             <AddToCartModal isOpen={showModal} onClose={() => setShowModal(false)} />

@@ -27,6 +27,10 @@ from django.contrib.auth.models import User
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .certificates import build_certificate_number, get_certificate_title
+from .certificate_requirements import (
+    get_certificate_requirement_labels,
+    get_certificate_requirement_status,
+)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -749,6 +753,8 @@ class CourseSerializer(serializers.ModelSerializer):
     webinar_attendance = serializers.SerializerMethodField()
     attendance_summary = serializers.SerializerMethodField()
     discussion_summary = serializers.SerializerMethodField()
+    certificate_requirements = serializers.SerializerMethodField()
+    certificate_eligibility = serializers.SerializerMethodField()
 
     def to_internal_value(self, data):
         if hasattr(data, 'lists'):
@@ -874,6 +880,18 @@ class CourseSerializer(serializers.ModelSerializer):
             'latest_activity_at': latest_topic['updated_at'] if latest_topic else None,
             'has_active_discussion': topic_count > 0,
         }
+
+    def get_certificate_requirements(self, obj):
+        return get_certificate_requirement_labels(obj)
+
+    def get_certificate_eligibility(self, obj):
+        request = self.context.get('request')
+        user = request.user if request else None
+        if not user or not user.is_authenticated:
+            return None
+
+        exam = obj.certification_exams.filter(is_active=True).order_by('id').first()
+        return get_certificate_requirement_status(user, obj, exam=exam)
     
     def get_is_enrolled(self, obj):
         user = self.context.get('request').user if self.context.get('request') else None
@@ -1022,6 +1040,15 @@ class CourseSerializer(serializers.ModelSerializer):
         scheduled_at = attrs.get('scheduled_at', getattr(self.instance, 'scheduled_at', None))
         scheduled_end_at = attrs.get('scheduled_end_at', getattr(self.instance, 'scheduled_end_at', None))
         is_free = attrs.get('is_free', getattr(self.instance, 'is_free', False))
+        certificate_min_progress = attrs.get(
+            'certificate_min_progress',
+            getattr(self.instance, 'certificate_min_progress', 0),
+        )
+
+        if certificate_min_progress is not None and not 0 <= int(certificate_min_progress) <= 100:
+            raise serializers.ValidationError({
+                'certificate_min_progress': 'Progress minimal sertifikat harus di antara 0 sampai 100.'
+            })
 
         if course_type == 'course':
             if not scheduled_at:
@@ -1101,6 +1128,9 @@ class CourseSerializer(serializers.ModelSerializer):
             'elearning_enabled', 'elearning_intro', 'price', 'discount_price',
             'instructor', 'instructor_id', 'category', 'category_id', 'level',
             'duration', 'delivery_mode', 'scheduled_at', 'scheduled_end_at', 'location', 'zoom_link', 'is_free', 'thumbnail', 'is_active', 'is_featured', 'has_certification_exam',
+            'certificate_min_progress', 'certificate_require_all_quizzes_passed',
+            'certificate_require_profile_complete', 'certificate_require_attendance',
+            'certificate_custom_requirements', 'certificate_requirements', 'certificate_eligibility',
             'created_at', 'rating', 'enrolled_count', 'sections', 'is_enrolled', 'progress_percentage', 'last_accessed_lesson_id', 'certification_exams', 'webinar_attendance', 'attendance_summary', 'discussion_summary'
         ]
         read_only_fields = ['is_active']
@@ -1244,6 +1274,24 @@ class OrderSerializer(serializers.ModelSerializer):
                             'public_session_id': 'Sesi public training yang dipilih tidak ditemukan.'
                         })
 
+                request = self.context.get('request')
+                if request and request.user.is_authenticated:
+                    enrollment_filters = {
+                        'user': request.user,
+                        'course': course,
+                        'status': 'Completed',
+                        'offer_type': offer_type,
+                    }
+                    if offer_type == ORDER_OFFER_PUBLIC:
+                        enrollment_filters.update({
+                            'offer_mode': offer_mode,
+                            'public_session_id': public_session_id,
+                        })
+                    if Order.objects.filter(**enrollment_filters).exists():
+                        raise serializers.ValidationError({
+                            'course': 'Kursus atau sesi ini sudah terdaftar pada akun Anda.'
+                        })
+
                 total_amount = get_order_total_amount(
                     course,
                     offer_type=offer_type,
@@ -1267,7 +1315,6 @@ class OrderSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError({
                             'referral_code_input': 'Kode referral sedang tidak aktif, sudah kedaluwarsa, atau kuotanya habis.'
                         })
-                    request = self.context.get('request')
                     if request and referral_code.owner_id and referral_code.owner_id == request.user.id:
                         raise serializers.ValidationError({
                             'referral_code_input': 'Kode referral milik sendiri tidak bisa digunakan untuk checkout pribadi.'
