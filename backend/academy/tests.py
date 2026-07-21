@@ -572,7 +572,17 @@ class CertificationAssessmentFlowTests(APITestCase):
         self.assertEqual(list_response.status_code, 200, list_response.data)
         self.assertEqual(len(list_response.data), 1)
         self.assertEqual(list_response.data[0]['approval_status'], Certificate.APPROVAL_APPROVED)
-        self.assertTrue(list_response.data[0]['certificate_url'])
+        self.assertIsNone(list_response.data[0]['certificate_url'])
+
+        satisfaction_response = self.client.post(
+            f'/api/courses/{self.course.slug}/satisfaction/',
+            {'satisfaction_score': 5},
+            format='json',
+        )
+        self.assertEqual(satisfaction_response.status_code, 201, satisfaction_response.data)
+
+        refreshed_list_response = self.client.get('/api/certificates/')
+        self.assertTrue(refreshed_list_response.data[0]['certificate_url'])
 
 
 class CertificationAttemptScheduleActionsTests(APITestCase):
@@ -786,6 +796,77 @@ class PostTestFeedbackApiTests(APITestCase):
         self.client.force_authenticate(user=self.other_instructor_user)
         response = self.client.get(f'/api/courses/{self.course.slug}/feedback/')
         self.assertEqual(response.status_code, 403, response.data)
+
+    def test_satisfaction_is_required_before_certificate_url_is_exposed(self):
+        certificate = Certificate.objects.create(
+            user=self.student,
+            course=self.course,
+            certificate_url='/media/certificates/test-certificate.pdf',
+            approval_status=Certificate.APPROVAL_APPROVED,
+            approved_at=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.student)
+
+        before_response = self.client.get('/api/certificates/')
+        self.assertEqual(before_response.status_code, 200, before_response.data)
+        before_certificate = next(item for item in before_response.data if item['id'] == certificate.id)
+        self.assertIsNone(before_certificate['certificate_url'])
+        self.assertTrue(before_certificate['requires_satisfaction_feedback'])
+
+        blocked_download = self.client.get(f'/api/certificates/{certificate.id}/download/')
+        self.assertEqual(blocked_download.status_code, 403, blocked_download.data)
+        self.assertTrue(blocked_download.data['requires_satisfaction_feedback'])
+
+        feedback_response = self.client.post(
+            f'/api/courses/{self.course.slug}/satisfaction/',
+            {
+                'satisfaction_score': 5,
+                'criticism': 'Materi sudah jelas.',
+                'suggestion': 'Tambahkan latihan lanjutan.',
+            },
+            format='json',
+        )
+        self.assertEqual(feedback_response.status_code, 201, feedback_response.data)
+        self.assertEqual(feedback_response.data['satisfaction_score'], 5)
+
+        after_response = self.client.get('/api/certificates/')
+        after_certificate = next(item for item in after_response.data if item['id'] == certificate.id)
+        self.assertTrue(after_certificate['has_satisfaction_feedback'])
+        self.assertIn(f'/api/certificates/{certificate.id}/download/', after_certificate['certificate_url'])
+
+    def test_satisfaction_score_must_be_between_one_and_five(self):
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f'/api/courses/{self.course.slug}/satisfaction/',
+            {'satisfaction_score': 6},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+
+
+class AffiliateSelfApplicationApiTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='affiliate-applicant',
+            email='affiliate@example.com',
+            password='secret123',
+        )
+
+    def test_user_can_apply_and_repeat_pending_request_safely(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post('/api/profile/affiliate-application/', {}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['status'], 'pending')
+
+        repeated_response = self.client.post('/api/profile/affiliate-application/', {}, format='json')
+        self.assertEqual(repeated_response.status_code, 200, repeated_response.data)
+        self.assertEqual(repeated_response.data['status'], 'pending')
+
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertEqual(profile.affiliate_status, 'pending')
+        self.assertIsNotNone(profile.affiliate_requested_at)
 
 
 class CourseAttendanceApiTests(APITestCase):

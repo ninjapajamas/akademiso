@@ -4,7 +4,7 @@ import { getClientApiBaseUrl } from '@/utils/api';
 import Image from 'next/image';
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { User, Mail, Lock, Shield, Save, Eye, EyeOff, TriangleAlert, Share2 } from 'lucide-react';
+import { User, Mail, Lock, Shield, Save, Eye, EyeOff, TriangleAlert, Share2, Loader2 } from 'lucide-react';
 import { getProfileDisplayName, getRequiredProfileMissingFields, splitFullName, type UserProfilePayload } from '@/utils/profile';
 import { useFeedbackModal } from '@/components/FeedbackModalProvider';
 
@@ -44,6 +44,7 @@ function SettingsPageContent() {
         avatar: null as string | null
     });
     const [affiliate, setAffiliate] = useState<UserProfilePayload['affiliate'] | null>(null);
+    const [affiliateApplying, setAffiliateApplying] = useState(false);
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [notifs, setNotifs] = useState({ email_schedule: true, email_cert: true, email_promo: false, sms: false });
     const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
@@ -220,6 +221,31 @@ function SettingsPageContent() {
             await showSuccess('Preferensi notifikasi berhasil disimpan.', 'Preferensi Tersimpan');
         } catch {
             await showError('Terjadi kesalahan jaringan saat menyimpan preferensi.', 'Koneksi Bermasalah');
+        }
+    };
+
+    const handleAffiliateApplication = async () => {
+        setAffiliateApplying(true);
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = getClientApiBaseUrl();
+            const res = await fetch(`${apiUrl}/api/profile/affiliate-application/`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                await showError(data.error || 'Pengajuan affiliator belum bisa dikirim.', 'Pengajuan Gagal');
+                return;
+            }
+
+            setAffiliate(data);
+            await showSuccess('Pengajuan affiliator berhasil dikirim dan sedang menunggu review admin.', 'Pengajuan Terkirim');
+        } catch {
+            await showError('Terjadi kesalahan jaringan saat mengirim pengajuan.', 'Koneksi Bermasalah');
+        } finally {
+            setAffiliateApplying(false);
         }
     };
 
@@ -413,7 +439,7 @@ function SettingsPageContent() {
                                         ? 'Anda sudah bisa membagikan kode referral pribadi ke calon peserta.'
                                         : affiliate?.status === 'pending'
                                             ? 'Pengajuan affiliator Anda sedang ditinjau admin.'
-                                            : 'Centang pengajuan affiliator saat pendaftaran akun baru, atau hubungi admin jika ingin diaktifkan untuk akun ini.'}
+                                            : 'Ajukan langsung melalui halaman pengaturan ini. Admin akan meninjau pengajuan Anda sebelum kode referral diaktifkan.'}
                                 </p>
                                 {affiliate?.review_notes && (
                                     <p className="text-xs text-emerald-700">Catatan admin: {affiliate.review_notes}</p>
@@ -441,7 +467,18 @@ function SettingsPageContent() {
                         </div>
                     ) : (
                         <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-sm text-gray-500">
-                            Kode referral pribadi akan muncul di sini setelah pengajuan affiliator Anda disetujui admin.
+                            <p>Kode referral pribadi akan muncul di sini setelah pengajuan affiliator Anda disetujui admin.</p>
+                            {(affiliate?.status === 'none' || affiliate?.status === 'rejected' || !affiliate) && (
+                                <button
+                                    type="button"
+                                    onClick={handleAffiliateApplication}
+                                    disabled={affiliateApplying}
+                                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {affiliateApplying && <Loader2 className="h-4 w-4 animate-spin" />}
+                                    {affiliateApplying ? 'Mengirim Pengajuan...' : 'Ajukan Menjadi Affiliator'}
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>

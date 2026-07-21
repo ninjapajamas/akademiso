@@ -6,13 +6,13 @@ from .views import (
     RegisterView, GoogleAuthView, MyCoursesView, CartViewSet, UserViewSet, LessonViewSet,
     SectionViewSet, StatsView, AccountantStatsView, ProjectManagerStatsView, InstructorCoursesView, InstructorStudentsView,
     AdminResetPasswordView, AdminEditUserView, AdminImpersonateView, ProfileView, ChangePasswordView,
-    MidtransNotificationView, QuizAttemptView, PostTestFeedbackView, CourseFeedbackListView, CompleteLessonView, AccessLessonView,
+    MidtransNotificationView, QuizAttemptView, PostTestFeedbackView, CourseFeedbackListView, SatisfactionFeedbackView, CompleteLessonView, AccessLessonView,
     GamificationSummaryView, GamificationLeaderboardView, GamificationActivityView,
     CertificationExamViewSet, CertificationQuestionViewSet, CertificationAlternativeViewSet, CertificationInstructorSlotViewSet,
     CertificationAttemptViewSet, CertificateViewSet, CertificateTemplateViewSet, InhouseTrainingRequestViewSet,
     CourseDiscussionTopicListCreateView, CourseDiscussionCommentCreateView, CourseDiscussionCommentDetailView,
     StudentAccessLinkViewSet, StudentAccessLinkClaimView, InstructorWithdrawalRequestListCreateView,
-    AffiliateApplicationListView, AffiliateApplicationReviewView,
+    AffiliateApplicationListView, AffiliateApplicationReviewView, AffiliateApplicationCreateView,
     AccountantWithdrawalRequestListView, AccountantWithdrawalRequestDetailView
 )
 
@@ -60,6 +60,7 @@ urlpatterns = [
     path('users/<int:pk>/edit/', AdminEditUserView.as_view(), name='admin-edit-user'),
     path('users/<int:pk>/impersonate/', AdminImpersonateView.as_view(), name='admin-impersonate'),
     path('profile/', ProfileView.as_view(), name='user-profile'),
+    path('profile/affiliate-application/', AffiliateApplicationCreateView.as_view(), name='affiliate-application-create'),
     path('profile/change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('orders/notification/', MidtransNotificationView.as_view(), name='midtrans-notification'),
     path('lessons/<int:lesson_id>/quiz-attempt/', QuizAttemptView.as_view(), name='quiz-attempt'),
@@ -67,6 +68,7 @@ urlpatterns = [
     path('lessons/<int:lesson_id>/complete/', CompleteLessonView.as_view(), name='lesson-complete'),
     path('lessons/<int:lesson_id>/access/', AccessLessonView.as_view(), name='lesson-access'),
     path('courses/<slug:course_slug>/feedback/', CourseFeedbackListView.as_view(), name='course-feedback-list'),
+    path('courses/<slug:course_slug>/satisfaction/', SatisfactionFeedbackView.as_view(), name='course-satisfaction-feedback'),
     path('courses/<slug:course_slug>/forum-topics/', CourseDiscussionTopicListCreateView.as_view(), name='course-forum-topics'),
     path('courses/<slug:course_slug>/forum-topics/<int:topic_id>/comments/', CourseDiscussionCommentCreateView.as_view(), name='course-forum-comments'),
     path('courses/<slug:course_slug>/forum-topics/<int:topic_id>/comments/<int:comment_id>/', CourseDiscussionCommentDetailView.as_view(), name='course-forum-comment-detail'),

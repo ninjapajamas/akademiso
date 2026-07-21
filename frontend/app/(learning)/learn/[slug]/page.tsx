@@ -65,7 +65,15 @@ const shuffleQuestions = <T,>(items: T[]) => {
     return shuffled;
 };
 
-const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => void }) => {
+const QuizPlayer = ({
+    lesson,
+    onComplete,
+    onProgressChange,
+}: {
+    lesson: any;
+    onComplete?: () => void;
+    onProgressChange?: (inProgress: boolean) => void;
+}) => {
     const quiz = lesson.quiz_data as { questions?: any[]; pass_score?: number; time_limit?: number | null } | undefined;
     const timeLimitSeconds = Math.max(0, Number(quiz?.time_limit || 0) * 60);
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
@@ -80,6 +88,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
     const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
     const [feedbackError, setFeedbackError] = useState<string | null>(null);
     const [secondsRemaining, setSecondsRemaining] = useState(timeLimitSeconds);
+    const [hasStarted, setHasStarted] = useState(false);
     const autoSubmittedRef = useRef(false);
 
     const isPostTestLesson = lesson.type === 'final_test';
@@ -120,16 +129,33 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
 
     useEffect(() => {
         setSecondsRemaining(timeLimitSeconds);
+        setHasStarted(false);
         autoSubmittedRef.current = false;
     }, [lesson.id, timeLimitSeconds]);
 
     useEffect(() => {
-        if (!timeLimitSeconds || result) return;
+        if (!hasStarted || !timeLimitSeconds || result) return;
         const timer = window.setInterval(() => {
             setSecondsRemaining(previous => Math.max(previous - 1, 0));
         }, 1000);
         return () => window.clearInterval(timer);
-    }, [result, timeLimitSeconds]);
+    }, [hasStarted, result, timeLimitSeconds]);
+
+    useEffect(() => {
+        const inProgress = hasStarted && !result;
+        onProgressChange?.(inProgress);
+        if (!inProgress) return;
+
+        const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warnBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', warnBeforeUnload);
+            onProgressChange?.(false);
+        };
+    }, [hasStarted, onProgressChange, result]);
 
     useEffect(() => {
         if (
@@ -203,6 +229,67 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         );
     }
 
+    if (!hasStarted && !result) {
+        return (
+            <div className="overflow-hidden rounded-[2rem] border border-blue-100 bg-white shadow-xl">
+                <div className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 px-6 py-8 text-white sm:px-10 sm:py-10">
+                    <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-100">Persiapan {getLessonTypeLabel(lesson.type)}</p>
+                            <h3 className="mt-3 text-2xl font-black sm:text-3xl">{lesson.title}</h3>
+                            <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-100">Baca ketentuan berikut sebelum memulai. Waktu baru berjalan setelah tombol mulai ditekan.</p>
+                        </div>
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
+                            <ShieldCheck className="h-8 w-8" />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 sm:p-10">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                            <HelpCircle className="h-5 w-5 text-blue-600" />
+                            <p className="mt-3 text-2xl font-black text-gray-900">{orderedQuestions.length}</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Pertanyaan</p>
+                        </div>
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                            <Trophy className="h-5 w-5 text-amber-500" />
+                            <p className="mt-3 text-2xl font-black text-gray-900">{quiz.pass_score || 70}%</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Minimal Lulus</p>
+                        </div>
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                            <Clock className="h-5 w-5 text-emerald-600" />
+                            <p className="mt-3 text-2xl font-black text-gray-900">{quiz.time_limit ? `${quiz.time_limit} menit` : 'Tanpa batas'}</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Durasi</p>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                            <div>
+                                <p className="font-bold text-amber-900">Pengerjaan tidak disimpan sementara</p>
+                                <p className="mt-1 text-sm leading-6 text-amber-800">Jika Anda keluar, kembali ke materi lain, menutup tab, atau memuat ulang halaman sebelum mengirim jawaban, pengerjaan akan hilang dan dimulai lagi dari 0.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSecondsRemaining(timeLimitSeconds);
+                            setHasStarted(true);
+                        }}
+                        className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-4 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 sm:w-auto"
+                    >
+                        Mulai {getLessonTypeLabel(lesson.type)}
+                        <ArrowRight className="h-4 w-4" />
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     const currentQuestion = orderedQuestions[currentQuestionIdx];
     const progress = ((currentQuestionIdx + 1) / orderedQuestions.length) * 100;
     const currentQuestionId = currentQuestion.id.toString();
@@ -272,6 +359,7 @@ const QuizPlayer = ({ lesson, onComplete }: { lesson: any, onComplete?: () => vo
         setFeedbackMessage(null);
         setFeedbackError(null);
         setSecondsRemaining(timeLimitSeconds);
+        setHasStarted(false);
         autoSubmittedRef.current = false;
     };
 
@@ -607,9 +695,16 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('deskripsi');
     const [rewardSummary, setRewardSummary] = useState<any>(null);
+    const [assessmentInProgress, setAssessmentInProgress] = useState(false);
+
+    const confirmAssessmentExit = () => (
+        !assessmentInProgress
+        || window.confirm('Pengerjaan belum tersimpan. Jika keluar sekarang, jawaban akan hilang dan Anda harus memulai lagi dari 0. Tetap keluar?')
+    );
 
     const handleNextLesson = async () => {
         if (!activeLesson) return;
+        if (!confirmAssessmentExit()) return;
 
         // 1. Mark current lesson as complete in backend
         try {
@@ -661,6 +756,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
 
     const handlePrevLesson = () => {
         if (!activeLesson) return;
+        if (!confirmAssessmentExit()) return;
         const allLessons = course.sections
             .sort((a: any, b: any) => a.order - b.order)
             .flatMap((s: any) => s.lessons.sort((a: any, b: any) => a.order - b.order));
@@ -761,6 +857,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
 
     const sections = course.sections || [];
     const openLessonView = (lesson: any) => {
+        if (lesson.id !== activeLesson?.id && !confirmAssessmentExit()) return;
         setActiveLesson(lesson);
     };
     const isActiveAssessmentLesson = isAssessmentLesson(activeLesson?.type);
@@ -778,7 +875,13 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
         <div className="flex min-h-screen flex-col lg:h-[calc(100vh-6rem)] lg:min-h-0">
             {/* Header Navigation specific to Learning */}
             <div className="flex items-center gap-4 mb-6 px-6 pt-6">
-                <Link href="/dashboard/courses" className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
+                <Link
+                    href="/dashboard/courses"
+                    onClick={(event) => {
+                        if (!confirmAssessmentExit()) event.preventDefault();
+                    }}
+                    className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+                >
                     <ChevronLeft className="w-4 h-4" />
                     Kembali ke Kursus
                 </Link>
@@ -796,7 +899,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                 <div className="flex w-full min-w-0 flex-1 flex-col overflow-visible custom-scrollbar lg:overflow-y-auto lg:pr-2">
                     {/* Webinar Link Banner */}
                     {course.type === 'webinar' && course.zoom_link && (
-                        <div className="relative mb-8 overflow-hidden rounded-3xl bg-gradient-to-r from-rose-600 to-rose-700 p-8 text-white shadow-xl shadow-rose-600/20">
+                        <div className="relative mb-8 min-h-[15rem] shrink-0 overflow-hidden rounded-3xl bg-gradient-to-r from-rose-600 to-rose-700 p-6 text-white shadow-xl shadow-rose-600/20 sm:p-8">
                             <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-2">
@@ -932,6 +1035,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                             {isAssessmentLesson(activeLesson.type) && (
                                 <QuizPlayer
                                     lesson={activeLesson}
+                                    onProgressChange={setAssessmentInProgress}
                                     onComplete={() => {
                                         // Refresh course status to show marks
                                         const fetchCourseStatus = async () => {

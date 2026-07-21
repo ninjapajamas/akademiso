@@ -1355,6 +1355,7 @@ class MyCourseSerializer(serializers.ModelSerializer):
     last_accessed_lesson_id = serializers.SerializerMethodField()
     pre_test_score = serializers.SerializerMethodField()
     post_test_score = serializers.SerializerMethodField()
+    certificate = serializers.SerializerMethodField()
 
     def _get_latest_quiz_attempt(self, user, course, lesson_type):
         return UserQuizAttempt.objects.filter(
@@ -1427,6 +1428,39 @@ class MyCourseSerializer(serializers.ModelSerializer):
             return self._normalize_score(exam_attempt.score)
 
         return None
+
+    def get_certificate(self, obj):
+        request = self.context.get('request')
+        user = request.user if request else None
+        if not user or not user.is_authenticated:
+            return None
+
+        certificate = Certificate.objects.filter(
+            user=user,
+            course=obj.course,
+        ).order_by('-approved_at', '-issue_date', '-id').first()
+        certificate_provided = bool(
+            certificate
+            or obj.course.has_certification_exam
+            or obj.course.type == 'webinar'
+        )
+        has_satisfaction_feedback = CourseFeedback.objects.filter(
+            user=user,
+            course=obj.course,
+            satisfaction_score__isnull=False,
+        ).exists()
+
+        return {
+            'id': certificate.id if certificate else None,
+            'provided': certificate_provided,
+            'approval_status': certificate.approval_status if certificate else None,
+            'has_satisfaction_feedback': has_satisfaction_feedback,
+            'can_download': bool(
+                certificate
+                and certificate.approval_status == Certificate.APPROVAL_APPROVED
+                and has_satisfaction_feedback
+            ),
+        }
     
     class Meta:
         model = Order
@@ -1434,6 +1468,7 @@ class MyCourseSerializer(serializers.ModelSerializer):
             'id', 'course', 'status', 'offer_type', 'offer_mode', 'public_session_id',
             'created_at', 'progress_percentage', 'last_accessed_lesson_id',
             'pre_test_score', 'post_test_score',
+            'certificate',
         ]
 
 
@@ -1447,7 +1482,7 @@ class CourseFeedbackSerializer(serializers.ModelSerializer):
         model = CourseFeedback
         fields = [
             'id', 'course', 'user', 'user_name', 'user_email', 'lesson', 'lesson_title',
-            'quiz_attempt', 'quiz_score', 'criticism', 'suggestion', 'created_at', 'updated_at',
+            'quiz_attempt', 'quiz_score', 'criticism', 'suggestion', 'satisfaction_score', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'course', 'user', 'user_name', 'user_email', 'lesson', 'lesson_title',
@@ -1478,6 +1513,18 @@ class CourseFeedbackSubmissionSerializer(serializers.Serializer):
         attrs['criticism'] = criticism
         attrs['suggestion'] = suggestion
         return attrs
+
+
+class SatisfactionFeedbackSubmissionSerializer(serializers.Serializer):
+    satisfaction_score = serializers.IntegerField(min_value=1, max_value=5)
+    criticism = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True)
+    suggestion = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True)
+
+    def validate_criticism(self, value):
+        return (value or '').strip()
+
+    def validate_suggestion(self, value):
+        return (value or '').strip()
 
 class CartItemSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
@@ -1905,9 +1952,22 @@ class CertificateSerializer(serializers.ModelSerializer):
     certificate_url = serializers.SerializerMethodField()
     certificate_number = serializers.SerializerMethodField()
     course_title = serializers.SerializerMethodField()
+    course_slug = serializers.ReadOnlyField(source='course.slug')
     exam_title = serializers.SerializerMethodField()
     template_name = serializers.ReadOnlyField(source='template.name')
     approved_by_name = serializers.SerializerMethodField()
+    has_satisfaction_feedback = serializers.SerializerMethodField()
+    requires_satisfaction_feedback = serializers.SerializerMethodField()
+
+    def get_has_satisfaction_feedback(self, obj):
+        return CourseFeedback.objects.filter(
+            user=obj.user,
+            course=obj.course,
+            satisfaction_score__isnull=False,
+        ).exists()
+
+    def get_requires_satisfaction_feedback(self, obj):
+        return obj.approval_status == Certificate.APPROVAL_APPROVED and not self.get_has_satisfaction_feedback(obj)
 
     def get_user_name(self, obj):
         full_name = f"{obj.user.first_name} {obj.user.last_name}".strip()
@@ -1918,6 +1978,16 @@ class CertificateSerializer(serializers.ModelSerializer):
             return None
 
         request = self.context.get('request')
+        is_admin_scope = bool(
+            request
+            and get_user_role(request.user) == STAFF_ROLE_ADMIN
+            and request.query_params.get('scope') == 'all'
+        )
+        if not is_admin_scope and not self.get_has_satisfaction_feedback(obj):
+            return None
+
+        if request and not is_admin_scope:
+            return request.build_absolute_uri(f'/api/certificates/{obj.id}/download/')
         if request and obj.certificate_url.startswith('/'):
             return request.build_absolute_uri(obj.certificate_url)
         return obj.certificate_url
@@ -1940,9 +2010,10 @@ class CertificateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Certificate
         fields = [
-            'id', 'user', 'user_name', 'course', 'course_title', 'exam', 'exam_title',
+            'id', 'user', 'user_name', 'course', 'course_title', 'course_slug', 'exam', 'exam_title',
             'template', 'template_name', 'issue_date', 'certificate_url', 'certificate_number', 'approval_status',
-            'approved_at', 'approved_by', 'approved_by_name'
+            'approved_at', 'approved_by', 'approved_by_name',
+            'has_satisfaction_feedback', 'requires_satisfaction_feedback',
         ]
 
 

@@ -1038,6 +1038,7 @@ class CourseFeedback(models.Model):
     quiz_attempt = models.ForeignKey(UserQuizAttempt, null=True, blank=True, on_delete=models.SET_NULL, related_name='feedback_entries')
     criticism = models.TextField(blank=True, default='')
     suggestion = models.TextField(blank=True, default='')
+    satisfaction_score = models.PositiveSmallIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

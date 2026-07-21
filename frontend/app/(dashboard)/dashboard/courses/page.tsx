@@ -3,12 +3,13 @@
 import { getClientApiBaseUrl } from '@/utils/api';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BookOpen, ArrowRight, Search, Filter, BarChart, CreditCard, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
-import { CertificationAttempt, EnrolledCourse } from '@/types';
+import { BookOpen, ArrowRight, Search, Filter, BarChart, CreditCard, ChevronDown, ChevronUp, MessageSquare, Award, Download, Star } from 'lucide-react';
+import { CertificationAttempt, Course, EnrolledCourse } from '@/types';
 import { ParticipantIdentity } from '@/components/dashboard/ParticipantCard';
 import ParticipantCardModal from '@/components/dashboard/ParticipantCardModal';
 import StudentExamSection from '@/components/exam/StudentExamSection';
 import CourseThumbnail from '@/components/CourseThumbnail';
+import SatisfactionFeedbackModal from '@/components/dashboard/SatisfactionFeedbackModal';
 
 interface ProfileResponse {
     username: string;
@@ -102,6 +103,10 @@ export default function MyCoursesPage() {
     const [markingAttendanceCourseId, setMarkingAttendanceCourseId] = useState<number | null>(null);
     const [attendanceForms, setAttendanceForms] = useState<Record<number, WebinarAttendanceFormState>>({});
     const [expandedExamCourses, setExpandedExamCourses] = useState<Record<number, boolean>>({});
+    const [expandedAttendanceCourses, setExpandedAttendanceCourses] = useState<Record<number, boolean>>({});
+    const [catalogCourses, setCatalogCourses] = useState<Course[]>([]);
+    const [satisfactionCourse, setSatisfactionCourse] = useState<{ slug: string; title: string; certificateId: number } | null>(null);
+    const [downloadingCertificateId, setDownloadingCertificateId] = useState<number | null>(null);
 
     const fetchAttempts = async (token?: string) => {
         try {
@@ -136,7 +141,7 @@ export default function MyCoursesPage() {
                 if (!token) { window.location.href = '/login'; return; }
 
                 const apiUrl = getClientApiBaseUrl();
-                const [coursesRes, profileRes, attemptsRes] = await Promise.all([
+                const [coursesRes, profileRes, attemptsRes, catalogRes] = await Promise.all([
                     fetch(`${apiUrl}/api/my-courses/`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     }),
@@ -145,7 +150,10 @@ export default function MyCoursesPage() {
                     }),
                     fetch(`${apiUrl}/api/certification-attempts/`, {
                         headers: { 'Authorization': `Bearer ${token}` }
-                    })
+                    }),
+                    fetch(`${apiUrl}/api/courses/`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
                 ]);
 
                 if (coursesRes.ok) {
@@ -165,6 +173,11 @@ export default function MyCoursesPage() {
                     setAttempts(Array.isArray(attemptsData) ? attemptsData : []);
                 } else if (attemptsRes.status === 401) {
                     window.location.href = '/login';
+                }
+
+                if (catalogRes.ok) {
+                    const catalogData = await catalogRes.json();
+                    setCatalogCourses(Array.isArray(catalogData) ? catalogData : catalogData.results || []);
                 }
             } catch (e) {
                 console.error(e);
@@ -310,6 +323,62 @@ export default function MyCoursesPage() {
         }));
     };
 
+    const toggleAttendanceSection = (courseId: number) => {
+        setExpandedAttendanceCourses(prev => ({
+            ...prev,
+            [courseId]: !prev[courseId],
+        }));
+    };
+
+    const handleCertificateDownload = async (certificateId: number, courseTitle: string) => {
+        setDownloadingCertificateId(certificateId);
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = getClientApiBaseUrl();
+            const res = await fetch(`${apiUrl}/api/certificates/${certificateId}/download/`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const errorData = !res.ok ? await res.json().catch(() => null) : null;
+            if (!res.ok) {
+                alert(errorData?.error || 'Sertifikat belum bisa diunduh.');
+                return;
+            }
+
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = `sertifikat-${courseTitle.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            console.error(error);
+            alert('Terjadi kesalahan saat mengunduh sertifikat.');
+        } finally {
+            setDownloadingCertificateId(null);
+        }
+    };
+
+    const handleSatisfactionSaved = async () => {
+        if (!satisfactionCourse) return;
+        const selected = satisfactionCourse;
+        setEnrollments(prev => prev.map(enrollment => (
+            enrollment.course.slug === selected.slug && enrollment.certificate
+                ? {
+                    ...enrollment,
+                    certificate: {
+                        ...enrollment.certificate,
+                        has_satisfaction_feedback: true,
+                        can_download: true,
+                    },
+                }
+                : enrollment
+        )));
+        await handleCertificateDownload(selected.certificateId, selected.title);
+    };
+
     return (
         <div className="max-w-5xl mx-auto space-y-6">
             <div>
@@ -383,7 +452,24 @@ export default function MyCoursesPage() {
                 </div>
             ) : filtered.length > 0 ? (
                 <div className="space-y-4">
-                    {filtered.map(enrollment => (
+                    {filtered.map(enrollment => {
+                        const enrolledCourseIds = new Set(enrollments.map(item => item.course.id));
+                        const sameCategory = catalogCourses.filter(course => (
+                            !enrolledCourseIds.has(course.id)
+                            && course.is_active
+                            && course.category?.id === enrollment.course.category?.id
+                        ));
+                        const relatedCourses = [
+                            ...sameCategory,
+                            ...catalogCourses.filter(course => (
+                                !enrolledCourseIds.has(course.id)
+                                && course.is_active
+                                && course.type === enrollment.course.type
+                                && !sameCategory.some(item => item.id === course.id)
+                            )),
+                        ].slice(0, 3);
+
+                        return (
                         <div key={enrollment.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow">
                             <div className="min-w-0">
                                 <div className="flex flex-col gap-5 sm:flex-row">
@@ -501,6 +587,40 @@ export default function MyCoursesPage() {
                                         <MessageSquare className="w-4 h-4" />
                                         Forum Diskusi
                                     </Link>
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            !enrollment.certificate?.provided
+                                            || enrollment.certificate.approval_status !== 'APPROVED'
+                                            || !enrollment.certificate.id
+                                            || downloadingCertificateId === enrollment.certificate.id
+                                        }
+                                        onClick={() => {
+                                            const certificate = enrollment.certificate;
+                                            if (!certificate?.id || certificate.approval_status !== 'APPROVED') return;
+                                            if (!certificate.has_satisfaction_feedback) {
+                                                setSatisfactionCourse({
+                                                    slug: enrollment.course.slug,
+                                                    title: enrollment.course.title,
+                                                    certificateId: certificate.id,
+                                                });
+                                                return;
+                                            }
+                                            void handleCertificateDownload(certificate.id, enrollment.course.title);
+                                        }}
+                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
+                                    >
+                                        {enrollment.certificate?.has_satisfaction_feedback ? <Download className="h-4 w-4" /> : <Award className="h-4 w-4" />}
+                                        {!enrollment.certificate?.provided
+                                            ? 'Tanpa Sertifikat'
+                                            : enrollment.certificate.approval_status !== 'APPROVED'
+                                                ? 'Sertifikat Belum Tersedia'
+                                                : downloadingCertificateId === enrollment.certificate.id
+                                                    ? 'Mengunduh...'
+                                                    : enrollment.certificate.has_satisfaction_feedback
+                                                        ? 'Unduh Sertifikat'
+                                                        : 'Isi Kepuasan & Sertifikat'}
+                                    </button>
                                     <span className="text-xs text-gray-500">
                                         Kartu peserta bisa dilihat dan forum diskusi bisa dibuka langsung dari sini.
                                     </span>
@@ -508,7 +628,25 @@ export default function MyCoursesPage() {
 
                                 {enrollment.course.type === 'webinar' && (
                                     <div className="mt-4 rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
-                                        <div className="flex flex-col gap-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleAttendanceSection(enrollment.course.id)}
+                                            className="flex w-full items-center justify-between gap-4 text-left"
+                                        >
+                                            <div>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500">Presensi Webinar</p>
+                                                <p className="mt-1 text-sm font-semibold text-gray-900">
+                                                    {enrollment.course.webinar_attendance?.is_present ? 'Kehadiran sudah tercatat' : 'Buka dan lengkapi presensi setelah webinar'}
+                                                </p>
+                                                <p className="mt-1 text-xs text-gray-500">Klik untuk {expandedAttendanceCourses[enrollment.course.id] ? 'menutup' : 'membuka'} formulir presensi.</p>
+                                            </div>
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-rose-100 bg-white text-rose-600 shadow-sm">
+                                                {expandedAttendanceCourses[enrollment.course.id] ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                                            </div>
+                                        </button>
+
+                                        {expandedAttendanceCourses[enrollment.course.id] && (
+                                        <div className="mt-4 flex flex-col gap-4 border-t border-rose-100 pt-4">
                                             <div>
                                                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500">Presensi Webinar</p>
                                                 <p className="mt-1 text-sm font-semibold text-gray-900">
@@ -590,6 +728,7 @@ export default function MyCoursesPage() {
                                                 </button>
                                             </div>
                                         </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -635,9 +774,35 @@ export default function MyCoursesPage() {
                                         )}
                                     </div>
                                 )}
+
+                                {relatedCourses.length > 0 && (
+                                    <section className="mt-6 border-t border-gray-100 pt-5" aria-label={`Rekomendasi terkait ${enrollment.course.title}`}>
+                                        <div className="mb-3 flex items-center gap-2">
+                                            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                                            <div>
+                                                <p className="text-sm font-black text-gray-900">Rekomendasi Pelatihan Terkait</p>
+                                                <p className="text-xs text-gray-500">Pelatihan lain dengan topik atau format yang serupa.</p>
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                            {relatedCourses.map(course => (
+                                                <Link key={course.id} href={`/courses/${course.slug}`} className="group flex min-w-0 items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 transition hover:border-blue-200 hover:bg-blue-50">
+                                                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600">
+                                                        <CourseThumbnail imageUrl={course.thumbnail} title={course.title} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="line-clamp-2 text-xs font-bold leading-5 text-gray-900 group-hover:text-blue-700">{course.title}</p>
+                                                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{course.category?.name || course.type}</p>
+                                                    </div>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    </section>
+                                )}
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             ) : (
                 <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-200">
@@ -660,6 +825,13 @@ export default function MyCoursesPage() {
                 enrollment={activeEnrollment}
                 participant={participant}
                 onClose={() => setActiveEnrollment(null)}
+            />
+            <SatisfactionFeedbackModal
+                open={Boolean(satisfactionCourse)}
+                courseSlug={satisfactionCourse?.slug || ''}
+                courseTitle={satisfactionCourse?.title || ''}
+                onClose={() => setSatisfactionCourse(null)}
+                onSaved={handleSatisfactionSaved}
             />
         </div>
     );

@@ -1,5 +1,6 @@
 import json
 import random
+from pathlib import Path
 from decimal import Decimal
 from io import BytesIO
 from urllib.parse import quote
@@ -28,7 +29,7 @@ from .serializers import (
     CertificationExamSerializer, CertificationQuestionSerializer, CertificationAlternativeSerializer,
     CertificationInstructorSlotSerializer, CertificationAttemptSerializer, CertificationAnswerSerializer,
     CertificateSerializer, CertificateTemplateSerializer, WebinarAttendanceSerializer, InhouseTrainingRequestSerializer,
-    CourseFeedbackSerializer, CourseFeedbackSubmissionSerializer,
+    CourseFeedbackSerializer, CourseFeedbackSubmissionSerializer, SatisfactionFeedbackSubmissionSerializer,
     CourseDiscussionTopicSerializer, CourseDiscussionCommentSerializer, StudentAccessLinkSerializer,
     InstructorWithdrawalRequestSerializer, InstructorWithdrawalRequestCreateSerializer, InstructorWithdrawalRequestReviewSerializer
 )
@@ -44,7 +45,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from datetime import datetime
 from django.db import transaction
 from django.db.models import Sum, Count, Max, Q
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -2833,6 +2834,40 @@ class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def download(self, request, pk=None):
+        certificate = self.get_object()
+        _sync_certificate_readiness(certificate)
+        if certificate.approval_status != Certificate.APPROVAL_APPROVED:
+            return Response({'error': 'Sertifikat belum tersedia untuk diunduh.'}, status=403)
+        if not CourseFeedback.objects.filter(
+            user=request.user,
+            course=certificate.course,
+            satisfaction_score__isnull=False,
+        ).exists():
+            return Response({
+                'error': 'Isi form kepuasan pelanggan sebelum mengunduh sertifikat.',
+                'requires_satisfaction_feedback': True,
+            }, status=403)
+
+        generate_certificate_pdf(certificate)
+        if not certificate.certificate_url:
+            return Response({'error': 'File sertifikat belum berhasil dibuat.'}, status=404)
+
+        relative_path = certificate.certificate_url
+        if relative_path.startswith(settings.MEDIA_URL):
+            relative_path = relative_path[len(settings.MEDIA_URL):]
+        file_path = Path(settings.MEDIA_ROOT) / relative_path.lstrip('/')
+        if not file_path.exists():
+            return Response({'error': 'File sertifikat tidak ditemukan.'}, status=404)
+
+        return FileResponse(
+            open(file_path, 'rb'),
+            as_attachment=True,
+            filename=f'{certificate.course.slug}-sertifikat.pdf',
+            content_type='application/pdf',
+        )
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
         certificate = self.get_object()
@@ -3605,6 +3640,75 @@ class CourseFeedbackListView(APIView):
             'results': serializer.data,
         })
 
+
+class SatisfactionFeedbackView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_course(self, course_slug):
+        return _get_course_by_lookup(course_slug)
+
+    def get(self, request, course_slug):
+        course = self._get_course(course_slug)
+        if not Order.objects.filter(user=request.user, course=course, status='Completed').exists():
+            return Response({'error': 'Anda belum terdaftar pada pelatihan ini.'}, status=403)
+
+        feedback = CourseFeedback.objects.filter(course=course, user=request.user).select_related(
+            'user', 'lesson', 'quiz_attempt'
+        ).first()
+        if not feedback:
+            return Response({
+                'has_satisfaction_feedback': False,
+                'satisfaction_score': None,
+                'criticism': '',
+                'suggestion': '',
+            })
+
+        payload = CourseFeedbackSerializer(feedback).data
+        payload['has_satisfaction_feedback'] = feedback.satisfaction_score is not None
+        return Response(payload)
+
+    def post(self, request, course_slug):
+        course = self._get_course(course_slug)
+        if not Order.objects.filter(user=request.user, course=course, status='Completed').exists():
+            return Response({'error': 'Anda belum terdaftar pada pelatihan ini.'}, status=403)
+
+        serializer = SatisfactionFeedbackSubmissionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        feedback, created = CourseFeedback.objects.update_or_create(
+            course=course,
+            user=request.user,
+            defaults={
+                'satisfaction_score': serializer.validated_data['satisfaction_score'],
+                'criticism': serializer.validated_data.get('criticism', ''),
+                'suggestion': serializer.validated_data.get('suggestion', ''),
+            },
+        )
+        payload = CourseFeedbackSerializer(feedback).data
+        payload['has_satisfaction_feedback'] = True
+        return Response(payload, status=201 if created else 200)
+
+
+class AffiliateApplicationCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.affiliate_status == AFFILIATE_STATUS_APPROVED:
+            return Response({'error': 'Akun Anda sudah menjadi affiliator.'}, status=400)
+        if profile.affiliate_status == AFFILIATE_STATUS_PENDING:
+            return Response(ProfileSerializer(request.user).data['affiliate'])
+
+        profile.affiliate_status = AFFILIATE_STATUS_PENDING
+        profile.affiliate_requested_at = timezone.now()
+        profile.affiliate_reviewed_at = None
+        profile.affiliate_reviewed_by = None
+        profile.affiliate_review_notes = 'Diajukan melalui menu Pengaturan Akun.'
+        profile.save(update_fields=[
+            'affiliate_status', 'affiliate_requested_at', 'affiliate_reviewed_at',
+            'affiliate_reviewed_by', 'affiliate_review_notes',
+        ])
+        return Response(ProfileSerializer(request.user).data['affiliate'], status=201)
+
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -3634,7 +3738,7 @@ class ProfileView(APIView):
         # 2. Extract flat profile fields from main data
         profile_fields = [
             'phone', 'company', 'position', 'bio',
-            'npwp', 'bank_name', 'bank_account_number', 'bank_account_holder',
+            'npwp', 'nik', 'bank_name', 'bank_account_number', 'bank_account_holder',
             'notify_email_schedule', 'notify_email_certificate',
             'notify_email_promo', 'notify_sms',
         ]

@@ -242,6 +242,13 @@ export interface EnrolledCourse {
     progress_percentage?: number;
     pre_test_score?: number | null;
     post_test_score?: number | null;
+    certificate?: {
+        id?: number | null;
+        provided: boolean;
+        approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+        has_satisfaction_feedback: boolean;
+        can_download: boolean;
+    } | null;
     created_at: string;
 }
 
@@ -257,6 +264,7 @@ export interface CourseFeedbackEntry {
     quiz_score?: number | null;
     criticism: string;
     suggestion: string;
+    satisfaction_score?: number | null;
     created_at?: string | null;
     updated_at?: string | null;
 }
@@ -428,6 +436,7 @@ export interface Certificate {
     user_name?: string;
     course: number;
     course_title?: string;
+    course_slug?: string;
     exam: number | null;
     exam_title?: string;
     template?: number | null;
@@ -439,6 +448,8 @@ export interface Certificate {
     approved_at?: string | null;
     approved_by?: number | null;
     approved_by_name?: string | null;
+    has_satisfaction_feedback?: boolean;
+    requires_satisfaction_feedback?: boolean;
 }
 
 export interface WebinarAttendance {

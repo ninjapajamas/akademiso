@@ -2,8 +2,9 @@
 
 import { getClientApiBaseUrl } from '@/utils/api';
 import { useEffect, useMemo, useState } from 'react';
-import { Award, CheckCircle2, Clock3, Download, ExternalLink, Search } from 'lucide-react';
+import { Award, CheckCircle2, Clock3, Download, Search } from 'lucide-react';
 import { Certificate } from '@/types';
+import SatisfactionFeedbackModal from '@/components/dashboard/SatisfactionFeedbackModal';
 
 function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -22,9 +23,11 @@ function getGradient(index: number) {
 function getStatusMeta(certificate: Certificate) {
     if (certificate.approval_status === 'APPROVED') {
         return {
-            label: 'Siap Dicetak',
+            label: certificate.has_satisfaction_feedback ? 'Siap Diunduh' : 'Isi Kepuasan',
             badgeClass: 'bg-emerald-100 text-emerald-700',
-            helper: certificate.approved_at
+            helper: !certificate.has_satisfaction_feedback
+                ? 'Isi form kepuasan pelanggan terlebih dahulu untuk membuka unduhan sertifikat.'
+                : certificate.approved_at
                 ? `Sertifikat siap diunduh sejak ${formatDate(certificate.approved_at)}`
                 : 'Sertifikat sudah siap diunduh.',
         };
@@ -50,32 +53,32 @@ export default function CertificatesPage() {
     const [certificates, setCertificates] = useState<Certificate[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'pending'>('all');
+    const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);
+    const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+    const fetchCertificates = async () => {
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                setLoading(false);
+                return;
+            }
+
+            const apiUrl = getClientApiBaseUrl();
+            const res = await fetch(`${apiUrl}/api/certificates/`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (res.ok) setCertificates(await res.json());
+        } catch (error) {
+            console.error('Failed to fetch certificates:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchCertificates = async () => {
-            try {
-                const token = localStorage.getItem('access_token');
-                if (!token) {
-                    setLoading(false);
-                    return;
-                }
-
-                const apiUrl = getClientApiBaseUrl();
-                const res = await fetch(`${apiUrl}/api/certificates/`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-
-                if (res.ok) {
-                    setCertificates(await res.json());
-                }
-            } catch (error) {
-                console.error('Failed to fetch certificates:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchCertificates();
+        void fetchCertificates();
     }, []);
 
     const certificateStats = useMemo(() => ([
@@ -90,7 +93,7 @@ export default function CertificatesPage() {
         {
             key: 'ready' as const,
             label: 'Siap Diunduh',
-            value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'APPROVED' && !!cert.certificate_url).length,
+            value: loading ? '...' : certificates.filter(cert => cert.approval_status === 'APPROVED').length,
             icon: CheckCircle2,
             color: 'bg-green-50 text-green-600',
             activeClass: 'border-emerald-200 ring-2 ring-emerald-100 bg-emerald-50/70',
@@ -113,16 +116,52 @@ export default function CertificatesPage() {
                 (cert.certificate_number || '').toLowerCase().includes(search.toLowerCase());
 
             const matchesStatus = statusFilter === 'all'
-                || (statusFilter === 'ready' && cert.approval_status === 'APPROVED' && !!cert.certificate_url)
+                || (statusFilter === 'ready' && cert.approval_status === 'APPROVED')
                 || (statusFilter === 'pending' && cert.approval_status === 'PENDING');
 
             return matchesSearch && matchesStatus;
         })
     ), [certificates, search, statusFilter]);
 
-    const handleDownload = (certificate: Certificate) => {
-        if (!certificate.certificate_url) return;
-        window.open(certificate.certificate_url, '_blank', 'noopener,noreferrer');
+    const handleDownload = async (certificate: Certificate) => {
+        if (certificate.approval_status !== 'APPROVED') return;
+        if (!certificate.has_satisfaction_feedback) {
+            setSelectedCertificate(certificate);
+            return;
+        }
+
+        setDownloadingId(certificate.id);
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = getClientApiBaseUrl();
+            const res = await fetch(`${apiUrl}/api/certificates/${certificate.id}/download/`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const errorData = !res.ok ? await res.json().catch(() => null) : null;
+            if (!res.ok) throw new Error(errorData?.error || 'Sertifikat belum bisa diunduh.');
+
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = `sertifikat-${certificate.certificate_number || certificate.id}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Sertifikat belum bisa diunduh.');
+        } finally {
+            setDownloadingId(null);
+        }
+    };
+
+    const handleSatisfactionSaved = async () => {
+        if (!selectedCertificate) return;
+        const certificate = { ...selectedCertificate, has_satisfaction_feedback: true };
+        setCertificates(prev => prev.map(item => item.id === certificate.id ? certificate : item));
+        await handleDownload(certificate);
+        await fetchCertificates();
     };
 
     return (
@@ -217,24 +256,17 @@ export default function CertificatesPage() {
 
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => handleDownload(certificate)}
-                                        disabled={!certificate.certificate_url}
+                                        onClick={() => void handleDownload(certificate)}
+                                        disabled={certificate.approval_status !== 'APPROVED' || downloadingId === certificate.id}
                                         className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                                     >
                                         <Download className="w-3.5 h-3.5" />
-                                        Unduh PDF
+                                        {downloadingId === certificate.id
+                                            ? 'Mengunduh...'
+                                            : certificate.approval_status === 'APPROVED' && !certificate.has_satisfaction_feedback
+                                                ? 'Isi Kepuasan & Unduh'
+                                                : 'Unduh PDF'}
                                     </button>
-                                    {certificate.certificate_url && (
-                                        <a
-                                            href={certificate.certificate_url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 py-2 rounded-lg transition-colors"
-                                        >
-                                            <ExternalLink className="w-3.5 h-3.5" />
-                                            Buka
-                                        </a>
-                                    )}
                                 </div>
                             </div>
                         </div>
@@ -249,6 +281,13 @@ export default function CertificatesPage() {
                     </div>
                 )}
             </div>
+            <SatisfactionFeedbackModal
+                open={Boolean(selectedCertificate)}
+                courseSlug={selectedCertificate?.course_slug || ''}
+                courseTitle={selectedCertificate?.course_title || 'Pelatihan Akademiso'}
+                onClose={() => setSelectedCertificate(null)}
+                onSaved={handleSatisfactionSaved}
+            />
         </div>
     );
 }
