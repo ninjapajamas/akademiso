@@ -28,7 +28,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             if (guestItems.length > 0 && !mergingGuestCart.current) {
                 mergingGuestCart.current = true;
                 try {
-                    await Promise.all(guestItems.map(item => fetch(`${apiUrl}/api/cart/add_item/`, {
+                    const responses = await Promise.all(guestItems.map(item => fetch(`${apiUrl}/api/cart/add_item/`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -41,7 +41,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
                             public_session_id: item.public_session_id,
                         }),
                     })));
-                    clearGuestCart();
+                    if (responses.every(response => response.ok || response.status === 409)) {
+                        clearGuestCart();
+                    }
                 } finally {
                     mergingGuestCart.current = false;
                 }

@@ -1283,7 +1283,7 @@ export function SharedCourseFormPage({
                                     placeholder="Contoh: Mengumpulkan studi kasus audit paling lambat 7 hari setelah pelatihan."
                                     className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-gray-900 outline-none focus:ring-2 focus:ring-amber-300"
                                 />
-                                <p className="mt-1 text-xs text-gray-500">Catatan tambahan ditampilkan kepada peserta dan diverifikasi manual oleh admin/instruktur.</p>
+                                <p className="mt-1 text-xs text-gray-500">Catatan tambahan ditampilkan kepada peserta sebagai informasi dan tidak diverifikasi otomatis oleh sistem.</p>
                             </div>
                         </div>
                     </div>
