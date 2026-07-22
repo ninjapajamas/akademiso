@@ -2,7 +2,7 @@
 
 import { getClientApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
-import { Calendar, Lock, CircleAlert, Building2, Mail, Phone, User } from 'lucide-react';
+import { Calendar, Lock, CircleAlert, Building2, Mail, Phone, User, BadgeCheck } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { Course } from '@/types';
@@ -41,6 +41,8 @@ function CheckoutContent() {
     const [profile, setProfile] = useState<UserProfilePayload | null>(null);
     const [loading, setLoading] = useState(true);
     const [agreed, setAgreed] = useState(false);
+    const [isProcessingFree, setIsProcessingFree] = useState(false);
+    const [freeEnrollmentError, setFreeEnrollmentError] = useState('');
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
@@ -128,11 +130,55 @@ function CheckoutContent() {
         : 'Paket E-Learning';
     const offerSchedule = offer === 'public'
         ? selectedPublicSession?.schedule || 'Jadwal akan diinformasikan'
-        : 'Akses materi aktif setelah pembayaran berhasil';
+        : isFreeOffering
+            ? 'Akses materi aktif setelah pendaftaran berhasil'
+            : 'Akses materi aktif setelah pembayaran berhasil';
     const displayName = getProfileDisplayName(profile) || '-';
     const phone = profile?.profile?.phone?.trim() || '-';
     const company = profile?.profile?.company?.trim() || '-';
     const position = profile?.profile?.position?.trim() || '-';
+
+    const handleCheckoutContinue = async () => {
+        if (!isFreeOffering) {
+            router.push(`/payment?${checkoutQuery}`);
+            return;
+        }
+
+        setIsProcessingFree(true);
+        setFreeEnrollmentError('');
+        try {
+            const token = localStorage.getItem('access_token');
+            const apiUrl = getClientApiBaseUrl();
+            const response = await fetch(`${apiUrl}/api/orders/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    course: course.id,
+                    offer_type: offer,
+                    offer_mode: offerMode || '',
+                    public_session_id: publicSessionId || '',
+                    total_amount: 0,
+                    status: 'Pending',
+                }),
+            });
+
+            if (response.ok || response.status === 409) {
+                router.replace('/dashboard/courses');
+                return;
+            }
+
+            const data = await response.json().catch(() => ({}));
+            setFreeEnrollmentError(data.error || data.detail || 'Pendaftaran gratis belum berhasil. Silakan coba lagi.');
+        } catch (error) {
+            console.error('Free enrollment error:', error);
+            setFreeEnrollmentError('Terjadi masalah jaringan saat mendaftarkan pelatihan gratis. Silakan coba lagi.');
+        } finally {
+            setIsProcessingFree(false);
+        }
+    };
 
     return (
         <div className="bg-gray-50 min-h-screen pb-20">
@@ -148,7 +194,7 @@ function CheckoutContent() {
                         </div>
                         <div className="flex flex-col items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center font-bold text-sm">2</div>
-                            <span className="text-[11px] font-medium text-gray-500 sm:text-xs">Pembayaran</span>
+                            <span className="text-[11px] font-medium text-gray-500 sm:text-xs">{isFreeOffering ? 'Pendaftaran' : 'Pembayaran'}</span>
                         </div>
                         <div className="flex flex-col items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center font-bold text-sm">3</div>
@@ -157,7 +203,7 @@ function CheckoutContent() {
                     </div>
 
                     <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Konfirmasi Pesanan</h1>
-                    <p className="mt-1 text-sm leading-relaxed text-gray-500 sm:text-base">Profil peserta dapat dilengkapi setelah pembayaran berhasil.</p>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-500 sm:text-base">Profil peserta dapat dilengkapi setelah {isFreeOffering ? 'pendaftaran' : 'pembayaran'} berhasil.</p>
                 </div>
             </div>
 
@@ -171,11 +217,11 @@ function CheckoutContent() {
                                         <div>
                                             <h2 className="text-lg font-bold text-gray-900">Informasi Akun Saat Ini</h2>
                                             <p className="mt-1 text-sm text-gray-500">
-                                                Data yang belum lengkap tidak menghalangi pembayaran. Anda akan diarahkan untuk melengkapinya setelah pembayaran berhasil.
+                                                Data yang belum lengkap tidak menghalangi {isFreeOffering ? 'pendaftaran' : 'pembayaran'}. Anda dapat melengkapinya setelah {isFreeOffering ? 'pendaftaran' : 'pembayaran'} berhasil.
                                             </p>
                                         </div>
                                         <div className="inline-flex shrink-0 self-start whitespace-nowrap items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
-                                            Lengkapi Setelah Pembayaran
+                                            Lengkapi Setelah {isFreeOffering ? 'Daftar' : 'Pembayaran'}
                                         </div>
                                     </div>
                                 </div>
@@ -238,7 +284,8 @@ function CheckoutContent() {
 
                         <div className="mt-5 flex justify-start sm:mt-6 sm:justify-end">
                             <p className="flex items-center gap-2 text-sm text-gray-500">
-                                <Lock className="w-4 h-4" /> Pembayaran aman diproses oleh Midtrans
+                                {isFreeOffering ? <BadgeCheck className="h-4 w-4 text-emerald-600" /> : <Lock className="h-4 w-4" />}
+                                {isFreeOffering ? 'Pendaftaran gratis diproses tanpa halaman pembayaran' : 'Pembayaran aman diproses oleh Midtrans'}
                             </p>
                         </div>
                     </div>
@@ -308,14 +355,20 @@ function CheckoutContent() {
                                     </label>
                                 )}
 
+                                {freeEnrollmentError && (
+                                    <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                                        {freeEnrollmentError}
+                                    </p>
+                                )}
+
                                 {!isPriceUnavailable ? (
                                     <button
                                         type="button"
-                                        disabled={!agreed}
-                                        onClick={() => router.push(`/payment?${checkoutQuery}`)}
+                                        disabled={!agreed || isProcessingFree}
+                                        onClick={handleCheckoutContinue}
                                         className="block w-full rounded-xl bg-blue-600 py-3.5 text-center font-bold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                        Lanjut ke Pembayaran
+                                        {isProcessingFree ? 'Mendaftarkan...' : isFreeOffering ? 'Daftar Gratis' : 'Lanjut ke Pembayaran'}
                                     </button>
                                 ) : (
                                     <Link href={`/courses/${course.slug}`} className="block w-full text-center bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-colors shadow-lg shadow-amber-600/20">
