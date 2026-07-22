@@ -531,24 +531,24 @@ const QuizPlayer = ({
                     </div>
                 </div>
             )}
-            <div className="bg-white rounded-[2rem] p-10 border border-gray-100 shadow-xl animate-in fade-in zoom-in-95 duration-500">
+            <div className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-xl animate-in fade-in zoom-in-95 duration-500 sm:p-8 lg:p-10">
                 <div className="text-center space-y-6">
                     <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center ${result.is_passed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                         {result.is_passed ? <Trophy className="w-12 h-12" /> : <AlertCircle className="w-12 h-12" />}
                     </div>
                     <div>
-                        <h3 className="text-3xl font-black text-gray-900 tracking-tight">
+                        <h3 className="text-2xl font-black tracking-tight text-gray-900 sm:text-3xl">
                             {result.is_passed ? 'Selamat! Anda Lulus' : 'Maaf, Anda Belum Lulus'}
                         </h3>
                         <p className="text-gray-500 mt-2 font-medium">Hasil pengerjaan {lesson.title}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto">
-                        <div className="bg-gray-50 p-6 rounded-3xl text-center">
+                        <div className="rounded-3xl bg-gray-50 p-4 text-center sm:p-6">
                             <span className="block text-3xl font-black text-gray-900">{Math.round(result.score)}%</span>
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Skor Anda</span>
                         </div>
-                        <div className="bg-gray-50 p-6 rounded-3xl text-center">
+                        <div className="rounded-3xl bg-gray-50 p-4 text-center sm:p-6">
                             <span className="block text-3xl font-black text-gray-900">{result.correct_answers}/{result.total_questions}</span>
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Benar</span>
                         </div>
@@ -689,17 +689,17 @@ const QuizPlayer = ({
     }
 
     return (
-        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden flex flex-col md:flex-row min-h-[500px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex h-[calc(100dvh-7rem)] min-h-[30rem] max-h-[50rem] flex-col overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500 md:h-[calc(100dvh-9rem)] md:min-h-[32rem] md:flex-row">
             {/* Quiz Info Sidebar */}
-            <div className="w-full md:w-72 bg-gray-50 p-8 border-r border-gray-100 flex flex-col">
+            <div className="flex w-full shrink-0 flex-col border-b border-gray-100 bg-gray-50 p-4 md:w-72 md:border-b-0 md:border-r md:p-8">
                 <div className="flex-1">
-                    <div className="flex items-center gap-3 text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">
+                    <div className="mb-2 flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-blue-600 md:mb-4">
                         <div className="p-2 bg-blue-100 rounded-lg"><HelpCircle className="w-4 h-4" /></div>
                         {getLessonTypeLabel(lesson.type)}
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-6 leading-tight">{lesson.title}</h3>
+                    <h3 className="mb-3 line-clamp-1 text-base font-bold leading-tight text-gray-900 md:mb-6 md:line-clamp-none md:text-xl">{lesson.title}</h3>
 
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2 md:block md:space-y-4">
                         <div className="flex items-center gap-3">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                             <span className="text-xs font-bold text-gray-600">{orderedQuestions.length} Pertanyaan</span>
@@ -709,22 +709,22 @@ const QuizPlayer = ({
                             <span className="text-xs font-bold text-gray-600">Minimal Lulus {quiz.pass_score}%</span>
                         </div>
                         {quiz.time_limit && (
-                            <div className={`rounded-2xl border p-4 ${secondsRemaining <= 60 ? 'border-red-200 bg-red-50' : 'border-blue-100 bg-white'}`}>
+                            <div className={`col-span-2 rounded-2xl border p-3 md:p-4 ${secondsRemaining <= 60 ? 'border-red-200 bg-red-50' : 'border-blue-100 bg-white'}`}>
                                 <div className="flex items-center justify-between gap-3">
                                     <span className="flex items-center gap-2 text-xs font-bold text-gray-600">
                                         <Clock className="h-4 w-4" /> Sisa Waktu
                                     </span>
-                                    <span className={`font-mono text-xl font-black tabular-nums ${secondsRemaining <= 60 ? 'text-red-600' : 'text-blue-700'}`}>
+                                    <span className={`font-mono text-lg font-black tabular-nums md:text-xl ${secondsRemaining <= 60 ? 'text-red-600' : 'text-blue-700'}`}>
                                         {String(Math.floor(secondsRemaining / 60)).padStart(2, '0')}:{String(secondsRemaining % 60).padStart(2, '0')}
                                     </span>
                                 </div>
-                                <p className="mt-2 text-[11px] leading-4 text-gray-500">Jawaban dikirim otomatis saat waktu habis.</p>
+                                <p className="mt-1 text-[10px] leading-4 text-gray-500 md:mt-2 md:text-[11px]">Jawaban dikirim otomatis saat waktu habis.</p>
                             </div>
                         )}
                     </div>
                 </div>
 
-                <div className="mt-8 pt-8 border-t border-gray-200">
+                <div className="mt-3 border-t border-gray-200 pt-3 md:mt-8 md:pt-8">
                     <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
                         <span>Progress</span>
                         <span>{Math.round(progress)}%</span>
@@ -739,11 +739,11 @@ const QuizPlayer = ({
             </div>
 
             {/* Questions Area */}
-            <div className="flex-1 p-8 md:p-12 flex flex-col">
-                <div className="flex-1">
-                    <div className="mb-8">
+            <div className="flex min-h-0 flex-1 flex-col p-4 sm:p-6 md:p-8 lg:p-10">
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1 sm:pr-2">
+                    <div className="mb-5 md:mb-8">
                         <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pertanyaan {currentQuestionIdx + 1} dari {orderedQuestions.length}</span>
-                        <h4 className="text-2xl font-bold text-gray-900 mt-4 leading-snug">{currentQuestion.text}</h4>
+                        <h4 className="mt-2 text-xl font-bold leading-snug text-gray-900 md:mt-4 md:text-2xl">{currentQuestion.text}</h4>
                         {currentQuestion.image_url && (
                             <div className="mt-5 overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 p-4">
                                 { }
@@ -773,15 +773,15 @@ const QuizPlayer = ({
                                 <button
                                     key={alt.id}
                                     onClick={() => handleAnswerSelect(alt.id)}
-                                    className={`w-full text-left p-5 rounded-2xl border-2 transition-all flex items-center justify-between group
+                                    className={`group flex w-full items-center justify-between gap-3 rounded-2xl border-2 p-4 text-left transition-all md:p-5
                                         ${currentAnswer === alt.id.toString()
                                             ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-md'
                                             : 'border-gray-50 hover:border-gray-200 text-gray-600 hover:bg-gray-50'
                                         }
                                     `}
                                 >
-                                    <span className="font-bold text-sm">{alt.text}</span>
-                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
+                                    <span className="min-w-0 font-bold text-sm">{alt.text}</span>
+                                    <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all
                                         ${currentAnswer === alt.id.toString()
                                             ? 'border-blue-600 bg-blue-600 text-white'
                                             : 'border-gray-200 group-hover:border-gray-300'
@@ -795,11 +795,11 @@ const QuizPlayer = ({
                     </div>
                 </div>
 
-                <div className="mt-12 flex items-center justify-between pt-8 border-t border-gray-50">
+                <div className="mt-4 grid shrink-0 grid-cols-2 gap-3 border-t border-gray-100 bg-white pt-4 md:mt-6 md:pt-6">
                     <button
                         disabled={currentQuestionIdx === 0}
                         onClick={() => setCurrentQuestionIdx(currentQuestionIdx - 1)}
-                        className="px-6 py-3 text-sm font-bold text-gray-400 hover:text-gray-900 transition-all disabled:opacity-0"
+                        className="flex min-h-12 min-w-0 w-full items-center justify-center rounded-xl px-2 py-3 text-xs font-bold leading-4 text-gray-500 transition-all hover:bg-gray-50 hover:text-gray-900 disabled:invisible sm:px-4 sm:text-sm"
                     >
                         Sebelumnya
                     </button>
@@ -808,7 +808,7 @@ const QuizPlayer = ({
                         <button
                             disabled={!hasCurrentAnswer}
                             onClick={() => setCurrentQuestionIdx(currentQuestionIdx + 1)}
-                            className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:grayscale"
+                            className="flex min-h-12 min-w-0 w-full items-center justify-center rounded-xl bg-blue-600 px-2 py-3 text-center text-xs font-bold leading-4 text-white shadow-lg shadow-blue-600/20 transition-all hover:bg-blue-700 disabled:opacity-50 disabled:grayscale sm:px-4 sm:text-sm"
                         >
                             Pertanyaan Selanjutnya
                         </button>
@@ -816,7 +816,7 @@ const QuizPlayer = ({
                         <button
                             disabled={!hasCurrentAnswer || submitting}
                             onClick={handleSubmit}
-                            className="bg-green-600 text-white px-10 py-3 rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 disabled:opacity-50 disabled:grayscale flex items-center gap-2"
+                            className="flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-2 py-3 text-center text-xs font-bold leading-4 text-white shadow-lg shadow-green-600/20 transition-all hover:bg-green-700 disabled:opacity-50 disabled:grayscale sm:px-4 sm:text-sm"
                         >
                             {submitting ? 'Mengirim...' : 'Kirim Jawaban'}
                         </button>
