@@ -87,15 +87,32 @@ const getGamificationBadgeIcon = (icon?: string) => {
 
 const QuizLeaderboardPanel = ({ leaderboard, loading }: { leaderboard: QuizLeaderboard | null; loading: boolean }) => {
     if (loading) {
-        return <div className="mt-6 h-40 animate-pulse rounded-[2rem] bg-gradient-to-r from-fuchsia-50 via-amber-50 to-cyan-50" />;
+        return <div className="h-52 animate-pulse rounded-[2rem] bg-gradient-to-r from-fuchsia-50 via-amber-50 to-cyan-50" />;
     }
     if (!leaderboard) return null;
 
     const rows = leaderboard.leaders || [];
+    const barTones = [
+        'from-amber-300 via-orange-400 to-rose-400',
+        'from-cyan-300 via-sky-400 to-blue-500',
+        'from-fuchsia-300 via-pink-400 to-rose-500',
+        'from-violet-300 via-purple-400 to-indigo-500',
+        'from-emerald-300 via-teal-400 to-cyan-500',
+    ];
+    const rankTones = [
+        'bg-amber-100 text-amber-700 ring-amber-200',
+        'bg-sky-100 text-sky-700 ring-sky-200',
+        'bg-pink-100 text-pink-700 ring-pink-200',
+        'bg-violet-100 text-violet-700 ring-violet-200',
+        'bg-emerald-100 text-emerald-700 ring-emerald-200',
+    ];
+
     return (
-        <section className="mt-6 overflow-hidden rounded-[2rem] border border-fuchsia-100 bg-gradient-to-br from-fuchsia-50 via-white to-cyan-50 p-5 text-left shadow-sm sm:p-6">
+        <section className="relative isolate overflow-hidden rounded-[2rem] border border-fuchsia-100 bg-gradient-to-br from-fuchsia-50 via-white to-cyan-50 p-5 text-left shadow-sm sm:p-6">
+            <div className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-amber-200/35 blur-3xl" />
+            <div className="absolute -bottom-12 left-1/3 h-36 w-36 rounded-full bg-cyan-200/35 blur-3xl" />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
+                <div className="relative flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-white shadow-lg shadow-fuchsia-500/20">
                         <Trophy className="h-6 w-6" />
                     </div>
@@ -104,30 +121,40 @@ const QuizLeaderboardPanel = ({ leaderboard, loading }: { leaderboard: QuizLeade
                         <h4 className="text-lg font-black text-slate-950">Leaderboard Ceria</h4>
                     </div>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-600 shadow-sm">
+                <span className="relative inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-600 shadow-sm">
                     <Medal className="h-3.5 w-3.5" /> Masuk Top 5 dapat badge
                 </span>
             </div>
 
             {rows.length > 0 ? (
-                <div className="mt-5 grid gap-2">
-                    {rows.map(entry => (
-                        <div key={entry.user_id} className={`flex items-center gap-3 rounded-2xl border px-3 py-3 ${entry.is_current_user ? 'border-blue-300 bg-blue-50 shadow-sm' : 'border-white bg-white/90'}`}>
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl font-black ${entry.rank === 1 ? 'bg-amber-100 text-amber-600' : entry.rank === 2 ? 'bg-slate-200 text-slate-600' : entry.rank === 3 ? 'bg-orange-100 text-orange-600' : 'bg-violet-100 text-violet-600'}`}>
-                                {entry.rank <= 3 ? <Medal className="h-5 w-5" /> : `#${entry.rank}`}
+                <div className="relative mt-5 grid gap-3">
+                    {rows.map((entry, index) => {
+                        const score = Math.max(0, Math.min(100, Math.round(entry.score)));
+                        return (
+                            <div key={entry.user_id} className={`rounded-2xl border p-3 transition sm:grid sm:grid-cols-[2.5rem_minmax(9rem,13rem)_1fr_3.5rem] sm:items-center sm:gap-3 ${entry.is_current_user ? 'border-blue-300 bg-blue-50/90 shadow-md shadow-blue-100' : 'border-white bg-white/90 shadow-sm'}`}>
+                                <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-black ring-1 ${rankTones[index] || rankTones[4]}`}>
+                                    {entry.rank === 1 ? <Crown className="h-4 w-4" /> : `#${entry.rank}`}
+                                </div>
+                                <div className="mt-3 flex min-w-0 items-center gap-2 sm:mt-0">
+                                    {entry.avatar_url ? (
+                                        <img src={entry.avatar_url} alt={entry.full_name} className="h-9 w-9 shrink-0 rounded-xl object-cover" />
+                                    ) : (
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700"><UserRound className="h-4 w-4" /></div>
+                                    )}
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-black text-slate-900">{entry.full_name}</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{entry.is_current_user ? 'Anda' : `Peringkat ${entry.rank}`}</p>
+                                    </div>
+                                </div>
+                                <div className="mt-3 h-8 overflow-hidden rounded-xl bg-slate-100 p-1 sm:mt-0" role="progressbar" aria-label={`Skor ${entry.full_name}`} aria-valuenow={score} aria-valuemin={0} aria-valuemax={100}>
+                                    <div className={`flex h-full min-w-8 items-center justify-end rounded-lg bg-gradient-to-r px-2 shadow-sm ${barTones[index] || barTones[4]}`} style={{ width: `${Math.max(score, 8)}%` }}>
+                                        <Sparkles className="h-3 w-3 text-white/80" />
+                                    </div>
+                                </div>
+                                <div className="mt-2 text-right text-lg font-black text-slate-900 sm:mt-0">{score}%</div>
                             </div>
-                            {entry.avatar_url ? (
-                                <img src={entry.avatar_url} alt={entry.full_name} className="h-10 w-10 rounded-2xl object-cover" />
-                            ) : (
-                                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700"><UserRound className="h-5 w-5" /></div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-black text-slate-900">{entry.full_name}{entry.is_current_user ? ' • Anda' : ''}</p>
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Peringkat #{entry.rank}</p>
-                            </div>
-                            <span className="rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-3 py-1.5 text-sm font-black text-white">{Math.round(entry.score)}%</span>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             ) : (
                 <div className="mt-5 rounded-2xl border border-dashed border-fuchsia-200 bg-white/70 p-5 text-center text-sm text-slate-500">
@@ -343,8 +370,9 @@ const QuizPlayer = ({
 
     if (!hasStarted && !result) {
         return (
-            <div className="overflow-hidden rounded-[2rem] border border-blue-100 bg-white shadow-xl">
-                <div className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 px-6 py-8 text-white sm:px-10 sm:py-10">
+            <div className="space-y-6 pb-8">
+                <div className="overflow-hidden rounded-[2rem] border border-blue-100 bg-white shadow-xl">
+                    <div className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 px-6 py-8 text-white sm:px-10 sm:py-10">
                     <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-100">Persiapan {getLessonTypeLabel(lesson.type)}</p>
@@ -357,7 +385,7 @@ const QuizPlayer = ({
                     </div>
                 </div>
 
-                <div className="p-6 sm:p-10">
+                    <div className="p-6 sm:p-10">
                     <div className="grid gap-4 sm:grid-cols-3">
                         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
                             <HelpCircle className="h-5 w-5 text-blue-600" />
@@ -398,8 +426,9 @@ const QuizPlayer = ({
                         <ArrowRight className="h-4 w-4" />
                     </button>
 
-                    <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} />
+                    </div>
                 </div>
+                <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} />
             </div>
         );
     }
