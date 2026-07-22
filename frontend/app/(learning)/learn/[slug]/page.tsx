@@ -85,7 +85,7 @@ const getGamificationBadgeIcon = (icon?: string) => {
     return <Sparkles className={className} />;
 };
 
-const QuizLeaderboardPanel = ({ leaderboard, loading }: { leaderboard: QuizLeaderboard | null; loading: boolean }) => {
+const QuizLeaderboardPanel = ({ leaderboard, loading, courseTitle }: { leaderboard: QuizLeaderboard | null; loading: boolean; courseTitle: string }) => {
     if (loading) {
         return <div className="h-52 animate-pulse rounded-[2rem] bg-gradient-to-r from-fuchsia-50 via-amber-50 to-cyan-50" />;
     }
@@ -117,8 +117,8 @@ const QuizLeaderboardPanel = ({ leaderboard, loading }: { leaderboard: QuizLeade
                         <Trophy className="h-6 w-6" />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-500">Top 5 {leaderboard.lesson_label}</p>
-                        <h4 className="text-lg font-black text-slate-950">Leaderboard Ceria</h4>
+                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-500">Peringkat 5 Teratas</p>
+                        <h4 className="text-lg font-black leading-snug text-slate-950">Leaderboard {leaderboard.lesson_label} — {courseTitle}</h4>
                     </div>
                 </div>
                 <span className="relative inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-600 shadow-sm">
@@ -173,10 +173,12 @@ const QuizLeaderboardPanel = ({ leaderboard, loading }: { leaderboard: QuizLeade
 
 const QuizPlayer = ({
     lesson,
+    courseTitle,
     onComplete,
     onProgressChange,
 }: {
     lesson: any;
+    courseTitle: string;
     onComplete?: () => void;
     onProgressChange?: (inProgress: boolean) => void;
 }) => {
@@ -428,7 +430,7 @@ const QuizPlayer = ({
 
                     </div>
                 </div>
-                <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} />
+                <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} courseTitle={courseTitle} />
             </div>
         );
     }
@@ -588,7 +590,7 @@ const QuizPlayer = ({
                         </div>
                     )}
 
-                    <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} />
+                    <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} courseTitle={courseTitle} />
 
                     <div className="pt-6 flex flex-col sm:flex-row gap-4 justify-center">
                         <button
@@ -1212,6 +1214,7 @@ export default function LearningPage({ params }: { params: Promise<{ slug: strin
                             {isAssessmentLesson(activeLesson.type) && (
                                 <QuizPlayer
                                     lesson={activeLesson}
+                                    courseTitle={course.title}
                                     onProgressChange={setAssessmentInProgress}
                                     onComplete={() => {
                                         // Refresh course status to show marks

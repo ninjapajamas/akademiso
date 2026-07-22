@@ -110,33 +110,30 @@ function CourseFocusCard({ enrollment, tone }: { enrollment: EnrolledCourse; ton
         : `/learn/${course.slug}`;
 
     return (
-        <article className="group overflow-hidden rounded-[1.8rem] border border-slate-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-            <div className="grid sm:grid-cols-[11rem_1fr]">
-                <div className="relative min-h-40 overflow-hidden bg-slate-100">
+        <article className="group rounded-3xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md">
+            <div className="flex min-w-0 gap-4">
+                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-slate-100 sm:h-32 sm:w-32">
                     <CourseThumbnail imageUrl={course.thumbnail} title={course.title} />
-                    <span className={`absolute left-3 top-3 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow-sm ${tone === 'upcoming' ? 'bg-fuchsia-500' : 'bg-emerald-500'}`}>
+                    <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white shadow-sm ${tone === 'upcoming' ? 'bg-fuchsia-500' : 'bg-emerald-500'}`}>
                         {tone === 'upcoming' ? 'Akan Datang' : 'Berlangsung'}
                     </span>
                 </div>
-                <div className="flex min-w-0 flex-col justify-between p-5">
-                    <div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{course.category?.name || 'Pelatihan ISO'}</p>
-                        <h3 className="mt-2 line-clamp-2 text-lg font-black leading-snug text-slate-950">{course.title}</h3>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1"><Clock3 className="h-3.5 w-3.5" />{course.duration}</span>
-                            {course.scheduled_at && <span className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-50 px-2.5 py-1 text-fuchsia-700"><CalendarDays className="h-3.5 w-3.5" />{formatDate(course.scheduled_at)}</span>}
-                        </div>
+                <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{course.category?.name || 'Pelatihan ISO'}</p>
+                    <h3 className="mt-1 line-clamp-2 text-base font-black leading-snug text-slate-950 sm:text-lg">{course.title}</h3>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold text-slate-500 sm:text-xs">
+                        <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-blue-500" />{course.duration}</span>
+                        {course.scheduled_at && <span className="inline-flex items-center gap-1.5 text-fuchsia-700"><CalendarDays className="h-3.5 w-3.5" />{formatDate(course.scheduled_at)}</span>}
                     </div>
-
-                    <div className="mt-5">
+                    <div className="mt-auto pt-3">
                         <div className="flex items-center justify-between text-xs font-bold text-slate-500">
                             <span>Progres belajar</span>
                             <span>{progress}%</span>
                         </div>
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
                             <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400" style={{ width: `${progress}%` }} />
                         </div>
-                        <Link href={href} className="mt-4 inline-flex items-center gap-2 text-sm font-black text-blue-700 transition group-hover:gap-3">
+                        <Link href={href} className="mt-2.5 inline-flex items-center gap-1.5 text-sm font-black text-blue-700 transition group-hover:gap-2.5">
                             {getLearningLabel(progress)} <ArrowRight className="h-4 w-4" />
                         </Link>
                     </div>
@@ -148,17 +145,17 @@ function CourseFocusCard({ enrollment, tone }: { enrollment: EnrolledCourse; ton
 
 function RecommendationCard({ course }: { course: Course }) {
     return (
-        <article className="overflow-hidden rounded-[1.6rem] border border-slate-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-            <div className="relative h-36 overflow-hidden bg-slate-100">
+        <article className="flex min-w-0 gap-3 rounded-3xl border border-slate-200/80 bg-white p-3 shadow-sm transition hover:border-fuchsia-200 hover:shadow-md">
+            <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
                 <CourseThumbnail imageUrl={course.thumbnail} title={course.title} />
-                {course.is_free && <span className="absolute right-3 top-3 rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white">Gratis</span>}
+                {course.is_free && <span className="absolute left-2 top-2 rounded-full bg-emerald-500 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white">Gratis</span>}
             </div>
-            <div className="p-4">
+            <div className="flex min-w-0 flex-1 flex-col py-1">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fuchsia-500">{course.category?.name || 'Pilihan Akademiso'}</p>
-                <h3 className="mt-2 line-clamp-2 min-h-12 font-black leading-6 text-slate-950">{course.title}</h3>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-slate-500">{course.level} • {course.duration}</span>
-                    <Link href={`/courses/${course.slug}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-blue-600" aria-label={`Lihat ${course.title}`}>
+                <h3 className="mt-1 line-clamp-2 font-black leading-5 text-slate-950">{course.title}</h3>
+                <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                    <span className="text-[11px] font-semibold text-slate-500">{course.level} • {course.duration}</span>
+                    <Link href={`/courses/${course.slug}`} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white transition hover:bg-blue-600" aria-label={`Lihat ${course.title}`}>
                         <ArrowRight className="h-4 w-4" />
                     </Link>
                 </div>
@@ -316,7 +313,7 @@ export default function DashboardPage() {
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">Gamifikasi</p>
-                                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Progres yang terasa menyenangkan</h2>
+                                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Progres Anda</h2>
                                 <p className="mt-1 text-sm text-slate-500">XP, level, streak, dan badge Anda dalam satu ringkasan.</p>
                             </div>
                             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-400/25"><Trophy className="h-7 w-7" /></div>
