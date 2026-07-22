@@ -133,6 +133,81 @@ GAMIFICATION_BADGES = [
         'metric': 'completed_lessons',
         'threshold': 10,
     },
+    {
+        'key': 'quiz_top_five',
+        'label': 'Bintang Quiz',
+        'description': 'Masuk 5 besar pada salah satu quiz.',
+        'icon': 'medal',
+        'accent_color': 'amber',
+        'metric': 'quiz_top_five',
+        'threshold': 1,
+    },
+    {
+        'key': 'pretest_top_five',
+        'label': 'Roket Pre-Test',
+        'description': 'Masuk 5 besar pada salah satu pre-test.',
+        'icon': 'rocket',
+        'accent_color': 'cyan',
+        'metric': 'pretest_top_five',
+        'threshold': 1,
+    },
+    {
+        'key': 'posttest_top_five',
+        'label': 'Juara Post-Test',
+        'description': 'Masuk 5 besar pada salah satu post-test.',
+        'icon': 'crown',
+        'accent_color': 'rose',
+        'metric': 'posttest_top_five',
+        'threshold': 1,
+    },
+]
+
+GAMIFICATION_REWARDS = [
+    {
+        'key': 'spark_100',
+        'title': 'Kotak Semangat',
+        'description': 'Hadiah pembuka untuk perjalanan belajar pertama Anda.',
+        'required_xp': 100,
+        'bonus_xp': 20,
+        'icon': 'gift',
+        'accent_color': 'blue',
+    },
+    {
+        'key': 'rocket_250',
+        'title': 'Booster Belajar',
+        'description': 'Bonus untuk ritme belajar yang mulai konsisten.',
+        'required_xp': 250,
+        'bonus_xp': 40,
+        'icon': 'rocket',
+        'accent_color': 'cyan',
+    },
+    {
+        'key': 'star_500',
+        'title': 'Peti Bintang',
+        'description': 'Hadiah pencapaian untuk peserta yang terus bertumbuh.',
+        'required_xp': 500,
+        'bonus_xp': 75,
+        'icon': 'star',
+        'accent_color': 'amber',
+    },
+    {
+        'key': 'trophy_800',
+        'title': 'Piala Konsistensi',
+        'description': 'Bonus spesial untuk pencapaian belajar tingkat lanjut.',
+        'required_xp': 800,
+        'bonus_xp': 120,
+        'icon': 'trophy',
+        'accent_color': 'rose',
+    },
+    {
+        'key': 'crown_1200',
+        'title': 'Mahkota Master',
+        'description': 'Hadiah tertinggi bagi Master Akademiso.',
+        'required_xp': 1200,
+        'bonus_xp': 200,
+        'icon': 'crown',
+        'accent_color': 'violet',
+    },
 ]
 
 
@@ -1031,6 +1106,22 @@ class UserQuizAttempt(models.Model):
         return f"{self.user.username} - {self.quiz.lesson.title} - {self.score}"
 
 
+class GamificationRewardClaim(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gamification_reward_claims')
+    reward_key = models.CharField(max_length=60)
+    xp_bonus = models.PositiveIntegerField(default=0)
+    claimed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-claimed_at', '-id']
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'reward_key'], name='unique_gamification_reward_claim'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.reward_key} (+{self.xp_bonus} XP)"
+
+
 class CourseFeedback(models.Model):
     course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='feedback_entries')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='course_feedback_entries')
@@ -1329,6 +1420,88 @@ def _get_best_quiz_attempts(user):
     return list(best_attempts.values())
 
 
+def get_quiz_leaderboard(quiz, current_user=None, limit=5):
+    attempts = UserQuizAttempt.objects.filter(quiz=quiz).select_related('user', 'user__profile').order_by(
+        '-score', 'completed_at', 'id'
+    )
+    best_by_user = {}
+    for attempt in attempts:
+        if attempt.user_id not in best_by_user:
+            best_by_user[attempt.user_id] = attempt
+
+    ranked_attempts = sorted(
+        best_by_user.values(),
+        key=lambda attempt: (
+            -float(attempt.score or 0),
+            attempt.completed_at,
+            attempt.id,
+        ),
+    )
+    current_user_id = getattr(current_user, 'id', None)
+    entries = []
+    for rank, attempt in enumerate(ranked_attempts, start=1):
+        profile = getattr(attempt.user, 'profile', None)
+        avatar = getattr(profile, 'avatar', None)
+        entries.append({
+            'rank': rank,
+            'user_id': attempt.user_id,
+            'username': attempt.user.username,
+            'full_name': f"{attempt.user.first_name} {attempt.user.last_name}".strip() or attempt.user.username,
+            'avatar_url': avatar.url if avatar else None,
+            'score': float(attempt.score or 0),
+            'completed_at': attempt.completed_at.isoformat(),
+            'is_current_user': attempt.user_id == current_user_id,
+        })
+
+    current_user_entry = next((entry for entry in entries if entry['is_current_user']), None)
+    leaders = entries[:limit]
+    if current_user_entry and current_user_entry['rank'] <= limit:
+        current_user_entry = None
+
+    lesson_type = quiz.lesson.type
+    badge_key = {
+        'quiz': 'quiz_top_five',
+        'mid_test': 'pretest_top_five',
+        'final_test': 'posttest_top_five',
+    }.get(lesson_type)
+    return {
+        'lesson_id': quiz.lesson_id,
+        'lesson_type': lesson_type,
+        'lesson_label': {
+            'quiz': 'Quiz',
+            'mid_test': 'Pre-Test',
+            'final_test': 'Post-Test',
+        }.get(lesson_type, 'Assessment'),
+        'leaders': leaders,
+        'current_user_entry': current_user_entry,
+        'current_user_in_top_five': any(entry['is_current_user'] for entry in leaders),
+        'badge_key': badge_key,
+    }
+
+
+def _get_quiz_leaderboard_achievements(user):
+    achievements = {
+        'quiz_top_five': 0,
+        'pretest_top_five': 0,
+        'posttest_top_five': 0,
+    }
+    quiz_ids = UserQuizAttempt.objects.filter(user=user).values_list('quiz_id', flat=True).distinct()
+    quizzes = Quiz.objects.filter(id__in=quiz_ids).select_related('lesson')
+    metric_by_type = {
+        'quiz': 'quiz_top_five',
+        'mid_test': 'pretest_top_five',
+        'final_test': 'posttest_top_five',
+    }
+    for quiz in quizzes:
+        metric = metric_by_type.get(quiz.lesson.type)
+        if not metric:
+            continue
+        leaderboard = get_quiz_leaderboard(quiz, current_user=user, limit=5)
+        if leaderboard['current_user_in_top_five']:
+            achievements[metric] += 1
+    return achievements
+
+
 def _calculate_streaks(activity_dates):
     normalized_dates = sorted(set(activity_dates))
     if not normalized_dates:
@@ -1444,6 +1617,7 @@ def get_user_gamification_summary(user):
                 'perfect_quizzes': 0,
                 'completed_courses': 0,
                 'approved_certificates': 0,
+                'rewards_claimed': 0,
             },
             'badges': [],
             'next_badges': [],
@@ -1515,20 +1689,27 @@ def get_user_gamification_summary(user):
         'perfect_quizzes': perfect_quizzes,
         'completed_courses': completed_courses,
         'approved_certificates': approved_certificates,
+        'rewards_claimed': GamificationRewardClaim.objects.filter(user=user).count(),
     }
+
+    reward_bonus_xp = GamificationRewardClaim.objects.filter(user=user).aggregate(
+        total=models.Sum('xp_bonus')
+    )['total'] or 0
 
     total_xp = (
         (completed_lessons * GAMIFICATION_XP['completed_lesson']) +
         (passed_quizzes * GAMIFICATION_XP['passed_quiz']) +
         (perfect_quizzes * GAMIFICATION_XP['perfect_quiz_bonus']) +
         (completed_courses * GAMIFICATION_XP['completed_course_bonus']) +
-        (approved_certificates * GAMIFICATION_XP['approved_certificate_bonus'])
+        (approved_certificates * GAMIFICATION_XP['approved_certificate_bonus']) +
+        reward_bonus_xp
     )
 
     streak = _calculate_streaks(activity_dates)
     metrics = {
         **stats,
         'current_streak': streak['current'],
+        **_get_quiz_leaderboard_achievements(user),
     }
     badges = _build_badges(metrics)
     earned_badges = [badge for badge in badges if badge['earned']]
@@ -1657,6 +1838,20 @@ def get_user_gamification_activity(user, limit=8):
             'xp_earned': GAMIFICATION_XP['approved_certificate_bonus'],
             'icon': 'award',
             'accent_color': 'rose',
+        })
+
+    reward_definitions = {reward['key']: reward for reward in GAMIFICATION_REWARDS}
+    for claim in GamificationRewardClaim.objects.filter(user=user):
+        reward = reward_definitions.get(claim.reward_key, {})
+        events.append({
+            'id': f'reward-{claim.id}',
+            'type': 'reward_claimed',
+            'title': f"Mengklaim {reward.get('title', 'hadiah XP')}",
+            'description': f"Bonus +{claim.xp_bonus} XP sudah ditambahkan.",
+            'occurred_at': claim.claimed_at,
+            'xp_earned': claim.xp_bonus,
+            'icon': reward.get('icon', 'gift'),
+            'accent_color': reward.get('accent_color', 'blue'),
         })
 
     fallback_time = timezone.now()

@@ -303,6 +303,7 @@ export interface GamificationStats {
     perfect_quizzes: number;
     completed_courses: number;
     approved_certificates: number;
+    rewards_claimed: number;
 }
 
 export interface GamificationSummary {
@@ -319,7 +320,7 @@ export interface GamificationSummary {
 
 export interface GamificationActivityItem {
     id: string;
-    type: 'lesson_completed' | 'quiz_passed' | 'perfect_quiz' | 'course_completed' | 'certificate_approved';
+    type: 'lesson_completed' | 'quiz_passed' | 'perfect_quiz' | 'course_completed' | 'certificate_approved' | 'reward_claimed';
     title: string;
     description: string;
     occurred_at?: string | null;
@@ -450,6 +451,50 @@ export interface Certificate {
     approved_by_name?: string | null;
     has_satisfaction_feedback?: boolean;
     requires_satisfaction_feedback?: boolean;
+}
+
+export interface QuizLeaderboardEntry {
+    rank: number;
+    user_id: number;
+    username: string;
+    full_name: string;
+    avatar_url?: string | null;
+    score: number;
+    completed_at: string;
+    is_current_user: boolean;
+}
+
+export interface QuizLeaderboard {
+    lesson_id: number;
+    lesson_type: string;
+    lesson_label: string;
+    leaders: QuizLeaderboardEntry[];
+    current_user_entry?: QuizLeaderboardEntry | null;
+    current_user_in_top_five: boolean;
+    badge_key?: string | null;
+}
+
+export interface GamificationReward {
+    key: string;
+    title: string;
+    description: string;
+    required_xp: number;
+    bonus_xp: number;
+    icon: string;
+    accent_color: string;
+    unlocked: boolean;
+    claimed: boolean;
+    claimed_at?: string | null;
+    progress_percentage: number;
+    xp_remaining: number;
+}
+
+export interface GamificationRewardsPayload {
+    total_xp: number;
+    claimed_count: number;
+    available_count: number;
+    rewards: GamificationReward[];
+    claimed_reward?: GamificationReward & { claimed_at: string };
 }
 
 export interface WebinarAttendance {

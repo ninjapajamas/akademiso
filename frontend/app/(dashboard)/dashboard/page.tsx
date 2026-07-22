@@ -11,6 +11,7 @@ import {
     Brain,
     Calendar,
     CheckCircle2,
+    Crown,
     Flame,
     Flag,
     Gem,
@@ -79,6 +80,12 @@ function getBadgeIcon(icon: string) {
             return <Award className={className} />;
         case 'book-open':
             return <BookOpen className={className} />;
+        case 'medal':
+            return <Medal className={className} />;
+        case 'rocket':
+            return <Rocket className={className} />;
+        case 'crown':
+            return <Crown className={className} />;
         default:
             return <ShieldCheck className={className} />;
     }
@@ -98,6 +105,8 @@ function getAccentClass(color: string) {
             return 'border-rose-200 bg-rose-50 text-rose-700';
         case 'cyan':
             return 'border-cyan-200 bg-cyan-50 text-cyan-700';
+        case 'violet':
+            return 'border-violet-200 bg-violet-50 text-violet-700';
         default:
             return 'border-blue-200 bg-blue-50 text-blue-700';
     }

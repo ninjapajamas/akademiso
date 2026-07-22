@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .models import (
     Category, Instructor, Course, Project, ProjectAssignment, Order, Lesson, Section, UserProfile, ReferralCode,
-    Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress, CourseFeedback,
+    Quiz, Question, Alternative, UserQuizAttempt, UserLessonProgress, CourseFeedback, GamificationRewardClaim,
     CertificationExam, CertificationQuestion, CertificationAlternative, 
     CertificationInstructorSlot, CertificationAttempt, CertificationAnswer, Certificate, CertificateTemplate, WebinarAttendance,
     InhouseTrainingRequest, CourseDiscussionTopic, CourseDiscussionComment, StudentAccessLink, StudentAccessLinkClaim,
@@ -18,8 +18,8 @@ from .models import (
     AFFILIATE_STATUS_APPROVED, AFFILIATE_STATUS_PENDING, AFFILIATE_STATUS_REJECTED, AFFILIATE_STATUS_NONE,
     STAFF_ROLE_ACCOUNTANT, STAFF_ROLE_ADMIN, STAFF_ROLE_PROJECT_MANAGER,
     WITHDRAWAL_STATUS_APPROVED, WITHDRAWAL_STATUS_PAID, WITHDRAWAL_STATUS_PENDING, WITHDRAWAL_STATUS_REJECTED,
-    apply_referral_discount, generate_unique_referral_code, get_gamification_leaderboard, get_order_total_amount, get_public_session, get_user_gamification_activity,
-    get_user_gamification_summary, has_assessment_access, has_elearning_access,
+    GAMIFICATION_REWARDS, apply_referral_discount, generate_unique_referral_code, get_gamification_leaderboard, get_order_total_amount, get_public_session, get_user_gamification_activity,
+    get_quiz_leaderboard, get_user_gamification_summary, has_assessment_access, has_elearning_access,
     get_staff_role, get_user_role
 )
 from .serializers import (
@@ -847,6 +847,7 @@ def _serialize_leaderboard_payload(request, payload):
         }
 
     return {
+        **payload,
         'leaders': leaders,
         'current_user_entry': current_user_entry,
     }
@@ -1950,6 +1951,72 @@ class GamificationActivityView(APIView):
 
     def get(self, request):
         return Response(get_user_gamification_activity(request.user))
+
+
+def _build_rewards_payload(user):
+    summary = get_user_gamification_summary(user)
+    total_xp = int(summary.get('total_xp', 0) or 0)
+    claimed = {
+        claim.reward_key: claim
+        for claim in GamificationRewardClaim.objects.filter(user=user)
+    }
+    rewards = []
+    for definition in GAMIFICATION_REWARDS:
+        required_xp = int(definition['required_xp'])
+        claim = claimed.get(definition['key'])
+        rewards.append({
+            **definition,
+            'unlocked': total_xp >= required_xp,
+            'claimed': bool(claim),
+            'claimed_at': claim.claimed_at.isoformat() if claim else None,
+            'progress_percentage': min(round((total_xp / required_xp) * 100), 100) if required_xp else 100,
+            'xp_remaining': max(required_xp - total_xp, 0),
+        })
+    return {
+        'total_xp': total_xp,
+        'claimed_count': len(claimed),
+        'available_count': sum(1 for reward in rewards if reward['unlocked'] and not reward['claimed']),
+        'rewards': rewards,
+    }
+
+
+class GamificationRewardsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(_build_rewards_payload(request.user))
+
+
+class GamificationRewardClaimView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, reward_key):
+        reward = next((item for item in GAMIFICATION_REWARDS if item['key'] == reward_key), None)
+        if not reward:
+            return Response({'error': 'Hadiah tidak ditemukan.'}, status=404)
+
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=request.user.pk)
+            summary = get_user_gamification_summary(request.user)
+            if int(summary.get('total_xp', 0) or 0) < int(reward['required_xp']):
+                return Response({
+                    'error': f"Kumpulkan minimal {reward['required_xp']} XP untuk mengklaim hadiah ini."
+                }, status=400)
+
+            claim, created = GamificationRewardClaim.objects.get_or_create(
+                user=request.user,
+                reward_key=reward_key,
+                defaults={'xp_bonus': reward['bonus_xp']},
+            )
+            if not created:
+                return Response({'error': 'Hadiah ini sudah pernah diklaim.'}, status=400)
+
+        payload = _build_rewards_payload(request.user)
+        payload['claimed_reward'] = {
+            **reward,
+            'claimed_at': claim.claimed_at.isoformat(),
+        }
+        return Response(payload, status=201)
 
 
 # ── Admin Stats ─────────────────────────────────────────────────────────────
@@ -3484,6 +3551,19 @@ class CartViewSet(viewsets.ViewSet):
         CartItem.objects.filter(**filters).delete()
         return Response({'message': 'Item removed from cart'}, status=200)
 
+class QuizLeaderboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, lesson_id):
+        lesson = get_object_or_404(Lesson.objects.select_related('quiz_data', 'course'), pk=lesson_id)
+        if not hasattr(lesson, 'quiz_data'):
+            return Response({'error': 'Quiz tidak ditemukan pada materi ini.'}, status=404)
+        if not _has_lesson_access(request.user, lesson):
+            return Response({'error': 'Anda harus terdaftar untuk melihat leaderboard ini.'}, status=403)
+        payload = get_quiz_leaderboard(lesson.quiz_data, current_user=request.user, limit=5)
+        return Response(_serialize_leaderboard_payload(request, payload))
+
+
 class QuizAttemptView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -3528,6 +3608,7 @@ class QuizAttemptView(APIView):
                 score=score
             )
             gamification_after = get_user_gamification_summary(request.user)
+            leaderboard = get_quiz_leaderboard(quiz, current_user=request.user, limit=5)
             
             return Response({
                 'score': score,
@@ -3536,6 +3617,7 @@ class QuizAttemptView(APIView):
                 'correct_answers': correct_count,
                 'total_questions': total_questions,
                 'gamification': _build_gamification_action_payload(gamification_before, gamification_after),
+                'leaderboard': _serialize_leaderboard_payload(request, leaderboard),
             })
             
         except Lesson.DoesNotExist:

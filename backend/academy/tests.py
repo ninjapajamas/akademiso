@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from .models import (
-    Alternative, CartItem, Category, Certificate, CertificationAttempt, CertificationExam, Course, CourseDiscussionComment, CourseFeedback, Instructor,
+    Alternative, CartItem, Category, Certificate, CertificationAttempt, CertificationExam, Course, CourseDiscussionComment, CourseFeedback, GamificationRewardClaim, Instructor,
     CertificationAlternative, CertificationInstructorSlot, CertificationQuestion,
     InstructorWithdrawalRequest, Lesson, Order, Question, Quiz, Section, UserLessonProgress, UserProfile, UserQuizAttempt,
     ORDER_OFFER_ELEARNING, ORDER_OFFER_PUBLIC, STAFF_ROLE_ACCOUNTANT, StudentAccessLink, StudentAccessLinkClaim, get_order_total_amount
@@ -1574,6 +1574,61 @@ class GamificationApiTests(APITestCase):
             if badge['earned']
         }
         self.assertTrue({'first_step', 'steady_learner', 'quiz_conqueror', 'perfect_score', 'course_finisher', 'certified_ready'}.issubset(earned_badges))
+
+    def test_quiz_leaderboard_returns_top_five_and_awards_badge(self):
+        for index, score in enumerate([95, 90, 85, 80, 75], start=1):
+            peer = User.objects.create_user(
+                username=f'leader-peer-{index}',
+                email=f'leader-peer-{index}@example.com',
+                password='secret123',
+            )
+            Order.objects.create(
+                user=peer,
+                course=self.course,
+                offer_type=ORDER_OFFER_ELEARNING,
+                status='Completed',
+                total_amount=Decimal('400000.00'),
+            )
+            UserQuizAttempt.objects.create(user=peer, quiz=self.quiz, score=Decimal(str(score)))
+
+        attempt_response = self.client.post(
+            f'/api/lessons/{self.quiz_lesson.id}/quiz-attempt/',
+            {'answers': {str(self.question.id): self.correct_alternative.id}},
+            format='json',
+        )
+        self.assertEqual(attempt_response.status_code, 200, attempt_response.data)
+        self.assertEqual(len(attempt_response.data['leaderboard']['leaders']), 5)
+        self.assertEqual(attempt_response.data['leaderboard']['leaders'][0]['user_id'], self.student.id)
+        self.assertTrue(attempt_response.data['leaderboard']['current_user_in_top_five'])
+
+        leaderboard_response = self.client.get(f'/api/lessons/{self.quiz_lesson.id}/quiz-leaderboard/')
+        self.assertEqual(leaderboard_response.status_code, 200, leaderboard_response.data)
+        self.assertEqual(leaderboard_response.data['lesson_label'], 'Quiz')
+
+        summary_response = self.client.get('/api/gamification/summary/')
+        earned_badges = {badge['key'] for badge in summary_response.data['badges'] if badge['earned']}
+        self.assertIn('quiz_top_five', earned_badges)
+
+    def test_reward_can_be_claimed_once_after_required_xp(self):
+        UserLessonProgress.objects.create(user=self.student, lesson=self.article_lesson, is_completed=True)
+        UserQuizAttempt.objects.create(user=self.student, quiz=self.quiz, score=Decimal('100.00'))
+
+        rewards_response = self.client.get('/api/gamification/rewards/')
+        self.assertEqual(rewards_response.status_code, 200, rewards_response.data)
+        self.assertEqual(rewards_response.data['total_xp'], 100)
+        self.assertTrue(rewards_response.data['rewards'][0]['unlocked'])
+
+        claim_response = self.client.post('/api/gamification/rewards/spark_100/claim/', {}, format='json')
+        self.assertEqual(claim_response.status_code, 201, claim_response.data)
+        self.assertEqual(claim_response.data['total_xp'], 120)
+        self.assertEqual(claim_response.data['claimed_reward']['bonus_xp'], 20)
+        self.assertEqual(GamificationRewardClaim.objects.filter(user=self.student).count(), 1)
+
+        repeated_response = self.client.post('/api/gamification/rewards/spark_100/claim/', {}, format='json')
+        self.assertEqual(repeated_response.status_code, 400, repeated_response.data)
+
+        locked_response = self.client.post('/api/gamification/rewards/rocket_250/claim/', {}, format='json')
+        self.assertEqual(locked_response.status_code, 400, locked_response.data)
 
 
 class SecurityAndProfileRegressionTests(APITestCase):

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Printer, X } from 'lucide-react';
 import { EnrolledCourse } from '@/types';
 import ParticipantCard, { ParticipantIdentity } from './ParticipantCard';
@@ -12,6 +13,10 @@ interface ParticipantCardModalProps {
 }
 
 export default function ParticipantCardModal({ enrollment, participant, onClose }: ParticipantCardModalProps) {
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => setMounted(true), []);
+
     useEffect(() => {
         if (!enrollment) return;
 
@@ -75,24 +80,56 @@ export default function ParticipantCardModal({ enrollment, participant, onClose 
                 </div>
             </div>
 
+            {mounted && createPortal(
+                <div className="participant-card-print-layer" aria-hidden="true">
+                    <div className="participant-card-print-sheet">
+                        <ParticipantCard enrollment={enrollment} participant={participant} />
+                    </div>
+                </div>,
+                document.body,
+            )}
+
             <style jsx global>{`
+                .participant-card-print-layer {
+                    display: none;
+                }
+
                 @media print {
-                    body * {
-                        visibility: hidden;
+                    @page {
+                        size: A4 portrait;
+                        margin: 14mm;
                     }
 
-                    .printable-participant-card,
-                    .printable-participant-card * {
-                        visibility: visible;
+                    html,
+                    body {
+                        height: auto !important;
+                        min-height: 0 !important;
+                        overflow: visible !important;
                     }
 
-                    .printable-participant-card {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
+                    body > *:not(.participant-card-print-layer) {
+                        display: none !important;
+                    }
+
+                    .participant-card-print-layer {
+                        display: block !important;
+                        position: static !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        overflow: visible !important;
+                    }
+
+                    .participant-card-print-sheet {
                         width: 100%;
-                        max-width: 100%;
-                        padding: 24px;
+                        max-width: 170mm;
+                        margin: 0 auto;
+                        break-inside: avoid;
+                        page-break-inside: avoid;
+                        page-break-after: avoid;
+                    }
+
+                    .participant-card-print-sheet aside {
+                        box-shadow: none !important;
                     }
                 }
             `}</style>

@@ -7,6 +7,7 @@ import {
     Award,
     BookOpen,
     Calendar,
+    Gift,
     LayoutDashboard,
     LogOut,
     Menu,
@@ -163,6 +164,7 @@ export default function DashboardLayout({
         { icon: BookOpen, label: 'Kursus Saya', href: '/dashboard/courses' },
         { icon: MessageSquare, label: 'Forum Diskusi', href: '/dashboard/forum' },
         { icon: Calendar, label: 'Jadwal Assessment', href: '/dashboard/schedule' },
+        { icon: Gift, label: 'Reward', href: '/dashboard/rewards' },
         { icon: Award, label: 'Sertifikat', href: '/dashboard/certificates' },
         { icon: Settings, label: 'Pengaturan', href: '/dashboard/settings' },
     ];

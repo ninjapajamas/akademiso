@@ -21,9 +21,16 @@ import {
     RotateCcw,
     ArrowRight,
     Sparkles,
-    Video
+    Video,
+    Medal,
+    Crown,
+    PartyPopper,
+    UserRound,
+    Rocket,
+    Star
 } from 'lucide-react';
 import Link from 'next/link';
+import { QuizLeaderboard } from '@/types';
 
 const ASSESSMENT_LESSON_TYPES = ['quiz', 'mid_test', 'final_test', 'exam'];
 const QUESTION_TYPE_SHORT_ANSWER = 'SHORT_ANSWER';
@@ -65,6 +72,78 @@ const shuffleQuestions = <T,>(items: T[]) => {
     return shuffled;
 };
 
+const quizConfettiColors = ['#2563eb', '#ec4899', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4'];
+
+const getGamificationBadgeIcon = (icon?: string) => {
+    const className = 'h-4 w-4';
+    if (icon === 'medal') return <Medal className={className} />;
+    if (icon === 'crown') return <Crown className={className} />;
+    if (icon === 'rocket') return <Rocket className={className} />;
+    if (icon === 'star') return <Star className={className} />;
+    if (icon === 'brain') return <HelpCircle className={className} />;
+    if (icon === 'award') return <Trophy className={className} />;
+    return <Sparkles className={className} />;
+};
+
+const QuizLeaderboardPanel = ({ leaderboard, loading }: { leaderboard: QuizLeaderboard | null; loading: boolean }) => {
+    if (loading) {
+        return <div className="mt-6 h-40 animate-pulse rounded-[2rem] bg-gradient-to-r from-fuchsia-50 via-amber-50 to-cyan-50" />;
+    }
+    if (!leaderboard) return null;
+
+    const rows = leaderboard.leaders || [];
+    return (
+        <section className="mt-6 overflow-hidden rounded-[2rem] border border-fuchsia-100 bg-gradient-to-br from-fuchsia-50 via-white to-cyan-50 p-5 text-left shadow-sm sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-white shadow-lg shadow-fuchsia-500/20">
+                        <Trophy className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-500">Top 5 {leaderboard.lesson_label}</p>
+                        <h4 className="text-lg font-black text-slate-950">Leaderboard Ceria</h4>
+                    </div>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-600 shadow-sm">
+                    <Medal className="h-3.5 w-3.5" /> Masuk Top 5 dapat badge
+                </span>
+            </div>
+
+            {rows.length > 0 ? (
+                <div className="mt-5 grid gap-2">
+                    {rows.map(entry => (
+                        <div key={entry.user_id} className={`flex items-center gap-3 rounded-2xl border px-3 py-3 ${entry.is_current_user ? 'border-blue-300 bg-blue-50 shadow-sm' : 'border-white bg-white/90'}`}>
+                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl font-black ${entry.rank === 1 ? 'bg-amber-100 text-amber-600' : entry.rank === 2 ? 'bg-slate-200 text-slate-600' : entry.rank === 3 ? 'bg-orange-100 text-orange-600' : 'bg-violet-100 text-violet-600'}`}>
+                                {entry.rank <= 3 ? <Medal className="h-5 w-5" /> : `#${entry.rank}`}
+                            </div>
+                            {entry.avatar_url ? (
+                                <img src={entry.avatar_url} alt={entry.full_name} className="h-10 w-10 rounded-2xl object-cover" />
+                            ) : (
+                                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700"><UserRound className="h-5 w-5" /></div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-black text-slate-900">{entry.full_name}{entry.is_current_user ? ' • Anda' : ''}</p>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Peringkat #{entry.rank}</p>
+                            </div>
+                            <span className="rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-3 py-1.5 text-sm font-black text-white">{Math.round(entry.score)}%</span>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="mt-5 rounded-2xl border border-dashed border-fuchsia-200 bg-white/70 p-5 text-center text-sm text-slate-500">
+                    Belum ada skor. Jadilah peserta pertama yang mengisi leaderboard!
+                </div>
+            )}
+
+            {leaderboard.current_user_entry && (
+                <p className="mt-3 rounded-xl bg-white/80 px-4 py-2 text-xs font-bold text-slate-600">
+                    Posisi Anda saat ini #{leaderboard.current_user_entry.rank} dengan skor {Math.round(leaderboard.current_user_entry.score)}%.
+                </p>
+            )}
+        </section>
+    );
+};
+
 const QuizPlayer = ({
     lesson,
     onComplete,
@@ -89,6 +168,9 @@ const QuizPlayer = ({
     const [feedbackError, setFeedbackError] = useState<string | null>(null);
     const [secondsRemaining, setSecondsRemaining] = useState(timeLimitSeconds);
     const [hasStarted, setHasStarted] = useState(false);
+    const [leaderboard, setLeaderboard] = useState<QuizLeaderboard | null>(null);
+    const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+    const [showPostTestConfetti, setShowPostTestConfetti] = useState(false);
     const autoSubmittedRef = useRef(false);
 
     const isPostTestLesson = lesson.type === 'final_test';
@@ -116,6 +198,7 @@ const QuizPlayer = ({
             if (res.ok) {
                 const data = await res.json();
                 setResult(data);
+                if (data.leaderboard) setLeaderboard(data.leaderboard);
             } else {
                 alert('Gagal mengirim jawaban. Silakan coba lagi.');
             }
@@ -132,6 +215,35 @@ const QuizPlayer = ({
         setHasStarted(false);
         autoSubmittedRef.current = false;
     }, [lesson.id, timeLimitSeconds]);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        const fetchLeaderboard = async () => {
+            setLeaderboardLoading(true);
+            try {
+                const token = localStorage.getItem('access_token');
+                const apiUrl = getClientApiBaseUrl();
+                const response = await fetch(`${apiUrl}/api/lessons/${lesson.id}/quiz-leaderboard/`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    signal: controller.signal,
+                });
+                if (response.ok) setLeaderboard(await response.json());
+            } catch (error) {
+                if ((error as Error).name !== 'AbortError') console.error('Leaderboard fetch error:', error);
+            } finally {
+                if (!controller.signal.aborted) setLeaderboardLoading(false);
+            }
+        };
+        void fetchLeaderboard();
+        return () => controller.abort();
+    }, [lesson.id]);
+
+    useEffect(() => {
+        if (!result || !isPostTestLesson) return;
+        setShowPostTestConfetti(true);
+        const timer = window.setTimeout(() => setShowPostTestConfetti(false), 2300);
+        return () => window.clearTimeout(timer);
+    }, [isPostTestLesson, result]);
 
     useEffect(() => {
         if (!hasStarted || !timeLimitSeconds || result) return;
@@ -285,6 +397,8 @@ const QuizPlayer = ({
                         Mulai {getLessonTypeLabel(lesson.type)}
                         <ArrowRight className="h-4 w-4" />
                     </button>
+
+                    <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} />
                 </div>
             </div>
         );
@@ -360,11 +474,32 @@ const QuizPlayer = ({
         setFeedbackError(null);
         setSecondsRemaining(timeLimitSeconds);
         setHasStarted(false);
+        setShowPostTestConfetti(false);
         autoSubmittedRef.current = false;
     };
 
     if (result) {
         return (
+            <>
+            {showPostTestConfetti && (
+                <div className="pointer-events-none fixed inset-0 z-[120] overflow-hidden" aria-hidden="true">
+                    {Array.from({ length: 28 }).map((_, index) => (
+                        <span
+                            key={index}
+                            className="quiz-confetti absolute -top-8 h-3 w-2 rounded-sm"
+                            style={{
+                                left: `${3 + ((index * 29) % 94)}%`,
+                                backgroundColor: quizConfettiColors[index % quizConfettiColors.length],
+                                animationDelay: `${(index % 7) * 70}ms`,
+                                animationDuration: `${1400 + (index % 5) * 140}ms`,
+                            }}
+                        />
+                    ))}
+                    <div className="absolute left-1/2 top-24 -translate-x-1/2 rounded-full bg-white/95 px-6 py-3 font-black text-fuchsia-600 shadow-xl backdrop-blur">
+                        <span className="flex items-center gap-2"><PartyPopper className="h-5 w-5" /> Post-Test Selesai!</span>
+                    </div>
+                </div>
+            )}
             <div className="bg-white rounded-[2rem] p-10 border border-gray-100 shadow-xl animate-in fade-in zoom-in-95 duration-500">
                 <div className="text-center space-y-6">
                     <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center ${result.is_passed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
@@ -412,14 +547,19 @@ const QuizPlayer = ({
                                 {result.gamification.new_badges.map((badge: any) => (
                                     <span
                                         key={badge.key}
-                                        className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-700 shadow-sm"
+                                        className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-700 shadow-sm"
                                     >
+                                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 to-fuchsia-100 text-fuchsia-600">
+                                            {getGamificationBadgeIcon(badge.icon)}
+                                        </span>
                                         {badge.label}
                                     </span>
                                 ))}
                             </div>
                         </div>
                     )}
+
+                    <QuizLeaderboardPanel leaderboard={leaderboard} loading={leaderboardLoading} />
 
                     <div className="pt-6 flex flex-col sm:flex-row gap-4 justify-center">
                         <button
@@ -506,6 +646,14 @@ const QuizPlayer = ({
                     )}
                 </div>
             </div>
+            <style jsx>{`
+                @keyframes quiz-confetti-fall {
+                    0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+                    100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+                }
+                .quiz-confetti { animation-name: quiz-confetti-fall; animation-timing-function: cubic-bezier(.2,.7,.2,1); animation-fill-mode: forwards; }
+            `}</style>
+            </>
         );
     }
 
